@@ -72,13 +72,13 @@ Special thanks to all developers who have provided suggestions and feedback!
 
  * 真实物理驱动
 
-  - 轮胎力基于合理的受力分析，可通过曲线微调，支持 camber/toe 影响、摩擦椭圆、联合滑移
+   - 轮胎力基于合理的受力分析，可通过曲线微调，支持 camber/toe 影响、摩擦椭圆、联合滑移
 
-  - 悬挂支持直线、麦弗逊、双叉臂、拖曳臂，参数可调，支持自定义 camber/toe 曲线
+   - 悬挂支持直线、麦弗逊、双叉臂、拖曳臂，参数可调，支持自定义 camber/toe 曲线
 
-  - 引擎、离合器、变速箱、差速器均基于物理模拟，支持涡轮增压、熄火、反转、限滑差速器
+   - 引擎、离合器、变速箱、差速器均基于物理模拟，支持涡轮增压、熄火、反转、限滑差速器
 
-  - 驾驶辅助功能 – 自动变速箱、牵引力控制、ABS、降档补油、自动离合、涡轮 AntiLag、AutoHold
+   - 驾驶辅助功能 – 自动变速箱、牵引力控制、ABS、降档补油、自动离合、涡轮 AntiLag、AutoHold
 
 🚀 快速开始
 
@@ -102,11 +102,11 @@ Special thanks to all developers who have provided suggestions and feedback!
 
  * 本项目受到以下开源项目/教程启发：
 
-  - [Vehicle Components](https://www.youtube.com/watch?v=BaE3l4rNzJQ&list=PLsxE2KdYcv6vvrJFtRqN14xjrPt-v5fpd)
-   – 帮助我入门 UE5 C++ 载具系统开发
+    - [Vehicle Components](https://www.youtube.com/watch?v=BaE3l4rNzJQ&list=PLsxE2KdYcv6vvrJFtRqN14xjrPt-v5fpd)
+     – 帮助我入门 UE5 C++ 载具系统开发
 
-  - [AsyncTickPhysics](https://github.com/Mr-Craig/AsyncTickPhysics)
-   – 用于实现异步物理
+    - [AsyncTickPhysics](https://github.com/Mr-Craig/AsyncTickPhysics)
+     – 用于实现异步物理
 
 感谢所有提供建议和反馈的开发者们！
 
