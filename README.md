@@ -58,6 +58,8 @@ Special thanks to all developers who have provided suggestions and feedback!
 
   * Released under MIT License – free for commercial use, attribution required.
 
+以下是中文版：
+
 ✨ 特性亮点
 
  * 高性能 C++ 实现 – 全部从零编写，性能远超蓝图实现，支持异步物理，稳定可靠
