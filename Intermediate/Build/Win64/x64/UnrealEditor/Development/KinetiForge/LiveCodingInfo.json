@@ -1,0 +1,32 @@
+{
+	"RemapUnityFiles": 
+	{
+		"Module.KinetiForge.1.cpp.obj": [
+			"KinetiForge.init.gen.cpp.obj",
+			"VehicleAxleAssemblyComponent.gen.cpp.obj",
+			"VehicleChassisParams.gen.cpp.obj",
+			"VehicleClutchComponent.gen.cpp.obj",
+			"VehicleDifferentialComponent.gen.cpp.obj"
+		],
+		"Module.KinetiForge.2.cpp.obj": [
+			"VehicleDriveAssemblyComponent.gen.cpp.obj",
+			"VehicleEngineComponent.gen.cpp.obj",
+			"VehicleGearboxComponent.gen.cpp.obj",
+			"VehicleWheelComponent.gen.cpp.obj"
+		],
+		"Module.KinetiForge.3.cpp.obj": [
+			"VehicleWheelCoordinatorComponent.gen.cpp.obj",
+			"KinetiForge.cpp.obj",
+			"VehicleAxleAssemblyComponent.cpp.obj",
+			"VehicleClutchComponent.cpp.obj",
+			"VehicleDifferentialComponent.cpp.obj",
+			"VehicleDriveAssemblyComponent.cpp.obj",
+			"VehicleEngineComponent.cpp.obj",
+			"VehicleGearboxComponent.cpp.obj",
+			"VehicleSuspensionSolver.cpp.obj",
+			"VehicleWheelComponent.cpp.obj",
+			"VehicleWheelCoordinatorComponent.cpp.obj",
+			"VehicleWheelSolver.cpp.obj"
+		]
+	}
+}

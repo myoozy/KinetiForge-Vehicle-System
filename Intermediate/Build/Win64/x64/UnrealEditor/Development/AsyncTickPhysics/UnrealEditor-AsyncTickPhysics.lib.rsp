@@ -1,0 +1,12 @@
+/NOLOGO
+/errorReport:prompt
+/MACHINE:x64
+/SUBSYSTEM:WINDOWS
+/DEF
+/NAME:"UnrealEditor-AsyncTickPhysics.dll"
+/IGNORE:4221
+/NODEFAULTLIB
+"E:\Files\UnrealEngine\Unreal Projects\KinetiForgeVehicles\Intermediate\Build\Win64\x64\KinetiForgeVehiclesEditor\Development\Engine\SharedPCH.Engine.Cpp20.h.obj"
+"E:\Files\UnrealEngine\Unreal Projects\KinetiForgeVehicles\Plugins\KinetiForgeVehicles\Intermediate\Build\Win64\x64\UnrealEditor\Development\AsyncTickPhysics\Module.AsyncTickPhysics.cpp.obj"
+"E:\Files\UnrealEngine\Unreal Projects\KinetiForgeVehicles\Plugins\KinetiForgeVehicles\Intermediate\Build\Win64\x64\UnrealEditor\Development\AsyncTickPhysics\Default.rc2.res"
+/OUT:"E:\Files\UnrealEngine\Unreal Projects\KinetiForgeVehicles\Plugins\KinetiForgeVehicles\Intermediate\Build\Win64\x64\UnrealEditor\Development\AsyncTickPhysics\UnrealEditor-AsyncTickPhysics.lib"

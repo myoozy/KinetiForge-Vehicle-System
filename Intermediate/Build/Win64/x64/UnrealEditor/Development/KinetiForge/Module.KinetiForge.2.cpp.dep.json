@@ -1,0 +1,29 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\kinetiforge\\module.kinetiforge.2.cpp",
+        "ProvidedModule": "",
+        "PCH": "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\intermediate\\build\\win64\\x64\\kinetiforgevehicleseditor\\development\\engine\\sharedpch.engine.cpp20.h.pch",
+        "Includes": [
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\kinetiforge\\definitions.kinetiforge.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\unrealeditor\\inc\\kinetiforge\\uht\\vehicledriveassemblycomponent.gen.cpp",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\source\\kinetiforge\\public\\vehicledriveassemblycomponent.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\unrealeditor\\inc\\kinetiforge\\uht\\vehicledriveassemblycomponent.generated.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\unrealeditor\\inc\\kinetiforge\\uht\\vehicleenginecomponent.gen.cpp",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\source\\kinetiforge\\public\\vehicleenginecomponent.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\unrealeditor\\inc\\kinetiforge\\uht\\vehicleenginecomponent.generated.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\unrealeditor\\inc\\kinetiforge\\uht\\vehiclegearboxcomponent.gen.cpp",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\source\\kinetiforge\\public\\vehiclegearboxcomponent.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\unrealeditor\\inc\\kinetiforge\\uht\\vehiclegearboxcomponent.generated.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\unrealeditor\\inc\\kinetiforge\\uht\\vehiclewheelcomponent.gen.cpp",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\source\\kinetiforge\\public\\vehiclewheelcomponent.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\source\\kinetiforge\\public\\vehiclechassisparams.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\unrealeditor\\inc\\kinetiforge\\uht\\vehiclechassisparams.generated.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\source\\kinetiforge\\public\\vehiclesuspensionsolver.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\source\\kinetiforge\\public\\vehiclewheelsolver.h",
+            "e:\\files\\unrealengine\\unreal projects\\kinetiforgevehicles\\plugins\\kinetiforgevehicles\\intermediate\\build\\win64\\unrealeditor\\inc\\kinetiforge\\uht\\vehiclewheelcomponent.generated.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}
