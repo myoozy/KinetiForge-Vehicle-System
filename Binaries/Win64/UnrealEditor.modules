@@ -1,8 +1,0 @@
-{
-	"BuildId": "27405482",
-	"Modules": 
-	{
-		"AsyncTickPhysics": "UnrealEditor-AsyncTickPhysics.dll",
-		"KinetiForge": "UnrealEditor-KinetiForge.dll"
-	}
-}
