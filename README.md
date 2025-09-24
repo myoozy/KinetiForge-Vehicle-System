@@ -4,6 +4,9 @@ High-performance, modular vehicle physics system for Unreal Engine 5, fully impl
 一个高性能、模块化、物理自洽的载具系统，完全用 C++ 从零实现，专为 Unreal Engine 5 打造。
 
 * Demonstration video 演示视频:
+  - [key features 主要功能展示](https://www.bilibili.com/video/BV1HFnAzCEKU/)
+  - [how to install 安装指南](https://www.bilibili.com/video/BV1SxJkzPEcA)
+  - [how to configure vehicles 如何创建载具](https://www.bilibili.com/video/BV1h2JCzzEF3)
 
 中文版在下方
 
@@ -29,7 +32,17 @@ High-performance, modular vehicle physics system for Unreal Engine 5, fully impl
 
 🚀 Getting Started
 
-  * Copy the plugin to your Unreal project’s Plugins/ folder
+  * Create a new empty c++ project
+  
+  * close the unreal editor and the visual studio (or other IDE)
+
+  * find the project folder and create a new folder called 'Plugins'
+
+  * delete the .sln file, right click on the .uproject file, click on "generate visual studio project files"
+
+  * double click the .sln file to open IDE, then rebuild the project
+
+  * open the unreal project
 
   * Enable Async Physics in Project Settings
 
@@ -48,7 +61,7 @@ High-performance, modular vehicle physics system for Unreal Engine 5, fully impl
   * This project is inspired by the following open-source projects/tutorials:
 
     - [Vehicle Components](https://www.youtube.com/watch?v=BaE3l4rNzJQ&list=PLsxE2KdYcv6vvrJFtRqN14xjrPt-v5fpd)
-      – Helped me get started with UE5 vehicle system development
+      – Helped me get started with UE5 blueprint vehicle system development
     - [AsyncTickPhysics](https://github.com/Mr-Craig/AsyncTickPhysics)
       – Used for implementing async physics
 
@@ -56,7 +69,7 @@ Special thanks to all developers who have provided suggestions and feedback!
 
 📜 License
 
-  * Released under MIT License – free for commercial use, attribution required.
+  * MIT License
 
 以下是中文版：
 
@@ -82,13 +95,23 @@ Special thanks to all developers who have provided suggestions and feedback!
 
 🚀 快速开始
 
- * 将插件复制到你的 Unreal 项目 Plugins/ 文件夹下
+  * 创建一个新的空C++项目
+  
+  * 关闭虚幻编辑器和Visual Studio（或其他IDE）
 
- * 在项目设置中启用 Async Physics
+  * 找到项目文件夹，创建名为'Plugins'的新文件夹
 
- * 将物理时间步长设为 ≤ 1/60 秒（推荐 1/120 秒）
+  * 删除.sln文件，右键点击.uproject文件，选择“generate visual studio project files”
 
- * 打开示例关卡
+  * 双击.sln文件打开IDE，然后重建项目
+
+  * 打开虚幻项目
+
+  * 在项目设置中启用异步物理
+
+  * 将物理时间步长设置为≤1/60秒（推荐：1/120秒）
+
+  * 打开示例地图，开始调试您的载具吧！
 
 🤝 参与与反馈
 
@@ -103,7 +126,7 @@ Special thanks to all developers who have provided suggestions and feedback!
  * 本项目受到以下开源项目/教程启发：
 
     - [Vehicle Components](https://www.youtube.com/watch?v=BaE3l4rNzJQ&list=PLsxE2KdYcv6vvrJFtRqN14xjrPt-v5fpd)
-     – 帮助我入门 UE5 C++ 载具系统开发
+     – 帮助我入门 UE5 蓝图载具系统开发
 
     - [AsyncTickPhysics](https://github.com/Mr-Craig/AsyncTickPhysics)
      – 用于实现异步物理
@@ -112,4 +135,4 @@ Special thanks to all developers who have provided suggestions and feedback!
 
 📜 许可证
 
- * 本项目采用 MIT License，允许商用，但请保留署名。
+  * MIT License

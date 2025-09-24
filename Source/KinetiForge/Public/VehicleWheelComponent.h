@@ -5,7 +5,6 @@
 
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
-#include "VehicleChassisParams.h"
 #include "VehicleSuspensionSolver.h"
 #include "VehicleWheelSolver.h"
 #include "VehicleWheelComponent.generated.h"	//generated.h must be the last

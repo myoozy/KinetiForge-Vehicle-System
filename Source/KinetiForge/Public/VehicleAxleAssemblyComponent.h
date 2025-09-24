@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
-#include "VehicleChassisParams.h"
+#include "VehicleAxleStructs.h"
 #include "VehicleAxleAssemblyComponent.generated.h"
 
 class UVehicleDifferentialComponent;
@@ -26,6 +26,8 @@ public:
 	FRotator VehicleWheelComponentSetupRotation;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	TSubclassOf<UVehicleDifferentialComponent> DifferentialConfig;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	EVehicleAxleLayout AxleLayout = EVehicleAxleLayout::TwoWheels;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleAxleConfig AxleConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -57,6 +59,8 @@ protected:
 	UPROPERTY()
 	UVehicleDifferentialComponent* Differential;
 
+	void UpdateTwoWheelAxle(float InDriveTorque, float InReflectedInertia);
+	void UpdateSingleWheelAxle(float InDriveTorque, float InReflectedInertia);
 	void UpdateSteering(float InSteeringInput);
 	void UpdateSteeringAssist(float InSteeringInput);
 	void CalculateLinearVelocity();
@@ -67,7 +71,7 @@ public:
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	UFUNCTION(BlueprintCallable, Category = "PhysicsThreadOnly")
+	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void UpdatePhysics(
 		float InPhysicsDeltaTime,
 		float InDriveTorque,
@@ -77,10 +81,10 @@ public:
 		float InReflectedInertia,
 		float& OutAxleTotalInertia, 
 		float& OutAngularVelocity);
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Component")
 	void GetWheels(UVehicleWheelComponent*& OutLeftWheel, UVehicleWheelComponent*& OutRightWheel)
 	{ OutLeftWheel = LeftWheel; OutRightWheel = RightWheel; }
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Component")
 	void GetDifferential(UVehicleDifferentialComponent*& OutDifferential)
 	{ OutDifferential = Differential; }
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
@@ -89,6 +93,10 @@ public:
 	void SetP3MotorTorque(float NewTorque) { SimData.P3MotorTorque = NewTorque; }
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetP3MotorTorque() { return SimData.P3MotorTorque; }
+	UFUNCTION(BlueprintCallable, Category = "Physics")
+	void SetWheelPosition(float NewTrackWidth);
+	UFUNCTION(BlueprintCallable, Category = "Physics")
+	void UpdateTrackWidth();
 
 	void SetWheelBase(float NewWheelBase) { SimData.WheelBase = NewWheelBase; }
 	void GetLinearVelocity(FVector& OutLocalVelocity, FVector& OutWorldVelocity);
@@ -100,5 +108,7 @@ public:
 private:
 	UPrimitiveComponent* FindPhysicalParent();
 	bool FindWheelCoordinator();
+	bool GenerateWheels();
+	bool GenerateDifferential();
 	bool GenerateComponents();
 };

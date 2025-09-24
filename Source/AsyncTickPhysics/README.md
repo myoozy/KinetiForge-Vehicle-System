@@ -1,6 +1,22 @@
+# AsyncTickPhysics
+
+This is a plugin to allows easy access to the new Async Physics introduced in UE5, to be used in blueprints or C++
+
+### Instructions
+- Change the parent of your pawn class to AsyncTickPawn
+- Override the Async Tick event
+- Use the ATP_* functions provided to manipulate the component
+
+### Example
+![Image](https://i.imgur.com/UjC4Yyl.png)
+
+If you have issue with your components not moving, you need to call WakeAllRigidBodies as there is a bug in Chaos where it doesn't automatically wake up Rigid Bodies as shown in this video - https://www.youtube.com/watch?v=TNPTyQUS63A
+
+## License
+
 MIT License
 
-Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+Copyright (c) 2022 Alex Craig
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +35,4 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+

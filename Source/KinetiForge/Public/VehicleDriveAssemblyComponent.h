@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
+#include "VehicleInputStructs.h"
+#include "VehicleDrivetrainStructs.h"
 #include "VehicleDriveAssemblyComponent.generated.h"
 
 class UVehicleWheelComponent;
@@ -48,119 +50,6 @@ struct FAxleAssemblyConfig
     TSubclassOf<UVehicleDifferentialComponent> DifferentialOverride = nullptr;
 };
 
-USTRUCT(BlueprintType)
-struct FVehiclInputInterpSpeed
-{
-    GENERATED_USTRUCT_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D ThrottleInterpSpeed = FVector2D(5, 5);
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* ThrottleCurve = nullptr;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D BrakeInterpSpeed = FVector2D(5, 5);
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* BrakeCurve = nullptr;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D ClutchInterpSpeed = FVector2D(5, 5);
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* ClutchCurve = nullptr;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D HandbrakeInterpSpeed = FVector2D(15, 15);
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* HandbrakeCurve = nullptr;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D SteeringInterpSpeed = FVector2D(2.5, 2.5);
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* SteeringCurve = nullptr;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* HighSpeedSteeringScale = nullptr;
-};
-
-USTRUCT(BlueprintType)
-struct FAutoGearboxConfig
-{
-    GENERATED_USTRUCT_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "engage clutch when eg. changing gear or low rpm"))
-    bool bAutomaticClutch = true;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "disable AutomaticClutch, and disable throttle when in N gear"))
-    bool bEVClutchLogic = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "at which rpm the clutch should be (gradually) released"))
-    FVector2D AutoClutchRange = FVector2D(1200, 2500);
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0"))
-    float RevMatchMaxThrottle = 0.6;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "this simulates the logic of a real automatic gearbox. depending on the vehicle speed and the throttle/brake input. this is actually a AMT gearbox."))
-    bool bAutomaticGearbox = true;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "this helps shifting from D to R / R to D / N to D / D to N / N to R / R to N (automatic gearboxes in reallife will never do this)"))
-    bool bArcadeAutoGearbox = true;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "if true, the arcade gearbox will be updated without any delay. eg. shift from D to N immediately, then in the next frame, shift to D again immediately."))
-    bool bArcadeShiftInstant = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "if using sport mode, the auto gearbox will shift up as late as possible and shift down as quick as possible. Also, automatic rev-matching."))
-    bool bSportMode = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "this roughly decides the refershrate of the auto gearbox. eg. if AutoGearboxRefreshTime = 0.5 seconds, the auto gearbox will be refreshed 2 times per second."))
-    float AutomaticGearboxRefreshTime = 0.5;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "this roughly decides how long the auto gearbox needs to cool down after one shift."))
-    float AutoShiftCoolDown = 1.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 MaxUpShiftSteps = 1;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 MaxDownShiftSteps = 2;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "0.99", ToolTip = "this decides how aggressive the auto gearbox could be. larger number makes the auto gearbox more aggressive."))
-    float AutoGearboxShiftFactor = 0.95;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "this also decides how aggressive the auto gearbox is. Normally, larger throttle input causes more aggressive auto gearbox. But if the curve is set, the throttle input will be mapped to this curve."))
-    UCurveFloat* AutoGearboxShiftFactorCurve = nullptr;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    bool bAutoHold = true;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Releases the brake of the axle if the torque weight(normalized) is > 0.5"))
-    bool bBurnOutAssist = true;
-};
-
-USTRUCT(BlueprintType)
-struct FVehicleInputValue
-{
-    GENERATED_USTRUCT_BODY()
-
-    //input
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float ThrottleValue = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float BrakeValue = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float ClutchValue = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float SteeringValue = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float HandbrakeValue = 0.f;
-
-    //player input
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float ThrottleInput = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float BrakeInput = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float ClutchInput = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float SteeringInput = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float HandbrakeInput = 0.f;
-
-    //real input
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float RealThrottleValue = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float RealBrakeValue = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float RealClutchValue = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float RealSteeringValue = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float RealHandbrakeValue = 0.f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    bool bSwitchThrottleAndBrake = false;
-};
-
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), BlueprintType, Blueprintable )
 class KINETIFORGE_API UVehicleDriveAssemblyComponent : public USceneComponent
 {
@@ -182,6 +71,8 @@ public:
     TArray<FAxleAssemblyConfig> AxleConfigs;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     FVehiclInputInterpSpeed InputConfig;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+    FVehicleInputAssistConfig InputAssistConfig;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     FAutoGearboxConfig AutoGearboxConfig;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")

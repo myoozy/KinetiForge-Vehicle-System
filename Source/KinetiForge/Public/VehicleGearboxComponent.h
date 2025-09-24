@@ -4,34 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "VehicleDrivetrainStructs.h"
 #include "VehicleGearboxComponent.generated.h"
 
 class UVehicleAxleAssemblyComponent;
-
-USTRUCT(BlueprintType)
-struct FVehicleGearboxConfig
-{
-	GENERATED_USTRUCT_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0", ToolTip = "Please also consider the inertia of the clutch disk"))
-	float InputShaftInertia = 0.05;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
-	float ShiftDelay = 0.2;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
-	float FirstGear = 3.636;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
-	float TopGear = 0.842;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float GearRatioBias = 0.5;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "1.0"))
-	int32 NumberOfGears = 6;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "1.0", ToolTip = "the number of reverse gears should be smaller than non-reverse gears"))
-	int32 NumOfReverseGears = 1;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float Efficiency = 0.9;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
-	bool bSequentialGearbox = false;
-};
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), BlueprintType, Blueprintable)
 class KINETIFORGE_API UVehicleGearboxComponent : public UActorComponent

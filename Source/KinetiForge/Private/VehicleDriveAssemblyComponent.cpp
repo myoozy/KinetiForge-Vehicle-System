@@ -169,7 +169,7 @@ void UVehicleDriveAssemblyComponent::UpdateAxles(
 			//burnout assist
 			bool IsMainDriveAxle = NormTorqueWeight > 0.5;
 			bool IsThrottleEngaged = InputValues.RealThrottleValue > 0.1;
-			bool ShouldReleaseBrake = IsMainDriveAxle && AutoGearboxConfig.bBurnOutAssist && IsThrottleEngaged;
+			bool ShouldReleaseBrake = IsMainDriveAxle && InputAssistConfig.bBurnOutAssist && IsThrottleEngaged;
 
 			TempAxle->UpdatePhysics(
 				PhysicsDeltaTime, 
@@ -231,17 +231,17 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 	float RealThrottleInput = InputValues.bSwitchThrottleAndBrake ? InputValues.BrakeInput : InputValues.ThrottleInput;
 
 	//check if there's no need to edit throttle value
-	if (Gearbox->GetIsInGear() || !AutoGearboxConfig.bAutomaticClutch)
+	if (Gearbox->GetIsInGear() || !InputAssistConfig.bAutomaticClutch)
 	{
 		InputValues.ThrottleValue = InterpInputValueConstant(InputValues.ThrottleValue, RealThrottleInput, InDeltaTime, InputConfig.ThrottleInterpSpeed);
 
-		InputValues.ThrottleValue *= !(AutoGearboxConfig.bEVClutchLogic && Gearbox->GetCurrentGearRatio() == 0.f);
+		InputValues.ThrottleValue *= !(InputAssistConfig.bEVClutchLogic && Gearbox->GetCurrentGearRatio() == 0.f);
 	}
 	//if not in gear and should rev-match
 	else if(Gearbox->GetShouldRavMatch() && FMath::Abs(Speed_kph) > 0.5 && AutoGearboxConfig.bSportMode)
 	{
 		InputValues.ThrottleValue += SafeDivide(InDeltaTime, Gearbox->Config.ShiftDelay);
-		InputValues.ThrottleValue = FMath::Min(InputValues.ThrottleValue, AutoGearboxConfig.RevMatchMaxThrottle);
+		InputValues.ThrottleValue = FMath::Min(InputValues.ThrottleValue, InputAssistConfig.RevMatchMaxThrottle);
 	}
 	//if not in gear and no rev-matching
 	else
@@ -278,7 +278,7 @@ void UVehicleDriveAssemblyComponent::UpdateBrake(float InDeltaTime)
 
 	//update handbrake
 	float HandbrakeTarget = InputValues.HandbrakeInput;
-	if (AutoGearboxConfig.bAutoHold
+	if (InputAssistConfig.bAutoHold
 		&& FMath::Abs(LocalLinearVelocity.X) < 0.1
 		&& RealThrottleInput < SMALL_NUMBER
 		&& !bIsInAir)HandbrakeTarget = 1.f;
@@ -296,18 +296,18 @@ void UVehicleDriveAssemblyComponent::UpdateBrake(float InDeltaTime)
 
 void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 {
-	if (AutoGearboxConfig.bEVClutchLogic)
+	if (InputAssistConfig.bEVClutchLogic)
 	{
 		InputValues.ClutchValue = 0.f;
 	}
-	else if (AutoGearboxConfig.bAutomaticClutch)
+	else if (InputAssistConfig.bAutomaticClutch)
 	{
 		//check if clutch has to be engaged
 		bool bNotInGearAndNotSequential = !(Gearbox->GetIsInGear() || Gearbox->Config.bSequentialGearbox);
 		float TargetClutchValue = (InputValues.HandbrakeInput > 0.9 || bNotInGearAndNotSequential) ? 1.f : InputValues.ClutchInput;
 
 		//take engine rpm into account
-		float Bias = FMath::GetMappedRangeValueClamped(AutoGearboxConfig.AutoClutchRange, FVector2D(1, 0), Engine->GetRPM());
+		float Bias = FMath::GetMappedRangeValueClamped(InputAssistConfig.AutoClutchRange, FVector2D(1, 0), Engine->GetRPM());
 		TargetClutchValue = FMath::Clamp(TargetClutchValue + Bias, 0.f, 1.f);
 		InputValues.ClutchValue = FMath::Min(InputValues.ClutchValue + Bias, TargetClutchValue);
 
@@ -728,7 +728,19 @@ TArray<FVector2D> UVehicleDriveAssemblyComponent::CalculateSpeedRangeOfEachGear(
 			TempAxle->GetWheels(TempLeftWheel, TempRightWheel);
 			TempAxle->GetDifferential(TempDiff);
 
-			float avgR = (TempLeftWheel->WheelConfig.Radius + TempRightWheel->WheelConfig.Radius) * 0.5;
+			float SumR = 0.f;
+			int32 n = 0;
+			if (IsValid(TempLeftWheel))
+			{
+				SumR += TempLeftWheel->WheelConfig.Radius;
+				n++;
+			}
+			if (IsValid(TempRightWheel))
+			{
+				SumR += TempRightWheel->WheelConfig.Radius;
+				n++;
+			}
+			float avgR = SafeDivide(SumR, n);
 			avgOmega += SafeDivide(avgR, TempDiff->Config.GearRatio);
 
 			driveAxleN++;
@@ -867,13 +879,10 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 			TempAxle = Cast<UVehicleAxleAssemblyComponent>
 				(ParentActor->AddComponentByClass(TempAxleClass, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)), true));
 			TempAxle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-			if (TempAxleConfig.bDiasbleSteering)TempAxle->AxleSteeringConfig.bAffectedBySteering = false;
-			if (TempAxleConfig.bDisableHandbrake)TempAxle->AxleConfig.bAffectedByHandbrake = false;
-			if (TempAxleConfig.bDisableTractionControl)TempAxle->TCSConfig.bTractionControlSystemEnabled = false;
-			if (TempAxleConfig.TorqueWeightOverride >= 0)TempAxle->AxleConfig.TorqueWeight = TempAxleConfig.TorqueWeightOverride;
-			if (TempAxleConfig.TrackWidthOverride >= 0)TempAxle->AxleConfig.TrackWidth = TempAxleConfig.TrackWidthOverride;
+			//override these before registering the axle component
 			if (TempAxleConfig.WheelOverride)TempAxle->WheelConfig = TempAxleConfig.WheelOverride;
 			if (TempAxleConfig.DifferentialOverride)TempAxle->DifferentialConfig = TempAxleConfig.DifferentialOverride;
+			if (TempAxleConfig.TrackWidthOverride >= 0)TempAxle->AxleConfig.TrackWidth = TempAxleConfig.TrackWidthOverride;
 			ParentActor->FinishAddComponent(TempAxle, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)));
 		}
 		else
@@ -881,19 +890,21 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 			TempAxle = NewObject<UVehicleAxleAssemblyComponent>(Carbody);
 			TempAxle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
 			TempAxle->SetRelativeLocation(TempAxleConfig.AxlePosition);
-			if (TempAxleConfig.bDiasbleSteering)TempAxle->AxleSteeringConfig.bAffectedBySteering = false;
-			if (TempAxleConfig.bDisableHandbrake)TempAxle->AxleConfig.bAffectedByHandbrake = false;
-			if (TempAxleConfig.bDisableTractionControl)TempAxle->TCSConfig.bTractionControlSystemEnabled = false;
-			if (TempAxleConfig.TorqueWeightOverride >= 0)TempAxle->AxleConfig.TorqueWeight = TempAxleConfig.TorqueWeightOverride;
-			if (TempAxleConfig.TrackWidthOverride >= 0)TempAxle->AxleConfig.TrackWidth = TempAxleConfig.TrackWidthOverride;
+			//override these before registering the axle component
 			if (TempAxleConfig.WheelOverride)TempAxle->WheelConfig = TempAxleConfig.WheelOverride;
 			if (TempAxleConfig.DifferentialOverride)TempAxle->DifferentialConfig = TempAxleConfig.DifferentialOverride;
+			if (TempAxleConfig.TrackWidthOverride >= 0)TempAxle->AxleConfig.TrackWidth = TempAxleConfig.TrackWidthOverride;
 			ParentActor->AddInstanceComponent(TempAxle);
 			TempAxle->RegisterComponent();
 		}
 
 		if (IsValid(TempAxle))
 		{
+			if (TempAxleConfig.bDiasbleSteering)TempAxle->AxleSteeringConfig.bAffectedBySteering = false;
+			if (TempAxleConfig.bDisableHandbrake)TempAxle->AxleConfig.bAffectedByHandbrake = false;
+			if (TempAxleConfig.bDisableTractionControl)TempAxle->TCSConfig.bTractionControlSystemEnabled = false;
+			if (TempAxleConfig.TorqueWeightOverride >= 0)TempAxle->AxleConfig.TorqueWeight = TempAxleConfig.TorqueWeightOverride;
+
 			Axles.Add(TempAxle);
 			n++;
 		}

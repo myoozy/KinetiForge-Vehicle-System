@@ -64,10 +64,123 @@ void UVehicleAxleAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarc
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
 
+void UVehicleAxleAssemblyComponent::UpdateTwoWheelAxle(float InDriveTorque, float InReflectedInertia)
+{
+	UpdateSwaybarForce();
+
+	if (AxleConfig.TorqueWeight <= 0 && FMath::IsNearlyZero(SimData.P3MotorTorque))
+	{
+		SimData.ReflectedInertiaOnWheel = 0.f;
+		SimData.AxleDriveTorque = SimData.LeftDriveTorque = SimData.RightDriveTorque = 0.f;
+	}
+	else
+	{
+		UpdateTCS(InDriveTorque + SimData.P3MotorTorque);
+		Differential->UpdateOutputShaft(
+			SimData.AxleDriveTorque,
+			LeftWheel->GetAngularVelocity(),
+			RightWheel->GetAngularVelocity(),
+			LeftWheel->GetTotalInertia(),
+			RightWheel->GetTotalInertia(),
+			SimData.PhysicsDeltaTime,
+			InReflectedInertia + AxleConfig.DriveShaftInertia,
+			SimData.LeftDriveTorque,
+			SimData.RightDriveTorque,
+			SimData.ReflectedInertiaOnWheel
+		);
+	}
+
+	RightWheel->UpdatePhysics(
+		SimData.PhysicsDeltaTime,
+		SimData.RightDriveTorque,
+		SimData.BrakeTorque,
+		SimData.HandbrakeTorque,
+		SimData.RightWheelSteeringAngle,
+		-SimData.SwaybarForce,
+		SimData.ReflectedInertiaOnWheel);
+	LeftWheel->UpdatePhysics(
+		SimData.PhysicsDeltaTime,
+		SimData.LeftDriveTorque,
+		SimData.BrakeTorque,
+		SimData.HandbrakeTorque,
+		SimData.LeftWheelSteeringAngle,
+		SimData.SwaybarForce,
+		SimData.ReflectedInertiaOnWheel);
+
+	SimData.NumOfWheelOnGround = LeftWheel->GetRayCastResult() + RightWheel->GetRayCastResult();
+
+	float ReflectedInertiaOfWheels = 0.f;
+	Differential->UpdateInputShaft(
+		LeftWheel->GetAngularVelocity(),
+		RightWheel->GetAngularVelocity(),
+		LeftWheel->WheelConfig.Inertia,
+		RightWheel->WheelConfig.Inertia,
+		SimData.AxleAngularVelocity,
+		ReflectedInertiaOfWheels
+	);
+
+	SimData.AxleTotalInertia = ReflectedInertiaOfWheels + AxleConfig.DriveShaftInertia;
+}
+
+void UVehicleAxleAssemblyComponent::UpdateSingleWheelAxle(float InDriveTorque, float InReflectedInertia)
+{
+	float DiffGearRatio = Differential->Config.GearRatio;
+
+	if (AxleConfig.TorqueWeight <= 0 && FMath::IsNearlyZero(SimData.P3MotorTorque))
+	{
+		SimData.ReflectedInertiaOnWheel = 0.f;
+		SimData.AxleDriveTorque = SimData.LeftDriveTorque = SimData.RightDriveTorque = 0.f;
+	}
+	else
+	{
+		UpdateTCS(InDriveTorque + SimData.P3MotorTorque);//update inertia
+		SimData.ReflectedInertiaOnWheel = InReflectedInertia * DiffGearRatio * DiffGearRatio;
+		SimData.LeftDriveTorque = SimData.RightDriveTorque = DiffGearRatio * SimData.AxleDriveTorque;
+	}
+
+	float ReflectedInertiaOfWheels = 0.f;
+
+	if (IsValid(LeftWheel))
+	{
+		LeftWheel->UpdatePhysics(
+			SimData.PhysicsDeltaTime,
+			SimData.LeftDriveTorque,
+			SimData.BrakeTorque,
+			SimData.HandbrakeTorque,
+			SimData.LeftWheelSteeringAngle,
+			0.f,
+			SimData.ReflectedInertiaOnWheel
+		);
+
+		SimData.AxleAngularVelocity = LeftWheel->GetAngularVelocity() * DiffGearRatio;
+		ReflectedInertiaOfWheels = (DiffGearRatio > SMALL_NUMBER) ? LeftWheel->GetTotalInertia() / (DiffGearRatio * DiffGearRatio) : 0.f;
+	}
+
+	if (IsValid(RightWheel))
+	{
+		RightWheel->UpdatePhysics(
+			SimData.PhysicsDeltaTime,
+			SimData.RightDriveTorque,
+			SimData.BrakeTorque,
+			SimData.HandbrakeTorque,
+			SimData.RightWheelSteeringAngle,
+			0.f,
+			SimData.ReflectedInertiaOnWheel
+		);
+
+		SimData.AxleAngularVelocity = RightWheel->GetAngularVelocity() * DiffGearRatio;
+		ReflectedInertiaOfWheels = (DiffGearRatio > SMALL_NUMBER) ? RightWheel->GetTotalInertia() / (DiffGearRatio * DiffGearRatio) : 0.f;
+	}
+	
+	SimData.AxleTotalInertia = ReflectedInertiaOfWheels + AxleConfig.DriveShaftInertia;
+}
+
 void UVehicleAxleAssemblyComponent::UpdateSteering(float InSteeringInput)
 {
 	float InsideWheelSteeringAngle = InSteeringInput * AxleSteeringConfig.MaxSteeringAngle;
-	if (AxleSteeringConfig.bAckermannSteering && SimData.WheelBase > SMALL_NUMBER && AxleConfig.TrackWidth > SMALL_NUMBER)
+	if (AxleSteeringConfig.bAckermannSteering 
+		&& SimData.WheelBase > SMALL_NUMBER 
+		&& AxleConfig.TrackWidth > SMALL_NUMBER)
 	{
 		//clamp angle to avoid divided by 0
 		InsideWheelSteeringAngle = FMath::Clamp(InsideWheelSteeringAngle, -89, 89);
@@ -143,7 +256,10 @@ void UVehicleAxleAssemblyComponent::UpdateSteeringAssist(float InSteeringInput)
 
 void UVehicleAxleAssemblyComponent::CalculateLinearVelocity()
 {
-	SimData.WorldLinearVelocity = (LeftWheel->GetWorldLinaerVelocity() + RightWheel->GetWorldLinaerVelocity()) * 0.5;
+	FVector LeftWorldVel, RightWorldVel = FVector(0.f);
+	if (IsValid(LeftWheel))LeftWorldVel = LeftWheel->GetWorldLinaerVelocity();
+	if (IsValid(RightWheel))RightWorldVel = RightWheel->GetWorldLinaerVelocity();
+	SimData.WorldLinearVelocity = (LeftWorldVel + RightWorldVel) / SimData.NumOfWheels;
 	SimData.LocalLinearVelocity = UAsyncTickFunctions::ATP_GetTransform(Carbody).InverseTransformVectorNoScale(SimData.WorldLinearVelocity);
 }
 
@@ -161,7 +277,10 @@ void UVehicleAxleAssemblyComponent::UpdateTCS(float TargetDriveTorque)
 	}
 	else
 	{
-		float AvrgSlipRatio = (FMath::Abs(LeftWheel->GetSlipRatio()) + FMath::Abs(RightWheel->GetSlipRatio())) * 0.5;
+		float SumSlipRatio = 0.f;
+		if (IsValid(LeftWheel))SumSlipRatio += FMath::Abs(LeftWheel->GetSlipRatio());
+		if (IsValid(RightWheel))SumSlipRatio += FMath::Abs(RightWheel->GetSlipRatio());
+		float AvrgSlipRatio = SumSlipRatio / SimData.NumOfWheels;
 
 		SimData.bTCSTriggered = 
 			AvrgSlipRatio > TCSConfig.MaxSlipRatio && 
@@ -200,51 +319,26 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleAxle);
 
-	if (!(IsValid(LeftWheel) && IsValid(RightWheel)))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: No Valid Wheels"));
-		return;
-	}
 	if (!IsValid(Carbody))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: No Valid Carbody"));
 		return;
 	}
 
+	if(!IsValid(Differential))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: No Valid Differential"));
+		return;
+	}
+
+	SimData.NumOfWheels = IsValid(LeftWheel) + IsValid(RightWheel);
+	if (SimData.NumOfWheels <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: No Valid Wheels"));
+		return;
+	}
+
 	SimData.PhysicsDeltaTime = InPhysicsDeltaTime;
-
-	CalculateLinearVelocity();
-
-	if (AxleSteeringConfig.bAffectedBySteering)
-	{
-		UpdateSteeringAssist(InSteeringInput);
-		UpdateSteering(SimData.RealSteeringValue);
-	}
-
-	UpdateSwaybarForce();
-
-	float DiffGearRatioSqr = Differential->Config.GearRatio * Differential->Config.GearRatio;
-	if (AxleConfig.TorqueWeight <= 0 && FMath::IsNearlyZero(SimData.P3MotorTorque))
-	{
-		SimData.ReflectedInertiaOnWheel = 0.f;
-		SimData.LeftDriveTorque = SimData.RightDriveTorque = 0.f;
-	}
-	else
-	{
-		UpdateTCS(InDriveTorque + SimData.P3MotorTorque);
-		Differential->UpdateOutputShaft(
-			SimData.AxleDriveTorque,
-			LeftWheel->GetAngularVelocity(),
-			RightWheel->GetAngularVelocity(),
-			LeftWheel->GetTotalInertia(),
-			RightWheel->GetTotalInertia(),
-			SimData.PhysicsDeltaTime,
-			InReflectedInertia + AxleConfig.DriveShaftInertia,
-			SimData.LeftDriveTorque,
-			SimData.RightDriveTorque,
-			SimData.ReflectedInertiaOnWheel
-		);
-	}
 
 	SimData.BrakeTorque = AxleConfig.MaxBrakeTorque * FMath::Clamp(InBrakeInput, 0.f, 1.f);
 	if (AxleConfig.bAffectedByHandbrake)
@@ -256,37 +350,53 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 		SimData.HandbrakeTorque = 0;
 	}
 
-	RightWheel->UpdatePhysics(
-		SimData.PhysicsDeltaTime,
-		SimData.RightDriveTorque,
-		SimData.BrakeTorque,
-		SimData.HandbrakeTorque, 
-		SimData.RightWheelSteeringAngle,
-		-SimData.SwaybarForce,
-		SimData.ReflectedInertiaOnWheel);
-	LeftWheel->UpdatePhysics(
-		SimData.PhysicsDeltaTime, 
-		SimData.LeftDriveTorque,
-		SimData.BrakeTorque,
-		SimData.HandbrakeTorque, 
-		SimData.LeftWheelSteeringAngle, 
-		SimData.SwaybarForce,
-		SimData.ReflectedInertiaOnWheel);
+	CalculateLinearVelocity();
 
-	SimData.NumOfWheelOnGround = LeftWheel->GetRayCastResult() + RightWheel->GetRayCastResult();
+	if (AxleSteeringConfig.bAffectedBySteering)
+	{
+		UpdateSteeringAssist(InSteeringInput);
+		UpdateSteering(SimData.RealSteeringValue);
+	}
+	
+	if (SimData.NumOfWheels == 2)
+	{
+		UpdateTwoWheelAxle(InDriveTorque, InReflectedInertia);
+	}
+	else
+	{
+		UpdateSingleWheelAxle(InDriveTorque, InReflectedInertia);
+	}
 
-	float ReflectedInertiaOfWheels = 0.f;
-	Differential->UpdateInputShaft(
-		LeftWheel->GetAngularVelocity(),
-		RightWheel->GetAngularVelocity(),
-		LeftWheel->WheelConfig.Inertia,
-		RightWheel->WheelConfig.Inertia,
-		SimData.AxleAngularVelocity,
-		ReflectedInertiaOfWheels
-	);
-
-	OutAxleTotalInertia = SimData.AxleTotalInertia = ReflectedInertiaOfWheels + AxleConfig.DriveShaftInertia;
+	OutAxleTotalInertia = SimData.AxleTotalInertia;
 	OutAngularVelocity = SimData.AxleAngularVelocity;
+}
+
+void UVehicleAxleAssemblyComponent::SetWheelPosition(float NewTrackWidth)
+{
+	//set left wheel
+	if (IsValid(LeftWheel))
+	{
+		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, -VehicleWheelComponentSetupRotation.Yaw, VehicleWheelComponentSetupRotation.Roll));
+		FVector WheelCompPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y - FMath::Abs(NewTrackWidth * 0.5), GetRelativeLocation().Z);
+		FQuat WheelAlignmentRot = FQuat(FRotator(0, -LeftWheel->SuspensionKinematicsConfig.BaseToe, -LeftWheel->SuspensionKinematicsConfig.BaseCamber));
+		WheelCompPos += WheelAlignmentRot.GetRightVector() * LeftWheel->SuspensionKinematicsConfig.SteeringAxleOffset;
+		LeftWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
+	}
+
+	//set right wheel
+	if (IsValid(RightWheel))
+	{
+		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, VehicleWheelComponentSetupRotation.Yaw, -VehicleWheelComponentSetupRotation.Roll));
+		FVector WheelCompPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y + FMath::Abs(NewTrackWidth * 0.5), GetRelativeLocation().Z);
+		FQuat WheelAlignmentRot = FQuat(FRotator(0, RightWheel->SuspensionKinematicsConfig.BaseToe, RightWheel->SuspensionKinematicsConfig.BaseCamber));
+		WheelCompPos -= WheelAlignmentRot.GetRightVector() * RightWheel->SuspensionKinematicsConfig.SteeringAxleOffset;
+		RightWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
+	}
+}
+
+void UVehicleAxleAssemblyComponent::UpdateTrackWidth()
+{
+	SetWheelPosition(AxleConfig.TrackWidth);
 }
 
 void UVehicleAxleAssemblyComponent::GetLinearVelocity(FVector& OutLocalVelocity, FVector& OutWorldVelocity)
@@ -297,7 +407,18 @@ void UVehicleAxleAssemblyComponent::GetLinearVelocity(FVector& OutLocalVelocity,
 
 FVector UVehicleAxleAssemblyComponent::GetAxleCenter()
 {
-	return 0.5 * (LeftWheel->GetRelativeLocation() + RightWheel->GetRelativeLocation());
+	int32 n = IsValid(LeftWheel) + IsValid(RightWheel);
+
+	if (n == 2)
+	{
+		return 0.5 * (LeftWheel->GetRelativeLocation() + RightWheel->GetRelativeLocation());
+	}
+	else
+	{
+		if (IsValid(LeftWheel))return LeftWheel->GetRelativeLocation();
+		if (IsValid(RightWheel))return RightWheel->GetRelativeLocation();
+		return FVector(0.f);
+	}
 }
 
 UPrimitiveComponent* UVehicleAxleAssemblyComponent::FindPhysicalParent()
@@ -357,15 +478,13 @@ bool UVehicleAxleAssemblyComponent::FindWheelCoordinator()
 
 }
 
-bool UVehicleAxleAssemblyComponent::GenerateComponents()
+bool UVehicleAxleAssemblyComponent::GenerateWheels()
 {
 	if (!ParentActor)return false;
 	if (!Carbody)return false;
-
+	
 	//set left wheel
-	FQuat TempRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, -VehicleWheelComponentSetupRotation.Yaw, VehicleWheelComponentSetupRotation.Roll));
-	FVector TempPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y - FMath::Abs(AxleConfig.TrackWidth * 0.5), GetRelativeLocation().Z);
-	if (!IsValid(LeftWheel))
+	if (!IsValid(LeftWheel) && AxleLayout != EVehicleAxleLayout::SingleRight)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: GeneratingLeftWheel"));
 		// check if user has set wheel class
@@ -373,55 +492,67 @@ bool UVehicleAxleAssemblyComponent::GenerateComponents()
 		{
 			LeftWheel = Cast<UVehicleWheelComponent>
 				(ParentActor->AddComponentByClass(WheelConfig, true, FTransform(), true));
+			LeftWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+			ParentActor->FinishAddComponent(LeftWheel, false, FTransform());
 		}
 		else
 		{
 			LeftWheel = NewObject<UVehicleWheelComponent>(Carbody);
-		}
-		//setup attachment and transform
-		LeftWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-		TempPos += FQuat(FRotator(0, -LeftWheel->SuspensionKinematicsConfig.BaseToe, -LeftWheel->SuspensionKinematicsConfig.BaseCamber)).GetRightVector() * LeftWheel->SuspensionKinematicsConfig.SteeringAxleOffset;
-		if (WheelConfig)
-		{
-			ParentActor->FinishAddComponent(LeftWheel, false, FTransform(TempRot, TempPos));
-		}
-		else
-		{
-			LeftWheel->SetRelativeTransform(FTransform(TempRot, TempPos));
+			LeftWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
 			ParentActor->AddInstanceComponent(LeftWheel);
 			LeftWheel->RegisterComponent();
 		}
 	}
 
 	//set right wheel
-	TempRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, VehicleWheelComponentSetupRotation.Yaw, -VehicleWheelComponentSetupRotation.Roll));
-	TempPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y + FMath::Abs(AxleConfig.TrackWidth * 0.5), GetRelativeLocation().Z);
-	if (!IsValid(RightWheel))
+	if (!IsValid(RightWheel) && AxleLayout != EVehicleAxleLayout::SingleLeft)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: GeneratingRightWheel"));
 		if (WheelConfig)
 		{
 			RightWheel = Cast<UVehicleWheelComponent>
 				(ParentActor->AddComponentByClass(WheelConfig, true, FTransform(), true));
+			RightWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+			ParentActor->FinishAddComponent(RightWheel, false, FTransform());
 		}
 		else
 		{
 			RightWheel = NewObject<UVehicleWheelComponent>(Carbody);
-		}
-		RightWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-		TempPos -= FQuat(FRotator(0, RightWheel->SuspensionKinematicsConfig.BaseToe, RightWheel->SuspensionKinematicsConfig.BaseCamber)).GetRightVector() * RightWheel->SuspensionKinematicsConfig.SteeringAxleOffset;
-		if (WheelConfig)
-		{
-			ParentActor->FinishAddComponent(RightWheel, false, FTransform(TempRot, TempPos));
-		}
-		else
-		{
-			RightWheel->SetRelativeTransform(FTransform(TempRot, TempPos));
+			RightWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
 			ParentActor->AddInstanceComponent(RightWheel);
 			RightWheel->RegisterComponent();
 		}
 	}
 
+	UpdateTrackWidth();
+	if (IsValid(LeftWheel))
+	{
+		LeftWheel->RefreshWheelMesh();
+	}
+	if (IsValid(RightWheel))
+	{
+		RightWheel->RefreshWheelMesh();
+	}
+
+	switch (AxleLayout)
+	{
+	case EVehicleAxleLayout::TwoWheels:
+		return IsValid(LeftWheel) && IsValid(RightWheel);
+		break;
+	case EVehicleAxleLayout::SingleLeft:
+		return IsValid(LeftWheel);
+		break;
+	case EVehicleAxleLayout::SingleRight:
+		return IsValid(RightWheel);
+		break;
+	default:
+		return IsValid(LeftWheel) && IsValid(RightWheel);
+		break;
+	}
+}
+
+bool UVehicleAxleAssemblyComponent::GenerateDifferential()
+{
 	//set differential
 	if (!IsValid(Differential))
 	{
@@ -437,8 +568,12 @@ bool UVehicleAxleAssemblyComponent::GenerateComponents()
 			ParentActor->AddInstanceComponent(Differential);
 			Differential->RegisterComponent();
 		}
-
 	}
 
-	return IsValid(LeftWheel) && IsValid(RightWheel) && IsValid(Differential);
+	return IsValid(Differential);
+}
+
+bool UVehicleAxleAssemblyComponent::GenerateComponents()
+{
+	return GenerateWheels() && GenerateDifferential();
 }

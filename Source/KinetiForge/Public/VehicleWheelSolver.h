@@ -3,7 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "VehicleChassisParams.h"
+#include "VehicleWheelStructs.h"
+#include "VehicleSuspensionStructs.h"
 
 class UVehicleWheelComponent;
 
