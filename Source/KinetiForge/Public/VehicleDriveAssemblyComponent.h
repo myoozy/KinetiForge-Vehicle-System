@@ -65,8 +65,8 @@ public:
     TSubclassOf<UVehicleClutchComponent> ClutchConfig;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     TSubclassOf<UVehicleGearboxComponent> GearboxConfig;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
-    float CentralDiffLockRatio = 0.f;   //range: 0 - 1
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+    TSubclassOf<UVehicleDifferentialComponent> TransferCaseConfig;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     TArray<FAxleAssemblyConfig> AxleConfigs;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -104,6 +104,8 @@ protected:
     UPROPERTY()
     UVehicleGearboxComponent* Gearbox;
     UPROPERTY()
+    UVehicleDifferentialComponent* TransferCase;
+    UPROPERTY()
     UVehicleWheelCoordinatorComponent* WheelCoordinator;
     UPROPERTY()
     UPrimitiveComponent* Carbody;
@@ -128,7 +130,7 @@ public:
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
     virtual void AsyncPhysicsTickComponent(float DeltaTime, float SimTime) override;
 
-    UFUNCTION(BlueprintCallable, Category = "PhysicsThreadOnly")
+    UFUNCTION(BlueprintCallable, Category = "Physics")
     void UpdatePhysics(float InDeltaTime);
     UFUNCTION(BlueprintCallable, Category = "Input")
     void InputThrottle(float InValue);

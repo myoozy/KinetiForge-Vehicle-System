@@ -6,6 +6,8 @@
 #include "Components/ActorComponent.h"
 #include "VehicleDifferentialComponent.generated.h"
 
+class UVehicleAxleAssemblyComponent;
+
 USTRUCT(BlueprintType)
 struct FVehicleLimitedSlipDifferentialConfig
 {
@@ -37,7 +39,7 @@ public:
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	UFUNCTION(BlueprintCallable, Category = "PhysicsLogic")
+	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void UpdateOutputShaft(
 		float InDriveTorque,
 		float InLeftAngularVelocity,
@@ -50,7 +52,7 @@ public:
 		float& OutRightTorque,
 		float& OutReflectedInertiaEachWheel
 	);
-	UFUNCTION(BlueprintCallable, Category = "PhysicsLogic")
+	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void UpdateInputShaft(
 		float InLeftOutputShaftAngularVelocity,
 		float InRightOutputShaftAngularVelocity,
@@ -59,9 +61,20 @@ public:
 		float& OutInputShaftVelocity,
 		float& OutReflectedInertia
 	);
+	UFUNCTION(BlueprintCallable, Category = "Physics")
+	void UpdateTransferCase(
+		const TArray<UVehicleAxleAssemblyComponent*> Axles,
+		float InDeltaTime,
+		float InGearboxOutputTorque,
+		float InReflectedInertia,
+		float InBrakeValue,
+		float InHandbrakeValue,
+		float InSteeringValue,
+		bool bLineLockActive,
+		float& OutGearboxOutputShaftAngularVelocity,
+		float& OutTotalInertia);
 
 private:
-	UFUNCTION(BlueprintCallable, Category = "PhysicsLogic")
 	void GetOutputTorque(
 		float InTorque, 
 		float InLeftAngularVelocity,
@@ -71,10 +84,10 @@ private:
 		float InDeltaTime,
 		float& OutLeftTorque,
 		float& OutRightTorque);
-	UFUNCTION(BlueprintCallable, Category = "PhysicsLogic")
+
 	void GetOpenDiffOutputTorque(float InTorque, float& OutTorqueLeft, float& OutTorqueRight);
 
-	UFUNCTION(BlueprintCallable, Category = "PhysicsLogic")
 	float GetInputShaftVelocity(float OutputShaftAngularVelocityLeft, float OutputShaftAngularVelocityRight);
 		
+	float SafeDivide(float a, float b);
 };

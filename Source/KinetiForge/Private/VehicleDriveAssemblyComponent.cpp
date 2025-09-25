@@ -105,6 +105,8 @@ void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierar
 
 	if (Gearbox && !Gearbox->IsBeingDestroyed())Gearbox->DestroyComponent();
 
+	if (TransferCase && !TransferCase->IsBeingDestroyed())TransferCase->DestroyComponent();
+
 	if (Carbody)Carbody = nullptr;
 
 	if (ParentActor)ParentActor = nullptr;
@@ -126,75 +128,30 @@ void UVehicleDriveAssemblyComponent::UpdateAxles(
 	float& OutGearboxOutputShaftAngularVelocity,
 	float& OutInertia)
 {
-	//首先遍历所有车轴，获取驱动轴的数量、扭矩权重、和平均角速度
-	//First iterate over all axles to obtain the number of drive axles, torque weights, and average angular velocity
-	int32 NumOfDriveAxles = 0.f;
-	float SumTorqueWeight = 0.f;
-	float SumAngVel = 0.f;
-	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
-	{
-		if (!TempAxle)break;
+	if (!IsValid(TransferCase))return;
+	TransferCase->UpdateTransferCase(
+		Axles,
+		PhysicsDeltaTime,
+		InGearboxOutputTorque,
+		InReflectedInertia,
+		InputValues.RealBrakeValue,
+		InputValues.RealHandbrakeValue,
+		InputValues.RealSteeringValue,
+		InputAssistConfig.bBurnOutAssist 
+		&& InputValues.RealThrottleValue > 0.9 
+		&& InputValues.RealBrakeValue > 0.9
+		&& Speed_kph < 1.f,
+		OutGearboxOutputShaftAngularVelocity,
+		OutInertia
+	);
 
-		bool IsDriveAxle = TempAxle->AxleConfig.TorqueWeight > 0;
-		NumOfDriveAxles += IsDriveAxle;
-		SumTorqueWeight += IsDriveAxle * TempAxle->AxleConfig.TorqueWeight;
-		SumAngVel += IsDriveAxle * TempAxle->GetAngularVelocity();
-	}
-	float AverageAxleAngularVelocity = SafeDivide(SumAngVel, (float)NumOfDriveAxles);
-
-	//update axles
-	SumAngVel = 0.f;
+	//get velocity
 	FVector SumLocalLinVel = FVector(0.f);
 	FVector SumWorldLinVel = FVector(0.f);
 	int32 NumGroundedWheels = 0.f;
-	float SumDriveAxleInertia = 0.f;
 	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
 	{
-		if (!TempAxle)break;
-		float AxleInertia = 0.f;
-		float AxleAngVel = 0.f;
-
-		bool IsDriveAxle = TempAxle->AxleConfig.TorqueWeight > 0;
-		if (IsDriveAxle)
-		{
-			//central diff
-			float AngVelDifference = AverageAxleAngularVelocity - TempAxle->GetAngularVelocity();
-			float TorqueBias = SafeDivide(AngVelDifference * TempAxle->GetTotalAxleInertia() * CentralDiffLockRatio, PhysicsDeltaTime);
-			float NormTorqueWeight = SafeDivide(TempAxle->AxleConfig.TorqueWeight, SumTorqueWeight);
-			float AxleDriveTorque = InGearboxOutputTorque * NormTorqueWeight + TorqueBias;
-
-			//reflected inertia
-			float ReflectedInertiaOnAxle = SafeDivide(InReflectedInertia, (float)NumOfDriveAxles);
-
-			//burnout assist
-			bool IsMainDriveAxle = NormTorqueWeight > 0.5;
-			bool IsThrottleEngaged = InputValues.RealThrottleValue > 0.1;
-			bool ShouldReleaseBrake = IsMainDriveAxle && InputAssistConfig.bBurnOutAssist && IsThrottleEngaged;
-
-			TempAxle->UpdatePhysics(
-				PhysicsDeltaTime, 
-				AxleDriveTorque,
-				InputValues.RealBrakeValue * !ShouldReleaseBrake,
-				InputValues.RealHandbrakeValue,
-				InputValues.RealSteeringValue,
-				ReflectedInertiaOnAxle, 
-				AxleInertia, AxleAngVel);
-
-			SumAngVel += AxleAngVel;
-			SumDriveAxleInertia += AxleInertia;
-		}
-		else
-		{
-			TempAxle->UpdatePhysics(
-				PhysicsDeltaTime, 
-				0.f,
-				InputValues.RealBrakeValue, 
-				InputValues.RealHandbrakeValue,
-				InputValues.RealSteeringValue,
-				0.f,
-				AxleInertia, 
-				AxleAngVel);
-		}
+		if (!IsValid(TempAxle))continue;
 
 		//calculate linear velocity
 		FVector TempLocalVel;
@@ -204,10 +161,6 @@ void UVehicleDriveAssemblyComponent::UpdateAxles(
 		SumLocalLinVel += TempLocalVel;
 		SumWorldLinVel += TempWorldVel;
 	}
-
-	//get average angular velocity of all drive axles
-	OutGearboxOutputShaftAngularVelocity = SafeDivide(SumAngVel, (float)NumOfDriveAxles);
-	OutInertia = SumDriveAxleInertia;
 
 	//get linear velocity
 	bIsInAir = !NumGroundedWheels;
@@ -829,37 +782,60 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	ParentActor = GetOwner();
 	if (!ParentActor)return false;
 
-	if (EngineConfig)
+	if (!IsValid(Engine))
 	{
-		Engine = Cast<UVehicleEngineComponent>(ParentActor->AddComponentByClass(EngineConfig, false, FTransform(), false));
-	}
-	else
-	{
-		Engine = NewObject<UVehicleEngineComponent>(this);
-		Engine->RegisterComponent();
-	}
-
-	if (ClutchConfig)
-	{
-		Clutch = Cast<UVehicleClutchComponent>(ParentActor->AddComponentByClass(ClutchConfig, false, FTransform(), false));
-	}
-	else
-	{
-		Clutch = NewObject<UVehicleClutchComponent>(this);
-		Clutch->RegisterComponent();
+		if (EngineConfig)
+		{
+			Engine = Cast<UVehicleEngineComponent>(ParentActor->AddComponentByClass(EngineConfig, false, FTransform(), false));
+		}
+		else
+		{
+			Engine = NewObject<UVehicleEngineComponent>(this);
+			Engine->RegisterComponent();
+		}
 	}
 
-	if (GearboxConfig)
+	if (!IsValid(Clutch))
 	{
-		Gearbox = Cast<UVehicleGearboxComponent>(ParentActor->AddComponentByClass(GearboxConfig, false, FTransform(), false));
-	}
-	else
-	{
-		Gearbox = NewObject<UVehicleGearboxComponent>(this);
-		Gearbox->RegisterComponent();
+		if (ClutchConfig)
+		{
+			Clutch = Cast<UVehicleClutchComponent>(ParentActor->AddComponentByClass(ClutchConfig, false, FTransform(), false));
+		}
+		else
+		{
+			Clutch = NewObject<UVehicleClutchComponent>(this);
+			Clutch->RegisterComponent();
+		}
 	}
 
-	return Engine && Clutch && Gearbox;
+	if (!IsValid(Gearbox))
+	{
+		if (GearboxConfig)
+		{
+			Gearbox = Cast<UVehicleGearboxComponent>(ParentActor->AddComponentByClass(GearboxConfig, false, FTransform(), false));
+		}
+		else
+		{
+			Gearbox = NewObject<UVehicleGearboxComponent>(this);
+			Gearbox->RegisterComponent();
+		}
+	}
+
+	if (!IsValid(TransferCase))
+	{
+		if (TransferCaseConfig)
+		{
+			TransferCase = Cast<UVehicleDifferentialComponent>(ParentActor->AddComponentByClass(TransferCaseConfig, false, FTransform(), false));
+		}
+		else
+		{
+			TransferCase = NewObject<UVehicleDifferentialComponent>(this);
+			TransferCase->Config.GearRatio = 1.f;	//set gear ratio to 1
+			TransferCase->RegisterComponent();
+		}
+	}
+
+	return IsValid(Engine) && IsValid(Clutch) && IsValid(Gearbox) && IsValid(TransferCase);
 }
 
 int UVehicleDriveAssemblyComponent::GenerateAxles()

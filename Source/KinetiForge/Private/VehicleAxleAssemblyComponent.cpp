@@ -152,6 +152,7 @@ void UVehicleAxleAssemblyComponent::UpdateSingleWheelAxle(float InDriveTorque, f
 			SimData.ReflectedInertiaOnWheel
 		);
 
+		SimData.NumOfWheelOnGround = LeftWheel->GetRayCastResult();
 		SimData.AxleAngularVelocity = LeftWheel->GetAngularVelocity() * DiffGearRatio;
 		ReflectedInertiaOfWheels = (DiffGearRatio > SMALL_NUMBER) ? LeftWheel->GetTotalInertia() / (DiffGearRatio * DiffGearRatio) : 0.f;
 	}
@@ -168,6 +169,7 @@ void UVehicleAxleAssemblyComponent::UpdateSingleWheelAxle(float InDriveTorque, f
 			SimData.ReflectedInertiaOnWheel
 		);
 
+		SimData.NumOfWheelOnGround = RightWheel->GetRayCastResult();
 		SimData.AxleAngularVelocity = RightWheel->GetAngularVelocity() * DiffGearRatio;
 		ReflectedInertiaOfWheels = (DiffGearRatio > SMALL_NUMBER) ? RightWheel->GetTotalInertia() / (DiffGearRatio * DiffGearRatio) : 0.f;
 	}
