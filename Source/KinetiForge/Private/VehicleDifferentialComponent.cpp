@@ -3,6 +3,7 @@
 
 #include "VehicleDifferentialComponent.h"
 #include "VehicleAxleAssemblyComponent.h"
+#include "VehicleWheelComponent.h"
 
 // Sets default values for this component's properties
 UVehicleDifferentialComponent::UVehicleDifferentialComponent()
@@ -141,6 +142,47 @@ void UVehicleDifferentialComponent::UpdateTransferCase(
 	//get average angular velocity of all drive axles
 	OutGearboxOutputShaftAngularVelocity = SafeDivide(SumAngVel * Config.GearRatio, NumOfDriveAxles);
 	OutTotalInertia = SafeDivide(SumDriveAxleInertia, Config.GearRatio * Config.GearRatio);
+}
+
+float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(
+	const TArray<UVehicleAxleAssemblyComponent*> Axles)
+{
+	float effectiveR = 0.f;
+	int32 driveAxleNum = 0;
+	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
+	{
+		if (!TempAxle)break;
+
+		if (TempAxle->AxleConfig.TorqueWeight > 0)
+		{
+			UVehicleWheelComponent* TempLeftWheel;
+			UVehicleWheelComponent* TempRightWheel;
+			UVehicleDifferentialComponent* TempDiff;
+
+			TempAxle->GetWheels(TempLeftWheel, TempRightWheel);
+			TempAxle->GetDifferential(TempDiff);
+
+			float SumR = 0.f;
+			int32 n = 0;
+			if (IsValid(TempLeftWheel))
+			{
+				SumR += TempLeftWheel->WheelConfig.Radius;
+				n++;
+			}
+			if (IsValid(TempRightWheel))
+			{
+				SumR += TempRightWheel->WheelConfig.Radius;
+				n++;
+			}
+			float avgR = SafeDivide(SumR, n);
+			effectiveR += SafeDivide(avgR, TempDiff->Config.GearRatio);
+
+			driveAxleNum++;
+		}
+	}
+	effectiveR = SafeDivide(effectiveR, (float)driveAxleNum * Config.GearRatio);
+
+	return effectiveR;
 }
 
 void UVehicleDifferentialComponent::GetOutputTorque(

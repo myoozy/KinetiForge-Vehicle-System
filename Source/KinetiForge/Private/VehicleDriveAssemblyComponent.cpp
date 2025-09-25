@@ -666,40 +666,7 @@ TArray<FVector2D> UVehicleDriveAssemblyComponent::CalculateSpeedRangeOfEachGear(
 	SpeedRange.SetNum(NumGears + 1);
 	SpeedRange[0] = FVector2D(0);
 
-	float avgOmega = 0.f;
-	int32 driveAxleN = 0;
-	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
-	{
-		if (!TempAxle)break;
-
-		if (TempAxle->AxleConfig.TorqueWeight > 0)
-		{
-			UVehicleWheelComponent* TempLeftWheel;
-			UVehicleWheelComponent* TempRightWheel;
-			UVehicleDifferentialComponent* TempDiff;
-
-			TempAxle->GetWheels(TempLeftWheel, TempRightWheel);
-			TempAxle->GetDifferential(TempDiff);
-
-			float SumR = 0.f;
-			int32 n = 0;
-			if (IsValid(TempLeftWheel))
-			{
-				SumR += TempLeftWheel->WheelConfig.Radius;
-				n++;
-			}
-			if (IsValid(TempRightWheel))
-			{
-				SumR += TempRightWheel->WheelConfig.Radius;
-				n++;
-			}
-			float avgR = SafeDivide(SumR, n);
-			avgOmega += SafeDivide(avgR, TempDiff->Config.GearRatio);
-
-			driveAxleN++;
-		}
-	}
-	avgOmega = SafeDivide(avgOmega, (float)driveAxleN);
+	float avgOmega = TransferCase->CalculateEffectiveWheelRadius(Axles);
 	float RPMToRad = PI * 0.0333333333333f;
 	float avgRPM = avgOmega * RPMToRad * 0.036;
 

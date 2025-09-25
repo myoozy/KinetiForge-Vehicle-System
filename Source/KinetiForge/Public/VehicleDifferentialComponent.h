@@ -73,6 +73,10 @@ public:
 		bool bLineLockActive,
 		float& OutGearboxOutputShaftAngularVelocity,
 		float& OutTotalInertia);
+	UFUNCTION(BlueprintCallable, Category = "Physics")
+	float CalculateEffectiveWheelRadius(
+		const TArray<UVehicleAxleAssemblyComponent*> Axles
+	);
 
 private:
 	void GetOutputTorque(
