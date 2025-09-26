@@ -15,6 +15,7 @@ class UVehicleWheelCoordinatorComponent;
 class UVehicleEngineComponent;
 class UVehicleClutchComponent;
 class UVehicleGearboxComponent;
+class UVehicleAsyncTickComponent;
 
 
 USTRUCT(BlueprintType)
@@ -108,6 +109,8 @@ protected:
     UPROPERTY()
     UVehicleWheelCoordinatorComponent* WheelCoordinator;
     UPROPERTY()
+    UVehicleAsyncTickComponent* VehicleAsyncTickComponent;
+    UPROPERTY()
     UPrimitiveComponent* Carbody;
     UPROPERTY()
     AActor* ParentActor;
@@ -128,7 +131,6 @@ protected:
 public:
     // Called every frame
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-    virtual void AsyncPhysicsTickComponent(float DeltaTime, float SimTime) override;
 
     UFUNCTION(BlueprintCallable, Category = "Physics")
     void UpdatePhysics(float InDeltaTime);
@@ -182,8 +184,6 @@ public:
     TArray<FVector2D> CalculateSpeedRangeOfEachGear();
 
 private:
-    UPrimitiveComponent* FindPhysicalParent();
-    bool FindWheelCoordinator();
     bool GeneratePowerUnit();
     int GenerateAxles();    //-1: no owner actor; -2: no valid Carbody; -3: there're already axles
     float SafeDivide(float a, float b);

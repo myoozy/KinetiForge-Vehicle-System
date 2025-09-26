@@ -10,6 +10,7 @@
 #include "VehicleEngineComponent.h"
 #include "VehicleClutchComponent.h"
 #include "VehicleGearboxComponent.h"
+#include "VehicleAsyncTickComponent.h"
 
 // Sets default values for this component's properties
 UVehicleDriveAssemblyComponent::UVehicleDriveAssemblyComponent()
@@ -63,25 +64,24 @@ void UVehicleDriveAssemblyComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	FindWheelCoordinator();
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody);
+	if (IsValid(WheelCoordinator))WheelCoordinator->RegisterDriveAssembly(this);
+
+	VehicleAsyncTickComponent = UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(ParentActor);
+	if (IsValid(VehicleAsyncTickComponent))VehicleAsyncTickComponent->Register(this);
+
 	GeneratePowerUnit();
 
 	//initialize autogearbox timer
 	AutoShiftTimer = FMath::FRandRange(-AutoGearboxConfig.AutomaticGearboxRefreshTime, 0.0f) + AutoGearboxConfig.AutomaticGearboxRefreshTime;
-	
-	//make sure the component is registered and active
-	SetActive(true);
-	if (IsRegistered() && IsActive())
-	{
-		SetAsyncPhysicsTickEnabled(true);
-	}
+
 }
 
 void UVehicleDriveAssemblyComponent::OnRegister()
 {
 	Super::OnRegister();
 	//...
-	Carbody = FindPhysicalParent();
+	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
 	ParentActor = GetOwner();
 	ParentActor->bRunConstructionScriptOnDrag = false;	//to improve performance
 	GenerateAxles();
@@ -457,22 +457,10 @@ void UVehicleDriveAssemblyComponent::TickComponent(float DeltaTime, ELevelTick T
 	}
 }
 
-void UVehicleDriveAssemblyComponent::AsyncPhysicsTickComponent(float DeltaTime, float SimTime)
-{
-	//...
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehiclePhysics);
-
-	if (bUpdatePhysicsAutomatically)
-	{
-		UpdatePhysics(DeltaTime);
-	}
-
-	//super
-	Super::AsyncPhysicsTickComponent(DeltaTime, SimTime);
-}
-
 void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehiclePhysics);
+
 	if (!(IsValid(Engine) && IsValid(Clutch) && IsValid(Gearbox) && IsValid(Carbody)))return;
 
 	PhysicsDeltaTime = InDeltaTime;
@@ -666,7 +654,8 @@ TArray<FVector2D> UVehicleDriveAssemblyComponent::CalculateSpeedRangeOfEachGear(
 	SpeedRange.SetNum(NumGears + 1);
 	SpeedRange[0] = FVector2D(0);
 
-	float avgOmega = TransferCase->CalculateEffectiveWheelRadius(Axles);
+	float avgOmega = 0.f;
+	if (IsValid(TransferCase))avgOmega = TransferCase->CalculateEffectiveWheelRadius(Axles);
 	float RPMToRad = PI * 0.0333333333333f;
 	float avgRPM = avgOmega * RPMToRad * 0.036;
 
@@ -681,67 +670,6 @@ TArray<FVector2D> UVehicleDriveAssemblyComponent::CalculateSpeedRangeOfEachGear(
 	}
 
 	return SpeedRange;
-}
-
-UPrimitiveComponent* UVehicleDriveAssemblyComponent::FindPhysicalParent()
-{
-	TArray<USceneComponent*> AllParentComponents;
-	GetParentComponents(AllParentComponents);
-
-	//向上查找所有可能作为车身的组件。而车轮、车轴、车轮协调器只向上查找一级
-	for (USceneComponent* tempParent : AllParentComponents)
-	{
-		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(tempParent))
-		{
-			return Primitive;
-		}
-	}
-
-	// Fallback: 尝试找 Owner 的 RootComponent（通常是 mesh）
-	if (AActor* tempOwner = GetOwner())
-	{
-		if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(tempOwner->GetRootComponent()))
-		{
-			return RootPrimitive;
-		}
-	}
-
-	return nullptr;
-}
-
-bool UVehicleDriveAssemblyComponent::FindWheelCoordinator()
-{
-	//if already found (eg. founction is called multiple times)
-	if (WheelCoordinator)return true;
-
-	//ckeck valid carbody
-	if (!Carbody)
-	{
-		//UE_LOG
-		return false;
-	}
-
-	TArray<USceneComponent*> Children;
-	Carbody->GetChildrenComponents(true, Children);
-	for (USceneComponent* Child : Children)
-	{
-		if (UVehicleWheelCoordinatorComponent* Coord = Cast<UVehicleWheelCoordinatorComponent>(Child))
-		{
-			WheelCoordinator = Coord;
-			WheelCoordinator->RegisterDriveAssembly(this);
-			return true;
-		}
-	}
-
-	//if not found
-	//create one
-	WheelCoordinator = NewObject<UVehicleWheelCoordinatorComponent>(this);
-	WheelCoordinator->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-	GetOwner()->AddInstanceComponent(WheelCoordinator);
-	WheelCoordinator->RegisterComponent();
-	WheelCoordinator->RegisterDriveAssembly(this);
-	return false;
-
 }
 
 bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
@@ -821,28 +749,20 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 		{
 			TempAxle = Cast<UVehicleAxleAssemblyComponent>
 				(ParentActor->AddComponentByClass(TempAxleClass, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)), true));
-			TempAxle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-			//override these before registering the axle component
-			if (TempAxleConfig.WheelOverride)TempAxle->WheelConfig = TempAxleConfig.WheelOverride;
-			if (TempAxleConfig.DifferentialOverride)TempAxle->DifferentialConfig = TempAxleConfig.DifferentialOverride;
-			if (TempAxleConfig.TrackWidthOverride >= 0)TempAxle->AxleConfig.TrackWidth = TempAxleConfig.TrackWidthOverride;
-			ParentActor->FinishAddComponent(TempAxle, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)));
 		}
 		else
 		{
-			TempAxle = NewObject<UVehicleAxleAssemblyComponent>(Carbody);
-			TempAxle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-			TempAxle->SetRelativeLocation(TempAxleConfig.AxlePosition);
+			TempAxle = Cast<UVehicleAxleAssemblyComponent>
+				(ParentActor->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)), true));
+		}
+		TempAxle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+
+		if (IsValid(TempAxle))
+		{
 			//override these before registering the axle component
 			if (TempAxleConfig.WheelOverride)TempAxle->WheelConfig = TempAxleConfig.WheelOverride;
 			if (TempAxleConfig.DifferentialOverride)TempAxle->DifferentialConfig = TempAxleConfig.DifferentialOverride;
 			if (TempAxleConfig.TrackWidthOverride >= 0)TempAxle->AxleConfig.TrackWidth = TempAxleConfig.TrackWidthOverride;
-			ParentActor->AddInstanceComponent(TempAxle);
-			TempAxle->RegisterComponent();
-		}
-
-		if (IsValid(TempAxle))
-		{
 			if (TempAxleConfig.bDiasbleSteering)TempAxle->AxleSteeringConfig.bAffectedBySteering = false;
 			if (TempAxleConfig.bDisableHandbrake)TempAxle->AxleConfig.bAffectedByHandbrake = false;
 			if (TempAxleConfig.bDisableTractionControl)TempAxle->TCSConfig.bTractionControlSystemEnabled = false;
@@ -851,6 +771,8 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 			Axles.Add(TempAxle);
 			n++;
 		}
+
+		ParentActor->FinishAddComponent(TempAxle, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)));
 	}
 	return n;
 }

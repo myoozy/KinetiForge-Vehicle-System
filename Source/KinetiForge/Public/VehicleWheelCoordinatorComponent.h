@@ -60,6 +60,10 @@ protected:
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	
+	static UPrimitiveComponent* FindPhysicalParent(USceneComponent* ChildSceneComponent);
+	static UVehicleWheelCoordinatorComponent* FindWheelCoordinator(USceneComponent* Carbody);
+
 	void NotifyWheelMoved();
 	void RegisterWheel(UVehicleWheelComponent* NewWheel);
 	void RegisterAxle(UVehicleAxleAssemblyComponent* NewAxle);

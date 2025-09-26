@@ -106,8 +106,6 @@ public:
 	FVector GetAxleCenter();
 
 private:
-	UPrimitiveComponent* FindPhysicalParent();
-	bool FindWheelCoordinator();
 	bool GenerateWheels();
 	bool GenerateDifferential();
 	bool GenerateComponents();

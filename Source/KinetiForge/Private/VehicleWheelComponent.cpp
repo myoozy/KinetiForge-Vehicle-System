@@ -95,10 +95,14 @@ void UVehicleWheelComponent::BeginPlay()
 	// ...
 	ComponentRelativeTransform = GetRelativeTransform();
 
-	FindWheelCoordinator();
-	if (!WheelCoordinator)
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody);
+	if (IsValid(WheelCoordinator))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: WheelCoordinatorNotFound!"));
+		WheelCoordinator->RegisterWheel(this);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: WheelCoordinatorNotFound! Sprung mass can not be computed."));
 	}
 }
 
@@ -110,9 +114,9 @@ void UVehicleWheelComponent::OnRegister()
 	//get parent
 	CurrentWorld = GetWorld();
 	ParentActor = GetOwner();
-	Carbody = FindPhysicalParent();
+	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
 
-	if (!Carbody || !ParentActor)
+	if (!IsValid(Carbody) || !IsValid(ParentActor))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: Carbody Not Found!"));
 	}
@@ -444,63 +448,6 @@ void UVehicleWheelComponent::AttachWheelHubMeshToSuspension(USceneComponent* InW
 	if (!InWheelHub)return;
 	InWheelHub->AttachToComponent(WheelHubComponent, FAttachmentTransformRules::KeepRelativeTransform);
 	InWheelHub->SetRelativeTransform(InTransform);
-}
-
-UPrimitiveComponent* UVehicleWheelComponent::FindPhysicalParent()
-{
-	if (USceneComponent* tempParent = GetAttachParent())
-	{
-		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(tempParent))
-		{
-			return Primitive;
-		}
-	}
-
-	// Fallback: 尝试找 Owner 的 RootComponent（通常是 mesh）
-	if (AActor* tempOwner = GetOwner())
-	{
-		if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(tempOwner->GetRootComponent()))
-		{
-			return RootPrimitive;
-		}
-	}
-
-	return nullptr;
-}
-
-bool UVehicleWheelComponent::FindWheelCoordinator()
-{
-	//if already found (eg. founction is called multiple times)
-	if (WheelCoordinator)return true;
-
-	//ckeck valid carbody
-	if (!Carbody)
-	{
-		//UE_LOG
-		return false;
-	}
-
-	TArray<USceneComponent*> Children;
-	Carbody->GetChildrenComponents(true, Children);
-	for (USceneComponent* Child : Children)
-	{
-		if (UVehicleWheelCoordinatorComponent* Coord = Cast<UVehicleWheelCoordinatorComponent>(Child))
-		{
-			WheelCoordinator = Coord;
-			WheelCoordinator->RegisterWheel(this);
-			return true;
-		}
-	}
-
-	//if not found
-	//create one
-	WheelCoordinator = NewObject<UVehicleWheelCoordinatorComponent>(this);
-	WheelCoordinator->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-	GetOwner()->AddInstanceComponent(WheelCoordinator);
-	WheelCoordinator->RegisterComponent();
-	WheelCoordinator->RegisterWheel(this);
-	return false;
-
 }
 
 float UVehicleWheelComponent::SafeDivide(float a, float b)

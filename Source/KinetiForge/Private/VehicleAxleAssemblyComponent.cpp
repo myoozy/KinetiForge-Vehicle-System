@@ -23,9 +23,8 @@ void UVehicleAxleAssemblyComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	FindWheelCoordinator();
-	//GenerateComponents();
-
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody);
+	if (IsValid(WheelCoordinator))WheelCoordinator->RegisterAxle(this);
 }
 
 void UVehicleAxleAssemblyComponent::OnRegister()
@@ -34,7 +33,7 @@ void UVehicleAxleAssemblyComponent::OnRegister()
 
 	//...
 	ParentActor = GetOwner();
-	Carbody = FindPhysicalParent();
+	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
 	//PreviewWheelMesh();
 	GenerateComponents();
 }
@@ -423,63 +422,6 @@ FVector UVehicleAxleAssemblyComponent::GetAxleCenter()
 	}
 }
 
-UPrimitiveComponent* UVehicleAxleAssemblyComponent::FindPhysicalParent()
-{
-	if (USceneComponent* tempParent = GetAttachParent())
-	{
-		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(tempParent))
-		{
-			return Primitive;
-		}
-	}
-
-	// Fallback: 尝试找 Owner 的 RootComponent（通常是 mesh）
-	if (AActor* tempOwner = GetOwner())
-	{
-		if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(tempOwner->GetRootComponent()))
-		{
-			return RootPrimitive;
-		}
-	}
-
-	return nullptr;
-}
-
-bool UVehicleAxleAssemblyComponent::FindWheelCoordinator()
-{
-	//if already found (eg. founction is called multiple times)
-	if (WheelCoordinator)return true;
-
-	//ckeck valid carbody
-	if (!Carbody)
-	{
-		//UE_LOG
-		return false;
-	}
-
-	TArray<USceneComponent*> Children;
-	Carbody->GetChildrenComponents(true, Children);
-	for (USceneComponent* Child : Children)
-	{
-		if (UVehicleWheelCoordinatorComponent* Coord = Cast<UVehicleWheelCoordinatorComponent>(Child))
-		{
-			WheelCoordinator = Coord;
-			WheelCoordinator->RegisterAxle(this);
-			return true;
-		}
-	}
-
-	//if not found
-	//create one
-	WheelCoordinator = NewObject<UVehicleWheelCoordinatorComponent>(this);
-	WheelCoordinator->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-	GetOwner()->AddInstanceComponent(WheelCoordinator);
-	WheelCoordinator->RegisterComponent();
-	WheelCoordinator->RegisterAxle(this);
-	return false;
-
-}
-
 bool UVehicleAxleAssemblyComponent::GenerateWheels()
 {
 	if (!ParentActor)return false;
@@ -494,16 +436,14 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 		{
 			LeftWheel = Cast<UVehicleWheelComponent>
 				(ParentActor->AddComponentByClass(WheelConfig, true, FTransform(), true));
-			LeftWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-			ParentActor->FinishAddComponent(LeftWheel, false, FTransform());
 		}
 		else
 		{
-			LeftWheel = NewObject<UVehicleWheelComponent>(Carbody);
-			LeftWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-			ParentActor->AddInstanceComponent(LeftWheel);
-			LeftWheel->RegisterComponent();
+			LeftWheel = Cast<UVehicleWheelComponent>
+				(ParentActor->AddComponentByClass(UVehicleWheelComponent::StaticClass(), true, FTransform(), true));
 		}
+		LeftWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+		ParentActor->FinishAddComponent(LeftWheel, false, FTransform());
 	}
 
 	//set right wheel
@@ -514,16 +454,14 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 		{
 			RightWheel = Cast<UVehicleWheelComponent>
 				(ParentActor->AddComponentByClass(WheelConfig, true, FTransform(), true));
-			RightWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-			ParentActor->FinishAddComponent(RightWheel, false, FTransform());
 		}
 		else
 		{
-			RightWheel = NewObject<UVehicleWheelComponent>(Carbody);
-			RightWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-			ParentActor->AddInstanceComponent(RightWheel);
-			RightWheel->RegisterComponent();
+			RightWheel = Cast<UVehicleWheelComponent>
+				(ParentActor->AddComponentByClass(UVehicleWheelComponent::StaticClass(), true, FTransform(), true));
 		}
+		RightWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+		ParentActor->FinishAddComponent(RightWheel, false, FTransform());
 	}
 
 	UpdateTrackWidth();
@@ -566,9 +504,8 @@ bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 		}
 		else
 		{
-			Differential = NewObject<UVehicleDifferentialComponent>(this);
-			ParentActor->AddInstanceComponent(Differential);
-			Differential->RegisterComponent();
+			Differential = Cast<UVehicleDifferentialComponent>
+				(ParentActor->AddComponentByClass(UVehicleDifferentialComponent::StaticClass(), false, FTransform(), false));
 		}
 	}
 

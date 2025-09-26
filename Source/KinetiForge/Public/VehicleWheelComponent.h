@@ -199,7 +199,5 @@ public:
 	void AttachWheelHubMeshToSuspension(USceneComponent* InWheelHub, FTransform InTransform);
 
 private:
-	UPrimitiveComponent* FindPhysicalParent();
-	bool FindWheelCoordinator();	//try to find wheelcoordinator and register, if not found, will generate one
 	float SafeDivide(float a, float b);
 };

@@ -221,6 +221,62 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 	}
 }
 
+UPrimitiveComponent* UVehicleWheelCoordinatorComponent::FindPhysicalParent(USceneComponent* ChildSceneComponent)
+{
+	if (!IsValid(ChildSceneComponent))return nullptr;
+
+	TArray<USceneComponent*> AllParentComponents;
+	ChildSceneComponent->GetParentComponents(AllParentComponents);
+
+	//向上查找所有可能作为车身的组件。而车轮、车轴、车轮协调器只向上查找一级
+	for (USceneComponent* tempParent : AllParentComponents)
+	{
+		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(tempParent))
+		{
+			return Primitive;
+		}
+	}
+
+	// Fallback: 尝试找 Owner 的 RootComponent（通常是 mesh）
+	if (AActor* tempOwner = ChildSceneComponent->GetOwner())
+	{
+		if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(tempOwner->GetRootComponent()))
+		{
+			return RootPrimitive;
+		}
+	}
+
+	return nullptr;
+}
+
+UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelCoordinator(USceneComponent* Carbody)
+{
+	//ckeck valid carbody
+	if (!IsValid(Carbody))
+	{
+		return nullptr;
+	}
+
+	TArray<USceneComponent*> Children;
+	Carbody->GetChildrenComponents(true, Children);
+	for (USceneComponent* Child : Children)
+	{
+		//if found
+		if (UVehicleWheelCoordinatorComponent* WheelCoord = Cast<UVehicleWheelCoordinatorComponent>(Child))
+		{
+			return WheelCoord;
+		}
+	}
+
+	//if not found
+	//create one
+	UVehicleWheelCoordinatorComponent* WheelCoord = NewObject<UVehicleWheelCoordinatorComponent>(Carbody);
+	WheelCoord->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+	Carbody->GetOwner()->AddInstanceComponent(WheelCoord);
+	WheelCoord->RegisterComponent();
+	return WheelCoord;
+}
+
 void UVehicleWheelCoordinatorComponent::NotifyWheelMoved()
 {
 	bMassMatrixDirty = true;
