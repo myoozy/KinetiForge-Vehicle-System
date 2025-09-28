@@ -12,12 +12,13 @@ FVehicleSuspensionSolver::~FVehicleSuspensionSolver()
 {
 }
 
-bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* InTargetWheelComponent, AActor* InParentActor)
+bool FVehicleSuspensionSolver::Initialize(TWeakObjectPtr<UVehicleWheelComponent> InTargetWheelComponent)
 {
 	TargetWheelComponent = InTargetWheelComponent;
-	if (TargetWheelComponent)
+	
+	if (TargetWheelComponent.IsValid())
 	{
-		QueryParams.AddIgnoredActor(InParentActor);
+		QueryParams.AddIgnoredActor(InTargetWheelComponent->GetOwner());
 		QueryParams.bReturnPhysicalMaterial = true;
 		SimData.WheelPos = FMath::Sign(TargetWheelComponent->GetRelativeTransform().GetLocation().Y);
 
@@ -64,14 +65,12 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	float InSteeringAngle, 
 	float InSwaybarForce, 
 	const FTransform& InRelativeTransform,
-	const FTransform& InCarbodyWorldTransform, 
-	UWorld* InCurrentWorld)
+	const FTransform& InCarbodyWorldTransform)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleSuspensionSolver);
 
-	if (!TargetWheelComponent)return;
+	if (!TargetWheelComponent.IsValid())return;
 
-	CurrentWorld = InCurrentWorld;
 	SimData.PhysicsDelatTime = InDeltaTime;
 	SimData.SteeringAngle = InSteeringAngle;
 	SimData.SwaybarForce = InSwaybarForce;
@@ -119,7 +118,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 
 void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)
 {
-	if (!TargetWheelComponent)return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	UWorld* TempWorld = TargetWheelComponent->GetWorld();
 	if (!TempWorld)return;
@@ -175,7 +174,7 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 
 void FVehicleSuspensionSolver::DrawSuspensionForce(float Duration, float Thickness, float Length)
 {
-	if (!TargetWheelComponent)return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	UWorld* TempWorld = TargetWheelComponent->GetWorld();
 	if (!TempWorld)return;
@@ -192,7 +191,7 @@ void FVehicleSuspensionSolver::DrawSuspensionForce(float Duration, float Thickne
 
 bool FVehicleSuspensionSolver::CheckIsDampingDirty()
 {
-	if (!TargetWheelComponent)return false;
+	if (!TargetWheelComponent.IsValid())return false;
 
 	float Stiffness = TargetWheelComponent->SuspensionSpringConfig.SpringStiffness;
 
@@ -210,7 +209,7 @@ bool FVehicleSuspensionSolver::CheckIsDampingDirty()
 
 bool FVehicleSuspensionSolver::CheckAndFixTriangle()
 {
-	if(!TargetWheelComponent)return false;
+	if(!TargetWheelComponent.IsValid())return false;
 	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
 
 	bool valid = true;
@@ -325,17 +324,10 @@ FQuat FVehicleSuspensionSolver::MakeQuatFrom2DVectors(const FVector2D From, cons
 
 bool FVehicleSuspensionSolver::SingleSphereTrace(FVector Start, FVector End, float SphereRadius, FHitResult& OutHit)
 {
-	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
-
-	/*****sweepsinglebychannel*****/
-	//return CurrentWorld->SweepSingleByChannel(OutHit, Start, End,
-	//	SimData.RayCastTransform.GetRotation(), Config.TraceChannel, FCollisionShape::MakeSphere(SphereRadius), 
-	//	QueryParams);
-
 	/*****GeomSweepSingle*****/
 	return FPhysicsInterface::GeomSweepSingle(
-		CurrentWorld, FCollisionShape::MakeSphere(SphereRadius), FQuat::Identity, OutHit,
-		Start, End, Config.TraceChannel, QueryParams,
+		TargetWheelComponent->GetWorld(), FCollisionShape::MakeSphere(SphereRadius), FQuat::Identity, OutHit,
+		Start, End, TargetWheelComponent->SuspensionKinematicsConfig.TraceChannel, QueryParams,
 		FCollisionResponseParams::DefaultResponseParam, FCollisionObjectQueryParams::DefaultObjectQueryParam);
 }
 
@@ -381,15 +373,18 @@ float FVehicleSuspensionSolver::ComputeValidPreload()
 	return SimData.ValidPreload = FMath::Min(Config.SpringPreload, MaxPreload);
 }
 
-void FVehicleSuspensionSolver::ComputeRayCastLocation()
+void FVehicleSuspensionSolver::ComputeRayCastLength()
 {
-	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
-
 	SimData.StrutDirection2D = (SimData.TopMountPos2D - SimData.BallJointPos2D).GetSafeNormal();
 
-	SimData.RayCastLength = FMath::Abs(SimData.StrutDirection2D.X * Config.Stroke);
+	SimData.RayCastLength = FMath::Abs(SimData.StrutDirection2D.X * TargetWheelComponent->SuspensionKinematicsConfig.Stroke);
+}
 
-	SimData.RayCastStart2D.X = SimData.TopMountPos2D.X - SimData.StrutDirection2D.X * Config.MinStrutLength;
+void FVehicleSuspensionSolver::ComputeRayCastLocation()
+{
+	ComputeRayCastLength();
+
+	SimData.RayCastStart2D.X = SimData.TopMountPos2D.X - SimData.StrutDirection2D.X * TargetWheelComponent->SuspensionKinematicsConfig.MinStrutLength;
 	SimData.RayCastStart2D.Y = SimData.BallJointPos2D.Y;
 
 	FVector RayCastStartLocal = SuspensionPlaneToZYPlane(SimData.RayCastStart2D);
@@ -428,21 +423,16 @@ void FVehicleSuspensionSolver::SuspensionRayCast()
 
 void FVehicleSuspensionSolver::SuspensionLineTrace()
 {
-	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
 	float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
 
 	FVector LineTraceEnd = SimData.RayCastEndPos - SimData.ComponentUpVector * WheelRadius;
 
 	SimData.bRayCastRevised = false;
 
-	/*********LineTraceSingleByChannel*********/
-	//SimData.bHitGround = CurrentWorld->LineTraceSingleByChannel(SimData.HitStruct, SimData.RayCastStartPos, LineTraceEnd,
-	//	Config.TraceChannel, QueryParams);
-
 	/**************RaycastSingle**************/
-	SimData.bHitGround = FPhysicsInterface::RaycastSingle(CurrentWorld, SimData.HitStruct,
+	SimData.bHitGround = FPhysicsInterface::RaycastSingle(TargetWheelComponent->GetWorld(), SimData.HitStruct,
 		SimData.RayCastStartPos, LineTraceEnd,
-		Config.TraceChannel, QueryParams, FCollisionResponseParams::DefaultResponseParam, FCollisionObjectQueryParams::DefaultObjectQueryParam);
+		TargetWheelComponent->SuspensionKinematicsConfig.TraceChannel, QueryParams, FCollisionResponseParams::DefaultResponseParam, FCollisionObjectQueryParams::DefaultObjectQueryParam);
 
 	if (SimData.bHitGround)
 	{

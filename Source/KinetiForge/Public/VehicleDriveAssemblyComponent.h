@@ -84,11 +84,6 @@ protected:
     virtual void BeginPlay() override;
     virtual void OnRegister() override;
     virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
-    void UpdateAxles(
-        float InGearboxOutputTorque, 
-        float InReflectedInertia,
-        float& OutGearboxOutputShaftAngularVelocity,
-        float& OutInertia);
     void UpdateInput(float InDeltaTime);
     void UpdateThrottle(float InDeltaTime);
     void UpdateBrake(float InDeltaTime);
@@ -99,27 +94,26 @@ protected:
     UPROPERTY()
     TArray<UVehicleAxleAssemblyComponent*> Axles;
     UPROPERTY()
-    UVehicleEngineComponent* Engine;
+    TObjectPtr<UVehicleEngineComponent> Engine;
     UPROPERTY()
-    UVehicleClutchComponent* Clutch;
+    TObjectPtr<UVehicleClutchComponent> Clutch;
     UPROPERTY()
-    UVehicleGearboxComponent* Gearbox;
+    TObjectPtr<UVehicleGearboxComponent> Gearbox;
     UPROPERTY()
-    UVehicleDifferentialComponent* TransferCase;
+    TObjectPtr<UVehicleDifferentialComponent> TransferCase;
     UPROPERTY()
-    UVehicleWheelCoordinatorComponent* WheelCoordinator;
+    TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
     UPROPERTY()
-    UVehicleAsyncTickComponent* VehicleAsyncTickComponent;
+    TWeakObjectPtr<UVehicleAsyncTickComponent> VehicleAsyncTickComponent;
     UPROPERTY()
-    UPrimitiveComponent* Carbody;
-    UPROPERTY()
-    AActor* ParentActor;
+    TWeakObjectPtr<UPrimitiveComponent> Carbody;
 
     //physics
     float PhysicsDeltaTime;
     float Speed_kph;
     float AutoShiftTimer;
-    int NumOfWheelsOnGround;
+    int32 NumOfWheelsOnGround;
+    int32 NumOfDriveAxles;
     bool bIsInAir;
     FVector LocalLinearVelocity;
     FVector WorldLinearVelocity;
@@ -164,7 +158,7 @@ public:
     void UpdateDriftCamera(USceneComponent* InSpringArm, float InPitch, float InDriftCamRate = 1.f, float InDriftCamInterpSpeed = 5.f, float InDriftCamStartSpeed_mps = 5.f);
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Input")
     void GetInputValues(FVehicleInputValue& Out) { Out = InputValues; }
-    UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator; }
+    UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator.Get(); }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Components")
     TArray<UVehicleAxleAssemblyComponent*> GetAxles() { return Axles; }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Components")

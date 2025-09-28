@@ -16,7 +16,7 @@ public:
 	FVehicleSuspensionSolver();
 	~FVehicleSuspensionSolver();
 
-	bool Initialize(UVehicleWheelComponent* InTargetWheelComponent, AActor* InParentActor);
+	bool Initialize(TWeakObjectPtr<UVehicleWheelComponent> InTargetWheelComponent);
 	void SetSprungMass(float NewSprungMass);
 	float ComputeCriticalDamping();
 	void UpdateSuspension(
@@ -24,8 +24,7 @@ public:
 		float InSteeringAngle,
 		float InSwaybarForce, 
 		const FTransform& InRelativeTransform,
-		const FTransform& InCarbodyWorldTransform,
-		UWorld* InCurrentWorld);
+		const FTransform& InCarbodyWorldTransform);
 	void DrawSuspension(
 		float Duration = -1, 
 		float Thickness = 0, 
@@ -53,13 +52,13 @@ public:
 	FVehicleSuspensionSimData SimData;
 
 protected:
-	UVehicleWheelComponent* TargetWheelComponent;
-	UWorld* CurrentWorld;
+	TWeakObjectPtr<UVehicleWheelComponent> TargetWheelComponent;
 
 	FCollisionQueryParams QueryParams = FCollisionQueryParams::DefaultQueryParam;
 
 private:
 	float ComputeValidPreload();
+	void ComputeRayCastLength();
 	void ComputeRayCastLocation();
 	void SuspensionRayCast();
 	void SuspensionLineTrace();

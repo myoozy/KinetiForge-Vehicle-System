@@ -44,20 +44,18 @@ protected:
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 
 	UPROPERTY()
-	AActor* ParentActor;
+	TWeakObjectPtr<UPrimitiveComponent> Carbody;
 	UPROPERTY()
-	UPrimitiveComponent* Carbody;
-	UPROPERTY()
-	UVehicleWheelCoordinatorComponent* WheelCoordinator;
+	TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
 	
 	FVehicleAxleSimData SimData;
 
 	UPROPERTY()
-	UVehicleWheelComponent* LeftWheel;
+	TWeakObjectPtr<UVehicleWheelComponent> LeftWheel;
 	UPROPERTY()
-	UVehicleWheelComponent* RightWheel;
+	TWeakObjectPtr<UVehicleWheelComponent> RightWheel;
 	UPROPERTY()
-	UVehicleDifferentialComponent* Differential;
+	TObjectPtr<UVehicleDifferentialComponent> Differential;
 
 	void UpdateTwoWheelAxle(float InDriveTorque, float InReflectedInertia);
 	void UpdateSingleWheelAxle(float InDriveTorque, float InReflectedInertia);
@@ -83,7 +81,7 @@ public:
 		float& OutAngularVelocity);
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Component")
 	void GetWheels(UVehicleWheelComponent*& OutLeftWheel, UVehicleWheelComponent*& OutRightWheel)
-	{ OutLeftWheel = LeftWheel; OutRightWheel = RightWheel; }
+	{ OutLeftWheel = LeftWheel.Get(); OutRightWheel = RightWheel.Get(); }
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Component")
 	void GetDifferential(UVehicleDifferentialComponent*& OutDifferential)
 	{ OutDifferential = Differential; }

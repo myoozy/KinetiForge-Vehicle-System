@@ -62,7 +62,7 @@ public:
 		float& OutReflectedInertia
 	);
 	UFUNCTION(BlueprintCallable, Category = "Physics")
-	void UpdateTransferCase(
+	int32 UpdateTransferCase(
 		const TArray<UVehicleAxleAssemblyComponent*> Axles,
 		float InDeltaTime,
 		float InGearboxOutputTorque,

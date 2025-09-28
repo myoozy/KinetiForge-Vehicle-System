@@ -58,7 +58,7 @@ void UVehicleDifferentialComponent::UpdateInputShaft(float InLeftOutputShaftAngu
 	OutReflectedInertia = SafeDivide(InLeftWheelInertia + InRightWheelInertia, Config.GearRatio * Config.GearRatio);
 }
 
-void UVehicleDifferentialComponent::UpdateTransferCase(
+int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	const TArray<UVehicleAxleAssemblyComponent*> Axles, 
 	float InDeltaTime,
 	float InGearboxOutputTorque, 
@@ -72,7 +72,7 @@ void UVehicleDifferentialComponent::UpdateTransferCase(
 {
 	//首先遍历所有车轴，获取驱动轴的数量、扭矩权重、和平均角速度
 	//First iterate over all axles to obtain the number of drive axles, torque weights, and average angular velocity
-	float NumOfDriveAxles = 0;
+	int32 NumOfDriveAxles = 0;
 	float SumTorqueWeight = 0.f;
 	float SumAngVel = 0.f;
 	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
@@ -84,13 +84,14 @@ void UVehicleDifferentialComponent::UpdateTransferCase(
 		SumTorqueWeight += IsDriveAxle * TempAxle->AxleConfig.TorqueWeight;
 		SumAngVel += IsDriveAxle * TempAxle->GetAngularVelocity();
 	}
-	float AverageAxleAngularVelocity = SafeDivide(SumAngVel, NumOfDriveAxles);
+	float FloatNumOfDriveAxles = (float)NumOfDriveAxles;
+	float AverageAxleAngularVelocity = SafeDivide(SumAngVel, FloatNumOfDriveAxles);
 
 	//update axles
 	float DriveTorque = Config.GearRatio * InGearboxOutputTorque;
 	float ReflInertia = Config.GearRatio * Config.GearRatio * InReflectedInertia;
 	//reflected inertia
-	float ReflectedInertiaOnAxle = SafeDivide(ReflInertia, NumOfDriveAxles);
+	float ReflectedInertiaOnAxle = SafeDivide(ReflInertia, FloatNumOfDriveAxles);
 
 	SumAngVel = 0.f;
 	float SumDriveAxleInertia = 0.f;
@@ -140,8 +141,11 @@ void UVehicleDifferentialComponent::UpdateTransferCase(
 	}
 
 	//get average angular velocity of all drive axles
-	OutGearboxOutputShaftAngularVelocity = SafeDivide(SumAngVel * Config.GearRatio, NumOfDriveAxles);
+	OutGearboxOutputShaftAngularVelocity = SafeDivide(SumAngVel * Config.GearRatio, FloatNumOfDriveAxles);
 	OutTotalInertia = SafeDivide(SumDriveAxleInertia, Config.GearRatio * Config.GearRatio);
+
+	//return the number of drive axles
+	return NumOfDriveAxles;
 }
 
 float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(
@@ -151,7 +155,7 @@ float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(
 	int32 driveAxleNum = 0;
 	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
 	{
-		if (!TempAxle)break;
+		if (!IsValid(TempAxle))continue;
 
 		if (TempAxle->AxleConfig.TorqueWeight > 0)
 		{

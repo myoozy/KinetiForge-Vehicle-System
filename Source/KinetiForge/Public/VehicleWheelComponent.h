@@ -52,21 +52,19 @@ protected:
 	void UpdateMeshes(float DeltaTime, float MaxAnimAngularVelocity = 60);
 
 	UPROPERTY()
-	USceneComponent* WheelHubComponent;
+	TObjectPtr<USceneComponent> WheelHubComponent;
 	UPROPERTY()
-	UStaticMeshComponent* WheelMeshComponent;
+	TObjectPtr<UStaticMeshComponent> WheelMeshComponent;
 	UPROPERTY()
-	UStaticMeshComponent* BrakeMeshComponent;
+	TObjectPtr<UStaticMeshComponent> BrakeMeshComponent;
 	
 	//Parent
 	UPROPERTY()
-	UWorld* CurrentWorld;
+	TWeakObjectPtr<UWorld> CurrentWorld;
 	UPROPERTY()
-	UPrimitiveComponent* Carbody;
+	TWeakObjectPtr<UPrimitiveComponent> Carbody;
 	UPROPERTY()
-	AActor* ParentActor;
-	UPROPERTY()
-	UVehicleWheelCoordinatorComponent* WheelCoordinator;
+	TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
 
 	//Transform
 	FTransform CarbodyAsyncWorldTransform;
@@ -120,7 +118,7 @@ public:
 	void GetSuspensionMovement(FVehicleSuspensionSimData& Out) { Out = Suspension.SimData; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ReadOnly")
-	bool GetAttachedComponent(AActor*& OutParentActor, UPrimitiveComponent*& OutParentComponent);
+	UPrimitiveComponent* GetCarbody() { return Carbody.Get(); }
 
 	UFUNCTION(BlueprintCallable, Category = "ReadOnly")
 	bool GetRayCastResult(FHitResult& OutHitResult, bool& OutRevised);

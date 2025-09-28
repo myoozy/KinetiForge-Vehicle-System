@@ -13,11 +13,13 @@ FVehicleWheelSolver::~FVehicleWheelSolver()
 {
 }
 
-bool FVehicleWheelSolver::Initialize(UVehicleWheelComponent* InTargetWheelComponent, UPrimitiveComponent* InCarbody)
+bool FVehicleWheelSolver::Initialize(
+	TWeakObjectPtr<UVehicleWheelComponent> InTargetWheelComponent, 
+	TWeakObjectPtr<UPrimitiveComponent> InCarbody)
 {
 	TargetWheelComponent = InTargetWheelComponent;
 	Carbody = InCarbody;
-	return TargetWheelComponent && Carbody;
+	return TargetWheelComponent.IsValid() && Carbody.IsValid();
 }
 
 void FVehicleWheelSolver::UpdateWheel(
@@ -30,7 +32,7 @@ void FVehicleWheelSolver::UpdateWheel(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelSolver);
 
-	if (!TargetWheelComponent || !Carbody) return;
+	if (!TargetWheelComponent.IsValid() || !Carbody.IsValid()) return;
 
 	FVehicleWheelConfig& Config = TargetWheelComponent->WheelConfig;
 
@@ -77,7 +79,7 @@ void FVehicleWheelSolver::UpdateWheel(
 
 void FVehicleWheelSolver::DrawWheelForce(UWorld* InCurrentWorld, const FVehicleSuspensionSimData& InSuspensionSimData, float Duration, float Thickness, float Length, bool bDrawVelocity, bool bDrawSlip, bool bDrawInertia)
 {
-	if (!InCurrentWorld || !TargetWheelComponent)return;
+	if (!InCurrentWorld || !TargetWheelComponent.IsValid())return;
 
 	FVehicleTireConfig& TireConfig = TargetWheelComponent->TireConfig;
 
@@ -206,7 +208,7 @@ void FVehicleWheelSolver::ComputeLinearVelocity(FVector LongForceDir, FVector La
 
 	if (HitStruct.bBlockingHit)
 	{
-		FVector LinVelWorldA = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(Carbody, HitStruct.ImpactPoint, "NONE");
+		FVector LinVelWorldA = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(Carbody.Get(), HitStruct.ImpactPoint, "NONE");
 		FVector LinVelWorldB = FVector(0.f);
 
 		if (IsValid(HitStruct.GetComponent()) && HitStruct.GetComponent()->Mobility != EComponentMobility::Static)
@@ -472,7 +474,7 @@ void FVehicleWheelSolver::ApplyTireForce(const FVehicleSuspensionSimData& Suspen
 		break;
 	}
 
-	UAsyncTickFunctions::ATP_AddImpulseAtPosition(Carbody, PosToApplyImpulse, TotalImpulse * 100, "NONE");
+	UAsyncTickFunctions::ATP_AddImpulseAtPosition(Carbody.Get(), PosToApplyImpulse, TotalImpulse * 100, "NONE");
 
 	if (IsValid(SuspensionSimData.HitStruct.GetComponent()) &&
 		SuspensionSimData.HitStruct.GetComponent()->IsSimulatingPhysics())

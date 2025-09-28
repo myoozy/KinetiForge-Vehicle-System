@@ -64,11 +64,11 @@ void UVehicleDriveAssemblyComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody);
-	if (IsValid(WheelCoordinator))WheelCoordinator->RegisterDriveAssembly(this);
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
+	if (WheelCoordinator.IsValid())WheelCoordinator->RegisterDriveAssembly(this);
 
-	VehicleAsyncTickComponent = UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(ParentActor);
-	if (IsValid(VehicleAsyncTickComponent))VehicleAsyncTickComponent->Register(this);
+	VehicleAsyncTickComponent = UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(GetOwner());
+	if (VehicleAsyncTickComponent.IsValid())VehicleAsyncTickComponent->Register(this);
 
 	GeneratePowerUnit();
 
@@ -82,8 +82,7 @@ void UVehicleDriveAssemblyComponent::OnRegister()
 	Super::OnRegister();
 	//...
 	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
-	ParentActor = GetOwner();
-	ParentActor->bRunConstructionScriptOnDrag = false;	//to improve performance
+	GetOwner()->bRunConstructionScriptOnDrag = false;	//to improve performance
 	GenerateAxles();
 }
 
@@ -94,7 +93,7 @@ void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierar
 	{
 		for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
 		{
-			if (TempAxle && !TempAxle->IsBeingDestroyed())TempAxle->DestroyComponent();
+			if (IsValid(TempAxle) && !TempAxle->IsBeingDestroyed())TempAxle->DestroyComponent();
 		}
 		Axles.Empty();
 	}
@@ -107,9 +106,7 @@ void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierar
 
 	if (TransferCase && !TransferCase->IsBeingDestroyed())TransferCase->DestroyComponent();
 
-	if (Carbody)Carbody = nullptr;
-
-	if (ParentActor)ParentActor = nullptr;
+	if (Carbody.IsValid())Carbody = nullptr;
 
 	InputConfig.ThrottleCurve = nullptr;
 	InputConfig.BrakeCurve = nullptr;
@@ -120,55 +117,6 @@ void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierar
 
 	//...
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
-}
-
-void UVehicleDriveAssemblyComponent::UpdateAxles(
-	float InGearboxOutputTorque, 
-	float InReflectedInertia, 
-	float& OutGearboxOutputShaftAngularVelocity,
-	float& OutInertia)
-{
-	if (!IsValid(TransferCase))return;
-	TransferCase->UpdateTransferCase(
-		Axles,
-		PhysicsDeltaTime,
-		InGearboxOutputTorque,
-		InReflectedInertia,
-		InputValues.RealBrakeValue,
-		InputValues.RealHandbrakeValue,
-		InputValues.RealSteeringValue,
-		InputAssistConfig.bBurnOutAssist 
-		&& InputValues.RealThrottleValue > 0.9 
-		&& InputValues.RealBrakeValue > 0.9
-		&& Speed_kph < 1.f,
-		OutGearboxOutputShaftAngularVelocity,
-		OutInertia
-	);
-
-	//get velocity
-	FVector SumLocalLinVel = FVector(0.f);
-	FVector SumWorldLinVel = FVector(0.f);
-	int32 NumGroundedWheels = 0.f;
-	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
-	{
-		if (!IsValid(TempAxle))continue;
-
-		//calculate linear velocity
-		FVector TempLocalVel;
-		FVector TempWorldVel;
-		NumGroundedWheels += TempAxle->GetNumOfWheelsOnGround();
-		TempAxle->GetLinearVelocity(TempLocalVel, TempWorldVel);
-		SumLocalLinVel += TempLocalVel;
-		SumWorldLinVel += TempWorldVel;
-	}
-
-	//get linear velocity
-	bIsInAir = !NumGroundedWheels;
-	NumOfWheelsOnGround = NumGroundedWheels;
-	LocalLinearVelocity = SafeDivide(SumLocalLinVel * 2.f, (float)NumGroundedWheels);
-	WorldLinearVelocity = SafeDivide(SumWorldLinVel * 2.f, (float)NumGroundedWheels);
-	LocalVelocityClamped = ClampToZero(LocalLinearVelocity, 0.1);
-	Speed_kph = LocalLinearVelocity.X * 3.6;
 }
 
 void UVehicleDriveAssemblyComponent::UpdateInput(float InDeltaTime)
@@ -432,7 +380,7 @@ void UVehicleDriveAssemblyComponent::TickComponent(float DeltaTime, ELevelTick T
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	// ...
-	if (IsValid(Engine) && IsValid(Gearbox) && IsValid(Carbody))
+	if (IsValid(Engine) && IsValid(Gearbox) && Carbody.IsValid())
 	{
 		UpdateInput(DeltaTime);
 
@@ -461,22 +409,60 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehiclePhysics);
 
-	if (!(IsValid(Engine) && IsValid(Clutch) && IsValid(Gearbox) && IsValid(Carbody)))return;
+	if (!(IsValid(Engine) && IsValid(Clutch) && IsValid(Gearbox) && IsValid(TransferCase) && Carbody.IsValid()))return;
 
 	PhysicsDeltaTime = InDeltaTime;
 
 	//update engine
-	Engine->UpdatePhysics(PhysicsDeltaTime, InputValues.RealThrottleValue, Clutch->GetCluchTorque());
+	float EngineLoadTorque = (NumOfDriveAxles > 0) ? Clutch->GetCluchTorque() : 0.f;
+	Engine->UpdatePhysics(PhysicsDeltaTime, InputValues.RealThrottleValue, EngineLoadTorque);
 
 	//get gearbox output torque
 	float GearboxOutputTorque;
 	float GearboxReflectedInertia;
 	Gearbox->UpdateOutputShaft(Clutch->GetCluchTorque(), GearboxOutputTorque, GearboxReflectedInertia);
 
-	//update axles
+	//update transfercase
 	float SumAxleInertia;
 	float GearboxOutputShaftAngularVelocity;
-	UpdateAxles(GearboxOutputTorque, GearboxReflectedInertia, GearboxOutputShaftAngularVelocity, SumAxleInertia);
+	NumOfDriveAxles = TransferCase->UpdateTransferCase(
+		Axles,
+		PhysicsDeltaTime,
+		GearboxOutputTorque,
+		GearboxReflectedInertia,
+		InputValues.RealBrakeValue,
+		InputValues.RealHandbrakeValue,
+		InputValues.RealSteeringValue,
+		InputAssistConfig.bBurnOutAssist
+		&& InputValues.RealThrottleValue > 0.9
+		&& InputValues.RealBrakeValue > 0.9
+		&& Speed_kph < 1.f,
+		GearboxOutputShaftAngularVelocity,
+		SumAxleInertia
+	);
+
+	//get velocity
+	NumOfWheelsOnGround = 0.f;
+	FVector SumLocalLinVel = FVector(0.f);
+	FVector SumWorldLinVel = FVector(0.f);
+	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
+	{
+		if (!IsValid(TempAxle))continue;
+
+		//calculate linear velocity
+		FVector TempLocalVel;
+		FVector TempWorldVel;
+		NumOfWheelsOnGround += TempAxle->GetNumOfWheelsOnGround();
+		TempAxle->GetLinearVelocity(TempLocalVel, TempWorldVel);
+		SumLocalLinVel += TempLocalVel;
+		SumWorldLinVel += TempWorldVel;
+	}
+	bIsInAir = !NumOfWheelsOnGround;
+	float NumGroundedWheelsInv = SafeDivide(1.f, (float)NumOfWheelsOnGround);
+	LocalLinearVelocity = SumLocalLinVel * 2.f * NumGroundedWheelsInv;
+	WorldLinearVelocity = SumWorldLinVel * 2.f * NumGroundedWheelsInv;
+	LocalVelocityClamped = ClampToZero(LocalLinearVelocity, 0.1);
+	Speed_kph = LocalLinearVelocity.X * 3.6;
 
 	//get gearbox inputshaft angular velocity
 	float GearboxInputShaftVelocity;
@@ -619,7 +605,6 @@ void UVehicleDriveAssemblyComponent::RotateCamera(USceneComponent* InSpringArm, 
 	InSpringArm->SetRelativeRotation(NewRot);
 }
 
-
 TArray<UVehicleWheelComponent*> UVehicleDriveAssemblyComponent::GetWheels()
 {
 	TArray<UVehicleWheelComponent*> TempWheels;
@@ -674,14 +659,11 @@ TArray<FVector2D> UVehicleDriveAssemblyComponent::CalculateSpeedRangeOfEachGear(
 
 bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 {
-	ParentActor = GetOwner();
-	if (!ParentActor)return false;
-
 	if (!IsValid(Engine))
 	{
 		if (EngineConfig)
 		{
-			Engine = Cast<UVehicleEngineComponent>(ParentActor->AddComponentByClass(EngineConfig, false, FTransform(), false));
+			Engine = Cast<UVehicleEngineComponent>(GetOwner()->AddComponentByClass(EngineConfig, false, FTransform(), false));
 		}
 		else
 		{
@@ -694,7 +676,7 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (ClutchConfig)
 		{
-			Clutch = Cast<UVehicleClutchComponent>(ParentActor->AddComponentByClass(ClutchConfig, false, FTransform(), false));
+			Clutch = Cast<UVehicleClutchComponent>(GetOwner()->AddComponentByClass(ClutchConfig, false, FTransform(), false));
 		}
 		else
 		{
@@ -707,7 +689,7 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (GearboxConfig)
 		{
-			Gearbox = Cast<UVehicleGearboxComponent>(ParentActor->AddComponentByClass(GearboxConfig, false, FTransform(), false));
+			Gearbox = Cast<UVehicleGearboxComponent>(GetOwner()->AddComponentByClass(GearboxConfig, false, FTransform(), false));
 		}
 		else
 		{
@@ -720,7 +702,7 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (TransferCaseConfig)
 		{
-			TransferCase = Cast<UVehicleDifferentialComponent>(ParentActor->AddComponentByClass(TransferCaseConfig, false, FTransform(), false));
+			TransferCase = Cast<UVehicleDifferentialComponent>(GetOwner()->AddComponentByClass(TransferCaseConfig, false, FTransform(), false));
 		}
 		else
 		{
@@ -735,10 +717,17 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 int UVehicleDriveAssemblyComponent::GenerateAxles()
 {
-	if (!ParentActor)return -1;
-	if (!Carbody)return -2;
+	if (!Carbody.IsValid())return -1;
 
-	if (Axles.Num() > 0)return -3;
+	//if there are axles, destroy them
+	if (Axles.Num() > 0)
+	{
+		for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
+		{
+			if (IsValid(TempAxle))TempAxle->DestroyComponent();
+		}
+		Axles.Empty();
+	}
 
 	int32 n = 0;
 	for (FAxleAssemblyConfig TempAxleConfig : AxleConfigs)
@@ -748,14 +737,14 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 		if (TempAxleClass)
 		{
 			TempAxle = Cast<UVehicleAxleAssemblyComponent>
-				(ParentActor->AddComponentByClass(TempAxleClass, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)), true));
+				(GetOwner()->AddComponentByClass(TempAxleClass, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)), true));
 		}
 		else
 		{
 			TempAxle = Cast<UVehicleAxleAssemblyComponent>
-				(ParentActor->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)), true));
+				(GetOwner()->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)), true));
 		}
-		TempAxle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+		TempAxle->AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepRelativeTransform);
 
 		if (IsValid(TempAxle))
 		{
@@ -772,7 +761,7 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 			n++;
 		}
 
-		ParentActor->FinishAddComponent(TempAxle, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)));
+		GetOwner()->FinishAddComponent(TempAxle, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)));
 	}
 	return n;
 }

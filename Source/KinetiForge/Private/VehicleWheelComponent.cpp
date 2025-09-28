@@ -95,8 +95,8 @@ void UVehicleWheelComponent::BeginPlay()
 	// ...
 	ComponentRelativeTransform = GetRelativeTransform();
 
-	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody);
-	if (IsValid(WheelCoordinator))
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
+	if (WheelCoordinator.IsValid())
 	{
 		WheelCoordinator->RegisterWheel(this);
 	}
@@ -113,15 +113,14 @@ void UVehicleWheelComponent::OnRegister()
 	//...
 	//get parent
 	CurrentWorld = GetWorld();
-	ParentActor = GetOwner();
 	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
 
-	if (!IsValid(Carbody) || !IsValid(ParentActor))
+	if (!Carbody.IsValid())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: Carbody Not Found!"));
 	}
 
-	Suspension.Initialize(this, ParentActor);
+	Suspension.Initialize(this);
 	Wheel.Initialize(this, Carbody);
 
 	//initialize meshes
@@ -147,11 +146,10 @@ void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 		BrakeMeshComponent = nullptr;
 	}
 
-	if (WheelCoordinator && !WheelCoordinator->IsBeingDestroyed()) { WheelCoordinator->NotifyWheelMoved(); }
+	if (WheelCoordinator.IsValid() && !WheelCoordinator->IsBeingDestroyed()) { WheelCoordinator->NotifyWheelMoved(); }
 
-	if (CurrentWorld)CurrentWorld = nullptr;
-	if (Carbody)Carbody = nullptr;
-	if (ParentActor)ParentActor = nullptr;
+	if (CurrentWorld.IsValid())CurrentWorld = nullptr;
+	if (Carbody.IsValid())Carbody = nullptr;
 	if (TireConfig.Fx)TireConfig.Fx = nullptr;
 	if (TireConfig.Fy)TireConfig.Fy = nullptr;
 	if (TireConfig.Gx)TireConfig.Gx = nullptr;
@@ -165,26 +163,26 @@ void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 
 bool UVehicleWheelComponent::GenerateMeshComponents()
 {
-	if (!WheelHubComponent)
+	if (!IsValid(WheelHubComponent))
 	{
 		WheelHubComponent = NewObject<USceneComponent>(this, USceneComponent::StaticClass());
-		ParentActor->AddInstanceComponent(WheelHubComponent);
+		GetOwner()->AddInstanceComponent(WheelHubComponent);
 		WheelHubComponent->RegisterComponent();
 	}
 	WheelHubComponent->AttachToComponent(this, FAttachmentTransformRules::KeepRelativeTransform);
 
-	if (!WheelMeshComponent && WheelHubComponent)
+	if (!IsValid(WheelMeshComponent) && WheelHubComponent)
 	{
 		WheelMeshComponent = NewObject<UStaticMeshComponent>(this);
-		ParentActor->AddInstanceComponent(WheelMeshComponent);
+		GetOwner()->AddInstanceComponent(WheelMeshComponent);
 		WheelMeshComponent->RegisterComponent();
 	}
 	WheelMeshComponent->AttachToComponent(WheelHubComponent, FAttachmentTransformRules::KeepRelativeTransform);
 
-	if (!BrakeMeshComponent && WheelHubComponent)
+	if (!IsValid(BrakeMeshComponent) && WheelHubComponent)
 	{
 		BrakeMeshComponent = NewObject<UStaticMeshComponent>(this);
-		ParentActor->AddInstanceComponent(BrakeMeshComponent);
+		GetOwner()->AddInstanceComponent(BrakeMeshComponent);
 		BrakeMeshComponent->RegisterComponent();
 	}
 	BrakeMeshComponent->AttachToComponent(WheelHubComponent, FAttachmentTransformRules::KeepRelativeTransform);
@@ -194,7 +192,7 @@ bool UVehicleWheelComponent::GenerateMeshComponents()
 
 void UVehicleWheelComponent::UpdateMeshes(float DeltaTime, float MaxAnimAngularVelocity)
 {
-	if (!WheelHubComponent || !WheelMeshComponent)return;
+	if (!IsValid(WheelHubComponent) || !IsValid(WheelMeshComponent))return;
 
 	WheelHubComponent->SetRelativeLocation(Suspension.SuspensionPlaneToZYPlane(Suspension.SimData.BallJointPos2D));
 	WheelHubComponent->SetRelativeRotation(ComponentRelativeTransform.InverseTransformRotation(Suspension.SimData.WheelRelativeTransform.GetRotation()));
@@ -249,15 +247,21 @@ void UVehicleWheelComponent::UpdatePhysics(
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheel);
 
 	//check if carbody is valid
-	if (!IsValid(Carbody))
+	if (!Carbody.IsValid())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CarBody!!!"));
 		return;
 	}
 
+	//check if current world is valid
+	if (!CurrentWorld.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CurrentWorld!!!"));
+		return;
+	}
 
 	//get worldtransform
-	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody);
+	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody.Get());
 
 	//Suspension
 	Suspension.UpdateSuspension(
@@ -265,8 +269,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 		InSteeringAngle,
 		InSwaybarForce, 
 		ComponentRelativeTransform, 
-		CarbodyAsyncWorldTransform, 
-		CurrentWorld);
+		CarbodyAsyncWorldTransform);
 
 	//Wheel
 	Wheel.UpdateWheel(
@@ -280,7 +283,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 
 void UVehicleWheelComponent::GetWheelCoordinator(UVehicleWheelCoordinatorComponent*& OutWheelCoordinator)
 {
-	OutWheelCoordinator = WheelCoordinator;
+	OutWheelCoordinator = WheelCoordinator.Get();
 }
 
 float UVehicleWheelComponent::ComputeFeedBackTorque()
@@ -288,14 +291,6 @@ float UVehicleWheelComponent::ComputeFeedBackTorque()
 	FVector LeverArm = Suspension.SimData.HitStruct.ImpactPoint - Suspension.SimData.HitStruct.Location;
 	FVector Torque = FVector::CrossProduct(LeverArm, Wheel.SimData.TyreForce);
 	return FVector::DotProduct(Suspension.SimData.StrutDirection, Torque);
-}
-
-bool UVehicleWheelComponent::GetAttachedComponent(AActor*& OutParentActor, UPrimitiveComponent*& OutParentComponent)
-{
-	if (ParentActor)OutParentActor = ParentActor;
-	if (Carbody)OutParentComponent = Carbody;
-
-	return Carbody && ParentActor;
 }
 
 bool UVehicleWheelComponent::GetRayCastResult(FHitResult& OutHitResult, bool& OutRevised)
@@ -325,14 +320,14 @@ void UVehicleWheelComponent::DrawSuspensionForce(float Duration, float Thickness
 
 void UVehicleWheelComponent::DrawWheelForce(float Duration, float Thickness, float Length, bool bDrawVelocity, bool bDrawSlip, bool bDrawInertia)
 {
-	Wheel.DrawWheelForce(CurrentWorld, Suspension.SimData, Duration, Thickness, Length, bDrawVelocity, bDrawSlip, bDrawInertia);
+	Wheel.DrawWheelForce(CurrentWorld.Get(), Suspension.SimData, Duration, Thickness, Length, bDrawVelocity, bDrawSlip, bDrawInertia);
 }
 
 bool UVehicleWheelComponent::SetMesh(float SteeringAxleOffset,
 	UStaticMesh* NewWheelMesh, FTransform WheelMeshRelatvieTransform,
 	UStaticMesh* NewBrakeMesh, FTransform BrakeMeshRelativeTransform)
 {
-	if (!WheelHubComponent || !WheelMeshComponent || !BrakeMeshComponent)return false;
+	if (!IsValid(WheelHubComponent) || !IsValid(WheelMeshComponent) || !IsValid(BrakeMeshComponent))return false;
 
 	//if is left wheel
 	if (GetRelativeLocation().Y < 0)
@@ -395,7 +390,7 @@ FQuat UVehicleWheelComponent::UpdateSuspensionArmAnim(USceneComponent* InArmMesh
 	TempArmRot *= TempInitialRot;
 	TempArmRot.Normalize();
 
-	if (InArmMesh)
+	if (IsValid(InArmMesh))
 	{
 		InArmMesh->SetRelativeRotation(TempArmRot);
 	}
@@ -405,7 +400,7 @@ FQuat UVehicleWheelComponent::UpdateSuspensionArmAnim(USceneComponent* InArmMesh
 
 FTransform UVehicleWheelComponent::UpdateSuspensionSpringAnim(USceneComponent* InSpringMesh, FVector InScaleAxis, float InOffsetAlongArm, FVector2D InBallJointOffset, FRotator InRotationOffset, float InLengthBias, FVector InInitialScale)
 {
-	if (!InSpringMesh)return FTransform();
+	if (!IsValid(InSpringMesh))return FTransform();
 
 	float PosSign = Suspension.SimData.WheelPos;
 	InRotationOffset.Yaw *= PosSign;
@@ -445,7 +440,7 @@ FTransform UVehicleWheelComponent::UpdateSuspensionSpringAnim(USceneComponent* I
 
 void UVehicleWheelComponent::AttachWheelHubMeshToSuspension(USceneComponent* InWheelHub, FTransform InTransform)
 {
-	if (!InWheelHub)return;
+	if (!IsValid(InWheelHub))return;
 	InWheelHub->AttachToComponent(WheelHubComponent, FAttachmentTransformRules::KeepRelativeTransform);
 	InWheelHub->SetRelativeTransform(InTransform);
 }
