@@ -94,7 +94,7 @@ void UVehicleClutchComponent::UpdatePhysics(float InDeltaTime, float InClutchVal
 {
 	SimData.PhysicsDeltaTime = InDeltaTime;
 
-	if (!TargetEngine)return;
+	if (!IsValid(TargetEngine))return;
 	SimData.EngineAngularVelocity = TargetEngine->GetAngularVelocity();
 	SimData.EngineInertia = TargetEngine->NAConfig.EngineInertia;
 	if (TargetEngine->TurboConfig.TurboBoostTorque > SMALL_NUMBER && TargetEngine->TurboConfig.TurboMaxPressure > SMALL_NUMBER)

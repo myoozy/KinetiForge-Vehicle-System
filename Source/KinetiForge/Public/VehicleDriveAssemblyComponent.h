@@ -71,7 +71,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     TArray<FAxleAssemblyConfig> AxleConfigs;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
-    FVehiclInputInterpSpeed InputConfig;
+    FVehiclInputConfig InputConfig;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     FVehicleInputAssistConfig InputAssistConfig;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -120,7 +120,7 @@ protected:
     FVector LocalVelocityClamped;
     TArray<FVector2D> SpeedRangeOfEachGear;
 
-    FVehicleInputValue InputValues;
+    FVehicleInputPipeline InputValues;
 
 public:
     // Called every frame
@@ -149,15 +149,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Input")
     EEngineState ShutVehicleEngine();
     UFUNCTION(BlueprintCallable, Category = "Input")
-    float InterpInputValueConstant(float Current, float InTarget, float InDeltaTime, FVector2D InInterpSpeed);
-    UFUNCTION(BlueprintCallable, Category = "Input")
-    float InterpInputValue(float Current, float InTarget, float InDeltaTime, FVector2D InInterpSpeed);
-    UFUNCTION(BlueprintCallable, Category = "Input")
     void RotateCamera(USceneComponent* InSpringArm, FVector2D InMouseInput, bool bInvertYAxis = false, float InMaxPitch = 80);
     UFUNCTION(BlueprintCallable, Category = "Input")
     void UpdateDriftCamera(USceneComponent* InSpringArm, float InPitch, float InDriftCamRate = 1.f, float InDriftCamInterpSpeed = 5.f, float InDriftCamStartSpeed_mps = 5.f);
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Input")
-    void GetInputValues(FVehicleInputValue& Out) { Out = InputValues; }
+    void GetInputValues(FVehicleInputPipeline& Out) { Out = InputValues; }
     UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator.Get(); }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Components")
     TArray<UVehicleAxleAssemblyComponent*> GetAxles() { return Axles; }

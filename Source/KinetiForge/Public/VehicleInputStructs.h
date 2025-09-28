@@ -5,32 +5,62 @@
 #include "CoreMinimal.h"
 #include "VehicleInputStructs.generated.h"
 
-
 USTRUCT(BlueprintType)
-struct FVehiclInputInterpSpeed
+struct FVehicleInputAxisConfig
 {
     GENERATED_USTRUCT_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D ThrottleInterpSpeed = FVector2D(5, 5);
+    FVector2D InterpSpeed = FVector2D(5.f, 5.f);
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* ThrottleCurve = nullptr;
+    UCurveFloat* ResponseCurve = nullptr;
+
+    FVehicleInputAxisConfig(
+        FVector2D newInterpSpeed = FVector2D(5.f, 5.f),
+        UCurveFloat* newResponseCurve = nullptr)
+    {
+        InterpSpeed = newInterpSpeed;
+        ResponseCurve = newResponseCurve;
+    }
+
+    static float InterpInputValueConstant(
+        float Current,
+        float Target,
+        float DeltaTime,
+        FVector2D Speed
+    )
+    {
+        float s = (Target < SMALL_NUMBER) ? Speed.Y : Speed.X;
+        return (s <= 0) ? Target : FMath::FInterpConstantTo(Current, Target, DeltaTime, s);
+    }
+
+    static float InterpInputValue(
+        float Current,
+        float Target,
+        float DeltaTime,
+        FVector2D Speed
+    )
+    {
+        float s = (Target < SMALL_NUMBER) ? Speed.Y : Speed.X;
+        return (s <= 0) ? Target : FMath::FInterpTo(Current, Target, DeltaTime, s);
+    }
+};
+
+USTRUCT(BlueprintType)
+struct FVehiclInputConfig
+{
+    GENERATED_USTRUCT_BODY()
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D BrakeInterpSpeed = FVector2D(5, 5);
+    FVehicleInputAxisConfig Throttle;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* BrakeCurve = nullptr;
+    FVehicleInputAxisConfig Brake;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D ClutchInterpSpeed = FVector2D(5, 5);
+    FVehicleInputAxisConfig Clutch;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* ClutchCurve = nullptr;
+    FVehicleInputAxisConfig Handbrake = FVehicleInputAxisConfig(FVector2D(15.f, 15.f));
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D HandbrakeInterpSpeed = FVector2D(15, 15);
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* HandbrakeCurve = nullptr;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D SteeringInterpSpeed = FVector2D(2.5, 2.5);
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UCurveFloat* SteeringCurve = nullptr;
+    FVehicleInputAxisConfig Steering = FVehicleInputAxisConfig(FVector2D(2.5f, 2.5f));
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     UCurveFloat* HighSpeedSteeringScale = nullptr;
 };
@@ -57,46 +87,34 @@ struct FVehicleInputAssistConfig
 };
 
 USTRUCT(BlueprintType)
-struct FVehicleInputValue
+struct FVehicleInputState
 {
     GENERATED_USTRUCT_BODY()
 
     //input
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float ThrottleValue = 0.f;
+    float Throttle = 0.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float BrakeValue = 0.f;
+    float Brake = 0.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float ClutchValue = 0.f;
+    float Clutch = 0.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float SteeringValue = 0.f;
+    float Handbrake = 0.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float HandbrakeValue = 0.f;
+    float Steering = 0.f;
+};
 
-    //player input
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float ThrottleInput = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float BrakeInput = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float ClutchInput = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float SteeringInput = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float HandbrakeInput = 0.f;
+USTRUCT(BlueprintType)
+struct FVehicleInputPipeline
+{
+    GENERATED_USTRUCT_BODY()
 
-    //real input
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float RealThrottleValue = 0.f;
+    FVehicleInputState Raw;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float RealBrakeValue = 0.f;
+    FVehicleInputState Smoothened;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float RealClutchValue = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float RealSteeringValue = 0.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float RealHandbrakeValue = 0.f;
-
+    FVehicleInputState Final;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool bSwitchThrottleAndBrake = false;
 };
