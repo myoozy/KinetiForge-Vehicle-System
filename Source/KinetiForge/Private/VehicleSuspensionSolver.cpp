@@ -3,6 +3,7 @@
 
 #include "VehicleSuspensionSolver.h"
 #include "VehicleWheelComponent.h"
+#include "AsyncTickFunctions.h"
 
 FVehicleSuspensionSolver::FVehicleSuspensionSolver()
 {
@@ -63,9 +64,7 @@ float FVehicleSuspensionSolver::ComputeCriticalDamping()
 void FVehicleSuspensionSolver::UpdateSuspension(
 	float InDeltaTime,
 	float InSteeringAngle, 
-	float InSwaybarForce, 
-	const FTransform& InRelativeTransform,
-	const FTransform& InCarbodyWorldTransform)
+	float InSwaybarForce)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleSuspensionSolver);
 
@@ -74,16 +73,15 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	SimData.PhysicsDelatTime = InDeltaTime;
 	SimData.SteeringAngle = InSteeringAngle;
 	SimData.SwaybarForce = InSwaybarForce;
-	SimData.RelativeTransform = InRelativeTransform;
-	SimData.CarbodyWorldTransform = InCarbodyWorldTransform;
-
-	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
+	SimData.RelativeTransform = TargetWheelComponent->GetRelativeTransform();
+	SimData.CarbodyWorldTransform = UAsyncTickFunctions::ATP_GetTransform(TargetWheelComponent->GetCarbody());
 
 	//dealing with transforms
-	SimData.WheelPos = FMath::Sign(InRelativeTransform.GetLocation().Y);
+	SimData.WheelPos = FMath::Sign(SimData.RelativeTransform.GetLocation().Y);
 	SimData.WheelPos += SimData.WheelPos == 0.f;	//if(wheelpos == 0) wheelpos = 1;
-	SimData.TopMountPos2D = FVector2D(Config.TopMountPosition.Y, Config.TopMountPosition.X + Config.ArmLength);
-	SimData.ComponentRelativeForwardVector = InRelativeTransform.GetRotation().GetForwardVector();
+	FVector2D TopMountConfig = TargetWheelComponent->SuspensionKinematicsConfig.TopMountPosition;
+	SimData.TopMountPos2D = FVector2D(TopMountConfig.Y, TopMountConfig.X + TargetWheelComponent->SuspensionKinematicsConfig.ArmLength);
+	SimData.ComponentRelativeForwardVector = SimData.RelativeTransform.GetRotation().GetForwardVector();
 
 	switch (TargetWheelComponent->SuspensionKinematicsConfig.SuspensionType)
 	{
@@ -116,6 +114,15 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	ComputeSuspensionForce();
 }
 
+void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
+{
+	ComputeRayCastLength();
+	SimData.SuspensionExtensionRatio = InExtensionRatio;
+	SimData.HitDistance = InExtensionRatio * SimData.RayCastLength;
+	SimData.SteeringAngle = InSteeringAngle;
+
+}
+
 void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)
 {
 	if (!TargetWheelComponent.IsValid())return;
@@ -123,7 +130,7 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 	UWorld* TempWorld = TargetWheelComponent->GetWorld();
 	if (!TempWorld)return;
 
-	FTransform CarbodyWorldTrans = TargetWheelComponent->GetAsyncCarbodyTransform();
+	const FTransform& CarbodyWorldTrans = SimData.CarbodyWorldTransform;
 
 	FTransform WheelTrans = SimData.WheelRelativeTransform * CarbodyWorldTrans;
 
@@ -182,7 +189,7 @@ void FVehicleSuspensionSolver::DrawSuspensionForce(float Duration, float Thickne
 	FColor TempColor = FColor(0, 255, 127);
 	if (SimData.SuspensionForceRaw < 0)TempColor = FColor(255 - TempColor.R, 255 - TempColor.G, 255 - TempColor.B);
 
-	FTransform CarbodyTrans = TargetWheelComponent->GetAsyncCarbodyTransform();
+	const FTransform& CarbodyTrans = SimData.CarbodyWorldTransform;
 
 	FVector TempStart = CarbodyTrans.TransformPositionNoScale(SimData.TopMountRelativePos);
 	FVector TempEnd = TempStart + SimData.SuspensionForceVector * Length * 0.01;

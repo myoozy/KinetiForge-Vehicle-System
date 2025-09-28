@@ -111,7 +111,7 @@ protected:
     //physics
     float PhysicsDeltaTime;
     float Speed_kph;
-    float AutoShiftTimer;
+    float AutoGearboxCount;
     int32 NumOfWheelsOnGround;
     int32 NumOfDriveAxles;
     bool bIsInAir;

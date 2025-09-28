@@ -13,13 +13,10 @@ FVehicleWheelSolver::~FVehicleWheelSolver()
 {
 }
 
-bool FVehicleWheelSolver::Initialize(
-	TWeakObjectPtr<UVehicleWheelComponent> InTargetWheelComponent, 
-	TWeakObjectPtr<UPrimitiveComponent> InCarbody)
+bool FVehicleWheelSolver::Initialize(TWeakObjectPtr<UVehicleWheelComponent> InTargetWheelComponent)
 {
 	TargetWheelComponent = InTargetWheelComponent;
-	Carbody = InCarbody;
-	return TargetWheelComponent.IsValid() && Carbody.IsValid();
+	return TargetWheelComponent.IsValid();
 }
 
 void FVehicleWheelSolver::UpdateWheel(
@@ -32,7 +29,7 @@ void FVehicleWheelSolver::UpdateWheel(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelSolver);
 
-	if (!TargetWheelComponent.IsValid() || !Carbody.IsValid()) return;
+	if (!TargetWheelComponent.IsValid()) return;
 
 	FVehicleWheelConfig& Config = TargetWheelComponent->WheelConfig;
 
@@ -208,7 +205,7 @@ void FVehicleWheelSolver::ComputeLinearVelocity(FVector LongForceDir, FVector La
 
 	if (HitStruct.bBlockingHit)
 	{
-		FVector LinVelWorldA = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(Carbody.Get(), HitStruct.ImpactPoint, "NONE");
+		FVector LinVelWorldA = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(TargetWheelComponent->GetCarbody(), HitStruct.ImpactPoint, "NONE");
 		FVector LinVelWorldB = FVector(0.f);
 
 		if (IsValid(HitStruct.GetComponent()) && HitStruct.GetComponent()->Mobility != EComponentMobility::Static)
@@ -346,12 +343,15 @@ FVector2D FVehicleWheelSolver::ComputeGravityProjectionOnSlope(float PositiveSus
 	GravityProj.Y = (LatForceDir.Z + FMath::Abs(LatForceDir.Z) * SlipSign * Mu) * PositiveSuspensionForce;
 
 	//longitudinal:
-	SlipSign = FMath::Sign(SimData.LongSlipVelocity);
-	GravityProj.X = (LongForceDir.Z + FMath::Abs(LongForceDir.Z) * SlipSign * Mu) * PositiveSuspensionForce;
+	if (SimData.bIsLocked)
+	{
+		SlipSign = FMath::Sign(SimData.LongSlipVelocity);
+		GravityProj.X = (LongForceDir.Z + FMath::Abs(LongForceDir.Z) * SlipSign * Mu) * PositiveSuspensionForce;
 
-	//consider brake force?
-	float BrakeForce = SimData.BrakeTorque * SimData.RInv;	//SimData.BrakeTorque is always positive
-	GravityProj.X = FMath::Clamp(GravityProj.X, -BrakeForce, BrakeForce);
+		//consider brake force?
+		float BrakeForce = SimData.BrakeTorque * SimData.RInv;	//SimData.BrakeTorque is always positive
+		GravityProj.X = FMath::Clamp(GravityProj.X, -BrakeForce, BrakeForce);
+	}
 
 	//in the lateral direction, the wheel can be treated as it is always braking
 
@@ -474,7 +474,7 @@ void FVehicleWheelSolver::ApplyTireForce(const FVehicleSuspensionSimData& Suspen
 		break;
 	}
 
-	UAsyncTickFunctions::ATP_AddImpulseAtPosition(Carbody.Get(), PosToApplyImpulse, TotalImpulse * 100, "NONE");
+	UAsyncTickFunctions::ATP_AddImpulseAtPosition(TargetWheelComponent->GetCarbody(), PosToApplyImpulse, TotalImpulse * 100, "NONE");
 
 	if (IsValid(SuspensionSimData.HitStruct.GetComponent()) &&
 		SuspensionSimData.HitStruct.GetComponent()->IsSimulatingPhysics())

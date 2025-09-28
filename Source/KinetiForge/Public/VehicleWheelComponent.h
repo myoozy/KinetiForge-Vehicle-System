@@ -66,14 +66,12 @@ protected:
 	UPROPERTY()
 	TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
 
-	//Transform
-	FTransform CarbodyAsyncWorldTransform;
-	FTransform ComponentRelativeTransform;
-	FVector CachedComponentRelativeLocation;
 	//suspension movement
 	FVehicleSuspensionSolver Suspension;
 	//wheel movement
 	FVehicleWheelSolver Wheel;
+	//cache
+	FVector CachedComponentRelativeLocation;
 
 public:	
 	// Called every frame
@@ -102,9 +100,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	float ComputeFeedBackTorque();
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	FTransform GetAsyncCarbodyTransform() { return CarbodyAsyncWorldTransform; }
-
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void SetP4MotorTorque(float NewTorque) { Wheel.SimData.P4MotorTorque = NewTorque; }
 
@@ -123,12 +118,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ReadOnly")
 	bool GetRayCastResult(FHitResult& OutHitResult, bool& OutRevised);
 	bool GetRayCastResult() { return Suspension.SimData.bHitGround; }
-
-	UFUNCTION(BlueprintCallable, Category = "ReadOnly")
-	void GetWheelTransform(
-		FTransform& OutComponentRelativeTransform,
-		FTransform& OutRaycastTransform, 
-		FTransform& OutParentTransform);
 
 	//debug draw
 	UFUNCTION(BlueprintCallable, Category = "Debug")

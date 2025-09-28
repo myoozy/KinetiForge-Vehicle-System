@@ -73,7 +73,7 @@ void UVehicleDriveAssemblyComponent::BeginPlay()
 	GeneratePowerUnit();
 
 	//initialize autogearbox timer
-	AutoShiftTimer = FMath::FRandRange(-AutoGearboxConfig.AutomaticGearboxRefreshTime, 0.0f) + AutoGearboxConfig.AutomaticGearboxRefreshTime;
+	AutoGearboxCount = FMath::FRandRange(-AutoGearboxConfig.AutomaticGearboxRefreshTime, 0.0f) + AutoGearboxConfig.AutomaticGearboxRefreshTime;
 
 }
 
@@ -259,11 +259,11 @@ void UVehicleDriveAssemblyComponent::UpdateSteering(float InDeltaTime)
 
 void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 {	
-	AutoShiftTimer += InDeltaTime;
+	AutoGearboxCount += InDeltaTime;
 	//reset timer
 	//±£ÁôÎó²î
-	bool AutoGearboxTimerOverFlowed = AutoShiftTimer > 0.f;
-	AutoShiftTimer -= AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxTimerOverFlowed;
+	bool AutoGearboxTimerOverFlowed = AutoGearboxCount > 0.f;
+	AutoGearboxCount -= AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxTimerOverFlowed;
 
 	if (bIsInAir || 
 		!Gearbox->GetIsInGear() ||
@@ -282,13 +282,13 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 			if (InputValues.Raw.Throttle > SMALL_NUMBER)
 			{
 				Gearbox->ShiftToTargetGear(1, AutoGearboxConfig.bArcadeShiftInstant);
-				AutoShiftTimer += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
+				AutoGearboxCount += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
 				return;
 			}
 			else if (InputValues.Raw.Brake > SMALL_NUMBER && InputValues.Raw.Throttle <= SMALL_NUMBER)
 			{
 				Gearbox->ShiftToTargetGear(-1, AutoGearboxConfig.bArcadeShiftInstant);
-				AutoShiftTimer += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
+				AutoGearboxCount += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
 				return;
 			}
 		}
@@ -298,19 +298,19 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 			if (InputValues.Raw.Throttle > SMALL_NUMBER)
 			{
 				Gearbox->ShiftToTargetGear(1, AutoGearboxConfig.bArcadeShiftInstant);
-				AutoShiftTimer += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
+				AutoGearboxCount += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
 				return;
 			}
 			else if (InputValues.Raw.Brake > SMALL_NUMBER)
 			{
 				Gearbox->ShiftToTargetGear(-1, AutoGearboxConfig.bArcadeShiftInstant);
-				AutoShiftTimer += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
+				AutoGearboxCount += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
 				return;
 			}
 			else
 			{
 				Gearbox->ShiftToTargetGear(0, AutoGearboxConfig.bArcadeShiftInstant);
-				AutoShiftTimer += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
+				AutoGearboxCount += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
 				return;
 			}
 		}
@@ -369,7 +369,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 		if (TargetGear * Gearbox->GetCurrentGear() > 0)
 		{
 			Gearbox->ShiftToTargetGear(TargetGear);
-			AutoShiftTimer -= AutoGearboxConfig.AutoShiftCoolDown;
+			AutoGearboxCount -= AutoGearboxConfig.AutoShiftCoolDown;
 		}
 	}
 }
@@ -504,19 +504,19 @@ void UVehicleDriveAssemblyComponent::InputHandbrake(float InValue)
 
 void UVehicleDriveAssemblyComponent::ShiftToTargetGear(int32 InTargetGear, float InAutoShiftCoolDown, bool bImmediate)
 {
-	AutoShiftTimer = -InAutoShiftCoolDown;
+	AutoGearboxCount = -InAutoShiftCoolDown;
 	Gearbox->ShiftToTargetGear(InTargetGear, bImmediate);
 }
 
 void UVehicleDriveAssemblyComponent::ShiftUp(float InAutoShiftCoolDown, bool bImmediate)
 {
-	AutoShiftTimer = -InAutoShiftCoolDown;
+	AutoGearboxCount = -InAutoShiftCoolDown;
 	Gearbox->ShiftToTargetGear(Gearbox->GetCurrentGear() + 1, bImmediate);
 }
 
 void UVehicleDriveAssemblyComponent::ShiftDown(float InAutoShiftCoolDown, bool bImmediate)
 {
-	AutoShiftTimer = -InAutoShiftCoolDown;
+	AutoGearboxCount = -InAutoShiftCoolDown;
 	Gearbox->ShiftToTargetGear(Gearbox->GetCurrentGear() - 1, bImmediate);
 }
 

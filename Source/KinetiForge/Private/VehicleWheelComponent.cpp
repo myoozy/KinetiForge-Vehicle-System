@@ -2,7 +2,6 @@
 
 
 #include "VehicleWheelComponent.h"
-#include "AsyncTickFunctions.h"
 #include "VehicleWheelCoordinatorComponent.h"
 
 // Sets default values for this component's properties
@@ -93,8 +92,6 @@ void UVehicleWheelComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	ComponentRelativeTransform = GetRelativeTransform();
-
 	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
 	if (WheelCoordinator.IsValid())
 	{
@@ -121,7 +118,7 @@ void UVehicleWheelComponent::OnRegister()
 	}
 
 	Suspension.Initialize(this);
-	Wheel.Initialize(this, Carbody);
+	Wheel.Initialize(this);
 
 	//initialize meshes
 	GenerateMeshComponents();
@@ -195,7 +192,7 @@ void UVehicleWheelComponent::UpdateMeshes(float DeltaTime, float MaxAnimAngularV
 	if (!IsValid(WheelHubComponent) || !IsValid(WheelMeshComponent))return;
 
 	WheelHubComponent->SetRelativeLocation(Suspension.SuspensionPlaneToZYPlane(Suspension.SimData.BallJointPos2D));
-	WheelHubComponent->SetRelativeRotation(ComponentRelativeTransform.InverseTransformRotation(Suspension.SimData.WheelRelativeTransform.GetRotation()));
+	WheelHubComponent->SetRelativeRotation(Suspension.SimData.RelativeTransform.InverseTransformRotation(Suspension.SimData.WheelRelativeTransform.GetRotation()));
 	if (WheelMeshComponent)
 	{
 		if (MaxAnimAngularVelocity > 0)
@@ -217,9 +214,8 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	// ...
 
-	ComponentRelativeTransform = GetRelativeTransform();
 	//check if staticloadmass should be calculated again
-	FVector NewRelativeLocation = ComponentRelativeTransform.GetLocation();
+	FVector NewRelativeLocation = GetRelativeLocation();
 	if ((CachedComponentRelativeLocation - NewRelativeLocation).SquaredLength() > 1.f)
 	{
 		WheelCoordinator->NotifyWheelMoved();
@@ -260,16 +256,11 @@ void UVehicleWheelComponent::UpdatePhysics(
 		return;
 	}
 
-	//get worldtransform
-	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody.Get());
-
 	//Suspension
 	Suspension.UpdateSuspension(
 		InPhysicsDeltaTime, 
 		InSteeringAngle,
-		InSwaybarForce, 
-		ComponentRelativeTransform, 
-		CarbodyAsyncWorldTransform);
+		InSwaybarForce);
 
 	//Wheel
 	Wheel.UpdateWheel(
@@ -298,14 +289,6 @@ bool UVehicleWheelComponent::GetRayCastResult(FHitResult& OutHitResult, bool& Ou
 	OutHitResult = Suspension.SimData.HitStruct;
 	OutRevised = Suspension.SimData.bRayCastRevised;
 	return Suspension.SimData.bHitGround;
-}
-
-void UVehicleWheelComponent::GetWheelTransform(FTransform& OutComponentRelativeTransform,
-	FTransform& OutRaycastTransform, FTransform& OutParentTransform)
-{
-	OutComponentRelativeTransform = ComponentRelativeTransform;
-	OutRaycastTransform = Suspension.SimData.RayCastTransform;
-	OutParentTransform = CarbodyAsyncWorldTransform;
 }
 
 void UVehicleWheelComponent::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)
@@ -411,11 +394,11 @@ FTransform UVehicleWheelComponent::UpdateSuspensionSpringAnim(USceneComponent* I
 	FVector BallJointOffset3D = Suspension.SimData.WheelRelativeTransform.TransformPosition(FVector(0.f, InBallJointOffset.Y, InBallJointOffset.X));
 	BallJointOffset3D -= Suspension.SimData.WheelRelativeTransform.GetLocation();
 
-	FVector PivotPos = ComponentRelativeTransform.TransformPosition(Suspension.SuspensionPlaneToZYPlane(FVector2D(0.f)));
+	FVector PivotPos = Suspension.SimData.RelativeTransform.TransformPosition(Suspension.SuspensionPlaneToZYPlane(FVector2D(0.f)));
 	FVector ArmDir = (PivotPos - Suspension.SimData.BallJointRelativePos).GetSafeNormal();
 	
 	FVector OffsetJointPos = Suspension.SimData.BallJointRelativePos + ArmDir * InOffsetAlongArm;
-	FVector OffsetInitialJointPos = ComponentRelativeTransform.TransformPosition(FVector(0.f, InOffsetAlongArm * -PosSign, 0.f));
+	FVector OffsetInitialJointPos = Suspension.SimData.RelativeTransform.TransformPosition(FVector(0.f, InOffsetAlongArm * -PosSign, 0.f));
 
 	OffsetJointPos += BallJointOffset3D;
 	OffsetInitialJointPos += BallJointOffset3D;

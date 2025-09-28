@@ -17,9 +17,7 @@ public:
 	FVehicleWheelSolver();
 	~FVehicleWheelSolver();
 
-	bool Initialize(
-		TWeakObjectPtr<UVehicleWheelComponent> InTargetWheelComponent, 
-		TWeakObjectPtr<UPrimitiveComponent> InCarbody);
+	bool Initialize(TWeakObjectPtr<UVehicleWheelComponent> InTargetWheelComponent);
 	void UpdateWheel(
 		float InPhysicsDeltaTime,
 		float InDriveTorque,
@@ -41,7 +39,6 @@ public:
 
 protected:
 	TWeakObjectPtr<UVehicleWheelComponent> TargetWheelComponent;
-	TWeakObjectPtr<UPrimitiveComponent> Carbody;
 
 private:
 	void UpdateABS(float TargetBrakeTorque, bool bHitGround);

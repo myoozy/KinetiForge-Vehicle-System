@@ -22,9 +22,12 @@ public:
 	void UpdateSuspension(
 		float InDeltaTime,
 		float InSteeringAngle,
-		float InSwaybarForce, 
-		const FTransform& InRelativeTransform,
-		const FTransform& InCarbodyWorldTransform);
+		float InSwaybarForce
+	);
+	void ApplySuspensionStateDirect(
+		float InExtensionRatio = 1.f,
+		float InSteeringAngle = 0.f
+	);
 	void DrawSuspension(
 		float Duration = -1, 
 		float Thickness = 0, 
@@ -40,10 +43,10 @@ public:
 
 	bool CheckAndFixTriangle();//Abandoned
 
-	float GetVector2dAngleDegrees(FVector2D V2D);
-	float SafeDivide(float a, float b); //returns a / b
-	FVector2D ComputeCircleIntersection(FVector2D A, float RA, float R0, bool ReturnX1 = true); //Abandoned //Compute the intersection of the circle on point A and the point on (0, 0)
-	FQuat MakeQuatFrom2DVectors(const FVector2D From, const FVector2D To, const FVector Axis);
+	static float GetVector2dAngleDegrees(FVector2D V2D);//Abandoned
+	static float SafeDivide(float a, float b); //returns a / b
+	static FVector2D ComputeCircleIntersection(FVector2D A, float RA, float R0, bool ReturnX1 = true); //Abandoned //Compute the intersection of the circle on point A and the point on (0, 0)
+	static FQuat MakeQuatFrom2DVectors(const FVector2D From, const FVector2D To, const FVector Axis);
 	bool SingleSphereTrace(FVector Start, FVector End, float Radius, FHitResult& OutHit);
 	FVector SuspensionPlaneToZYPlane(FVector2D V2D);
 	FVector2D ZYPlaneToSuspensionPlane(FVector V3D);
