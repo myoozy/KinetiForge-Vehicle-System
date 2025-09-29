@@ -73,40 +73,24 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	SimData.PhysicsDelatTime = InDeltaTime;
 	SimData.SteeringAngle = InSteeringAngle;
 	SimData.SwaybarForce = InSwaybarForce;
-	SimData.RelativeTransform = TargetWheelComponent->GetRelativeTransform();
-	SimData.CarbodyWorldTransform = UAsyncTickFunctions::ATP_GetTransform(TargetWheelComponent->GetCarbody());
 
-	//dealing with transforms
-	SimData.WheelPos = FMath::Sign(SimData.RelativeTransform.GetLocation().Y);
-	SimData.WheelPos += SimData.WheelPos == 0.f;	//if(wheelpos == 0) wheelpos = 1;
-	FVector2D TopMountConfig = TargetWheelComponent->SuspensionKinematicsConfig.TopMountPosition;
-	SimData.TopMountPos2D = FVector2D(TopMountConfig.Y, TopMountConfig.X + TargetWheelComponent->SuspensionKinematicsConfig.ArmLength);
-	SimData.ComponentRelativeForwardVector = SimData.RelativeTransform.GetRotation().GetForwardVector();
+	PrepareSimulation();
+	ComputeValidPreload();
+	ComputeRayCastLocation();
+	SuspensionRayCast();
 
 	switch (TargetWheelComponent->SuspensionKinematicsConfig.SuspensionType)
 	{
 	case ESuspensionType::StraightLine:
-		ComputeValidPreload();
-		ComputeRayCastLocation();
-		SuspensionRayCast();
 		ComputeStraightSuspension();
 		break;
 	case ESuspensionType::Macpherson:
-		ComputeValidPreload();
-		ComputeRayCastLocation();
-		SuspensionRayCast();
 		ComputeMacpherson();
 		break;
 	case ESuspensionType::DoubleWishbone:
-		ComputeValidPreload();
-		ComputeRayCastLocation();
-		SuspensionRayCast();
 		ComputeDoubleWishbone();
 		break;
 	default:
-		ComputeValidPreload();
-		ComputeRayCastLocation();
-		SuspensionRayCast();
 		ComputeStraightSuspension();
 		break;
 	}
@@ -116,11 +100,28 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 
 void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
 {
+	PrepareSimulation();
 	ComputeRayCastLength();
+
 	SimData.SuspensionExtensionRatio = InExtensionRatio;
 	SimData.HitDistance = InExtensionRatio * SimData.RayCastLength;
 	SimData.SteeringAngle = InSteeringAngle;
-
+	
+	switch (TargetWheelComponent->SuspensionKinematicsConfig.SuspensionType)
+	{
+	case ESuspensionType::StraightLine:
+		ComputeStraightSuspension();
+		break;
+	case ESuspensionType::Macpherson:
+		ComputeMacpherson();
+		break;
+	case ESuspensionType::DoubleWishbone:
+		ComputeDoubleWishbone();
+		break;
+	default:
+		ComputeStraightSuspension();
+		break;
+	}
 }
 
 void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)
@@ -368,6 +369,19 @@ FVector FVehicleSuspensionSolver::GetCamberCasterToeFromCurve()
 	return v;
 }
 
+void FVehicleSuspensionSolver::PrepareSimulation()
+{
+	SimData.RelativeTransform = TargetWheelComponent->GetRelativeTransform();
+	SimData.CarbodyWorldTransform = UAsyncTickFunctions::ATP_GetTransform(TargetWheelComponent->GetCarbody());
+
+	//dealing with transforms
+	SimData.WheelPos = FMath::Sign(SimData.RelativeTransform.GetLocation().Y);
+	SimData.WheelPos += SimData.WheelPos == 0.f;	//if(wheelpos == 0) wheelpos = 1;
+	FVector2D TopMountConfig = TargetWheelComponent->SuspensionKinematicsConfig.TopMountPosition;
+	SimData.TopMountPos2D = FVector2D(TopMountConfig.Y, TopMountConfig.X + TargetWheelComponent->SuspensionKinematicsConfig.ArmLength);
+	SimData.ComponentRelativeForwardVector = SimData.RelativeTransform.GetRotation().GetForwardVector();
+}
+
 float FVehicleSuspensionSolver::ComputeValidPreload()
 {
 	FVehicleSuspensionSpringConfig& Config = TargetWheelComponent->SuspensionSpringConfig;
@@ -508,8 +522,8 @@ void FVehicleSuspensionSolver::ComputeStraightSuspension()
 	SimData.BallJointPos2D.X = SimData.RayCastStart2D.X - SimData.HitDistance;
 	SimData.BallJointPos2D.Y = Config.ArmLength;
 
-	SimData.BallJointRelativePos = SimData.RelativeTransform.TransformPosition(SuspensionPlaneToZYPlane(SimData.BallJointPos2D));
-	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPosition(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
+	SimData.BallJointRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.BallJointPos2D));
+	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
 
 	SimData.StrutRelativeDirection = SimData.RelativeTransform.GetRotation().GetUpVector();
 	FQuat SteeringBiasRotation = FQuat(SimData.StrutRelativeDirection, FMath::DegreesToRadians(SimData.SteeringAngle));
@@ -536,8 +550,8 @@ void FVehicleSuspensionSolver::ComputeMacpherson()
 	SimData.BallJointPos2D.X = FMath::Clamp(SimData.BallJointPos2D.X, -Config.ArmLength, Config.ArmLength);
 	SimData.BallJointPos2D.Y = FMath::Sqrt(FMath::Square(Config.ArmLength) - FMath::Square(SimData.BallJointPos2D.X));
 
-	SimData.BallJointRelativePos = SimData.RelativeTransform.TransformPosition(SuspensionPlaneToZYPlane(SimData.BallJointPos2D));
-	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPosition(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
+	SimData.BallJointRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.BallJointPos2D));
+	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
 
 	FVector2D TempInitialStrutDirection = SimData.TopMountPos2D - FVector2D(0, Config.ArmLength);
 	FVector2D TempCurrentStrutDirection = SimData.TopMountPos2D - SimData.BallJointPos2D;
@@ -570,8 +584,8 @@ void FVehicleSuspensionSolver::ComputeDoubleWishbone()
 	SimData.BallJointPos2D.X = FMath::Clamp(SimData.BallJointPos2D.X, -Config.ArmLength, Config.ArmLength);
 	SimData.BallJointPos2D.Y = FMath::Sqrt(FMath::Square(Config.ArmLength) - FMath::Square(SimData.BallJointPos2D.X));
 
-	SimData.BallJointRelativePos = SimData.RelativeTransform.TransformPosition(SuspensionPlaneToZYPlane(SimData.BallJointPos2D));
-	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPosition(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
+	SimData.BallJointRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.BallJointPos2D));
+	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
 
 	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.BallJointRelativePos).GetSafeNormal();
 	FQuat SteeringBiasRotation = FQuat(SimData.RelativeTransform.GetRotation().GetUpVector(), FMath::DegreesToRadians(SimData.SteeringAngle));

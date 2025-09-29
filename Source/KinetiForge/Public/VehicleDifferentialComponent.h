@@ -78,7 +78,6 @@ public:
 		const TArray<UVehicleAxleAssemblyComponent*> Axles
 	);
 
-private:
 	void GetOutputTorque(
 		float InTorque, 
 		float InLeftAngularVelocity,

@@ -133,7 +133,14 @@ void UVehicleAxleAssemblyComponent::UpdateSingleWheelAxle(float InDriveTorque, f
 		UpdateTCS(InDriveTorque + SimData.P3MotorTorque);//update inertia
 		SimData.ReflectedInertiaOnWheel = InReflectedInertia * DiffGearRatio * DiffGearRatio;
 
-		SimData.LeftDriveTorque = SimData.RightDriveTorque = DiffGearRatio * SimData.AxleDriveTorque;
+		if (AxleLayout == EVehicleAxleLayout::TwoWheels)
+		{
+			Differential->GetOpenDiffOutputTorque(InDriveTorque, SimData.LeftDriveTorque, SimData.RightDriveTorque);
+		}
+		else
+		{
+			SimData.LeftDriveTorque = SimData.RightDriveTorque = DiffGearRatio * SimData.AxleDriveTorque;
+		}
 	}
 
 	float ReflectedInertiaOfWheels = 0.f;

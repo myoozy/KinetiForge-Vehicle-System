@@ -85,7 +85,7 @@ public:
 	FVector GetWorldLinaerVelocity() { return Wheel.SimData.WorldLinearVelocity; }
 	FTransform GetWheelRelativeTransform() { return Suspension.SimData.WheelRelativeTransform; }
 
-	UFUNCTION(BlueprintCallable, Category = "PhysicsThreadOnly")
+	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void UpdatePhysics(
 		float InPhysicsDeltaTime,
 		float InDriveTorque,
@@ -94,6 +94,9 @@ public:
 		float InSteeringAngle, 
 		float InSwaybarForce, 
 		float InReflectedInertia);
+	UFUNCTION(BlueprintCallable, Category = "Physics")
+	void ApplySuspensionStateDirect(float InExtensionRatio = 1.f, float InSteeringAngle = 0.f)
+	{ Suspension.ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle); }
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	void GetWheelCoordinator(UVehicleWheelCoordinatorComponent*& OutWheelCoordinator);
 

@@ -60,6 +60,7 @@ protected:
 	FCollisionQueryParams QueryParams = FCollisionQueryParams::DefaultQueryParam;
 
 private:
+	void PrepareSimulation();
 	float ComputeValidPreload();
 	void ComputeRayCastLength();
 	void ComputeRayCastLocation();
