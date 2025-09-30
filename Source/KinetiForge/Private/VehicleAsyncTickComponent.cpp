@@ -8,12 +8,12 @@ void UVehicleAsyncTickComponent::NativeAsyncTick(float DeltaTime)
 	Super::NativeAsyncTick(DeltaTime);
 
 	//update physics
-	for (TWeakObjectPtr<UVehicleDriveAssemblyComponent> TempDriveAssemblyPtr : DriveAssemblies)
+	for (TWeakObjectPtr<UVehicleDriveAssemblyComponent> DriveAssemblyPtr : DriveAssemblies)
 	{
-		UVehicleDriveAssemblyComponent* TempDriveAssembly = TempDriveAssemblyPtr.Get();
-		if (IsValid(TempDriveAssembly) && TempDriveAssembly->bUpdatePhysicsAutomatically)
+		UVehicleDriveAssemblyComponent* DriveAssembly = DriveAssemblyPtr.Get();
+		if (IsValid(DriveAssembly) && DriveAssembly->bUpdatePhysicsAutomatically)
 		{
-			TempDriveAssembly->UpdatePhysics(DeltaTime);
+			DriveAssembly->UpdatePhysics(DeltaTime);
 		}
 	}
 }
@@ -23,17 +23,17 @@ UVehicleAsyncTickComponent* UVehicleAsyncTickComponent::FindVehicleAsyncTickComp
 	if (!IsValid(VehicleActor))return nullptr;
 
 	//if found
-	if(UVehicleAsyncTickComponent* TempAsyncTickComp = 
+	if(UVehicleAsyncTickComponent* AsyncTickComp = 
 		Cast<UVehicleAsyncTickComponent>(VehicleActor->GetComponentByClass(UVehicleAsyncTickComponent::StaticClass())))
 	{
-		return TempAsyncTickComp;
+		return AsyncTickComp;
 	}
 	else
 	{
 		//if not found
-		TempAsyncTickComp =
+		AsyncTickComp =
 			Cast<UVehicleAsyncTickComponent>(VehicleActor->AddComponentByClass(UVehicleAsyncTickComponent::StaticClass(), false, FTransform(), false));
-		return TempAsyncTickComp;
+		return AsyncTickComp;
 	}
 }
 

@@ -75,14 +75,14 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	int32 NumOfDriveAxles = 0;
 	float SumTorqueWeight = 0.f;
 	float SumAngVel = 0.f;
-	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
+	for (UVehicleAxleAssemblyComponent* Axle : Axles)
 	{
-		if (!IsValid(TempAxle))continue;
+		if (!IsValid(Axle))continue;
 
-		bool IsDriveAxle = TempAxle->AxleConfig.TorqueWeight > 0;
+		bool IsDriveAxle = Axle->AxleConfig.TorqueWeight > 0;
 		NumOfDriveAxles += IsDriveAxle;
-		SumTorqueWeight += IsDriveAxle * TempAxle->AxleConfig.TorqueWeight;
-		SumAngVel += IsDriveAxle * TempAxle->GetAngularVelocity();
+		SumTorqueWeight += IsDriveAxle * Axle->AxleConfig.TorqueWeight;
+		SumAngVel += IsDriveAxle * Axle->GetAngularVelocity();
 	}
 	float FloatNumOfDriveAxles = (float)NumOfDriveAxles;
 	float AverageAxleAngularVelocity = SafeDivide(SumAngVel, FloatNumOfDriveAxles);
@@ -95,26 +95,26 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 
 	SumAngVel = 0.f;
 	float SumDriveAxleInertia = 0.f;
-	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
+	for (UVehicleAxleAssemblyComponent* Axle : Axles)
 	{
-		if (!IsValid(TempAxle))continue;
+		if (!IsValid(Axle))continue;
 		float AxleInertia = 0.f;
 		float AxleAngVel = 0.f;
 
-		bool IsDriveAxle = TempAxle->AxleConfig.TorqueWeight > 0;
+		bool IsDriveAxle = Axle->AxleConfig.TorqueWeight > 0;
 		if (IsDriveAxle)
 		{
 			//central diff
-			float AngVelDifference = AverageAxleAngularVelocity - TempAxle->GetAngularVelocity();
-			float TorqueBias = SafeDivide(AngVelDifference * TempAxle->GetTotalAxleInertia() * Config.LockRatio, InDeltaTime);
-			float NormTorqueWeight = SafeDivide(TempAxle->AxleConfig.TorqueWeight, SumTorqueWeight);
+			float AngVelDifference = AverageAxleAngularVelocity - Axle->GetAngularVelocity();
+			float TorqueBias = SafeDivide(AngVelDifference * Axle->GetTotalAxleInertia() * Config.LockRatio, InDeltaTime);
+			float NormTorqueWeight = SafeDivide(Axle->AxleConfig.TorqueWeight, SumTorqueWeight);
 			float AxleDriveTorque = DriveTorque * NormTorqueWeight + TorqueBias;
 
 			//burnout assist
 			bool IsMainDriveAxle = NormTorqueWeight > 0.5;
 			bool ShouldReleaseBrake = IsMainDriveAxle && bLineLockActive;
 
-			TempAxle->UpdatePhysics(
+			Axle->UpdatePhysics(
 				InDeltaTime,
 				AxleDriveTorque,
 				InBrakeValue * !ShouldReleaseBrake,
@@ -128,7 +128,7 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 		}
 		else
 		{
-			TempAxle->UpdatePhysics(
+			Axle->UpdatePhysics(
 				InDeltaTime,
 				0.f,
 				InBrakeValue,
@@ -153,33 +153,33 @@ float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(
 {
 	float effectiveR = 0.f;
 	int32 driveAxleNum = 0;
-	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
+	for (UVehicleAxleAssemblyComponent* Axle : Axles)
 	{
-		if (!IsValid(TempAxle))continue;
+		if (!IsValid(Axle))continue;
 
-		if (TempAxle->AxleConfig.TorqueWeight > 0)
+		if (Axle->AxleConfig.TorqueWeight > 0)
 		{
-			UVehicleWheelComponent* TempLeftWheel;
-			UVehicleWheelComponent* TempRightWheel;
-			UVehicleDifferentialComponent* TempDiff;
+			UVehicleWheelComponent* LeftWheel;
+			UVehicleWheelComponent* RightWheel;
+			UVehicleDifferentialComponent* Diff;
 
-			TempAxle->GetWheels(TempLeftWheel, TempRightWheel);
-			TempAxle->GetDifferential(TempDiff);
+			Axle->GetWheels(LeftWheel, RightWheel);
+			Axle->GetDifferential(Diff);
 
 			float SumR = 0.f;
 			int32 n = 0;
-			if (IsValid(TempLeftWheel))
+			if (IsValid(LeftWheel))
 			{
-				SumR += TempLeftWheel->WheelConfig.Radius;
+				SumR += LeftWheel->WheelConfig.Radius;
 				n++;
 			}
-			if (IsValid(TempRightWheel))
+			if (IsValid(RightWheel))
 			{
-				SumR += TempRightWheel->WheelConfig.Radius;
+				SumR += RightWheel->WheelConfig.Radius;
 				n++;
 			}
 			float avgR = SafeDivide(SumR, n);
-			effectiveR += SafeDivide(avgR, TempDiff->Config.GearRatio);
+			effectiveR += SafeDivide(avgR, Diff->Config.GearRatio);
 
 			driveAxleNum++;
 		}

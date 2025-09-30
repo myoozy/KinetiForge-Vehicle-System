@@ -55,9 +55,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void ShiftToTargetGear(int32 InTargetGear, bool bImmediate = false);
 	UFUNCTION(BlueprintCallable, Category = "Physics")
-	void UpdateOutputShaft(float InClutchTorque, float& OutTorque, float& OutReflectedInertia);
+	void UpdateOutputShaft(
+		float InClutchTorque, 
+		float& OutTorque, 
+		float& OutReflectedInertia
+	);
 	UFUNCTION(BlueprintCallable, Category = "Physics")
-	void UpdateInputShaft(float InAxleVelocity, float InAxleInertia, float& OutClutchVelocity, float& OutReflectedInertia, float& OutCurrentGearRatio, float& OutFirstGearInertia);
+	void UpdateInputShaft(
+		float InAxleVelocity, 
+		float InAxleInertia, 
+		float& OutClutchVelocity, 
+		float& OutReflectedInertia, 
+		float& OutCurrentGearRatio, 
+		float& OutFirstGearInertia
+	);
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	float GetGearRatio(int InTarget);
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
@@ -70,11 +81,18 @@ public:
 	void SetP2MotorTorque(float NewTorque) { P2MotorTorque = NewTorque; }
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetP2MotorTorque() { return P2MotorTorque; }
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	void CalculateSpeedRangeOfEachGear(
+		float InEffectiveWheelRadius,
+		float InEngineIdleRPM,
+		float InEngineMaxRPM,
+		TArray<FVector2D>& OutSpeedRanges
+	);
 	UFUNCTION(BlueprintCallable, Category = "Initialize")
 	bool CalculateGearRatios();
 	bool CalculateGearRatios(TArray<float>& LargerArray, TArray<float>& SmallerArray, bool bInverseSign = false);
 
-	bool IsGearDateDirty();
+	bool IsGearDataDirty();
 	bool GetShouldCutThrottle() { return bShouldCutThrottle; }
 	bool GetShouldRavMatch() { return bShouldRevMatch; }
 

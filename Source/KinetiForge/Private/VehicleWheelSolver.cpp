@@ -167,9 +167,9 @@ void FVehicleWheelSolver::ComputeDynamicFrictionMultiplier(const FHitResult& Hit
 	FVehicleTireConfig& TireConfig = TargetWheelComponent->TireConfig;
 
 	//if physics mat is valid
-	if (UPhysicalMaterial* TempPhysMat = HitStruct.PhysMaterial.Get())
+	if (UPhysicalMaterial* HitPhysMat = HitStruct.PhysMaterial.Get())
 	{
-		float MuContact = TempPhysMat->Friction;
+		float MuContact = HitPhysMat->Friction;
 
 		switch (TireConfig.TireFrictionCombineMode)
 		{

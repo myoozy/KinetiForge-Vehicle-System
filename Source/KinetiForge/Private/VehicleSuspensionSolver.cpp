@@ -546,11 +546,11 @@ void FVehicleSuspensionSolver::ComputeMacpherson()
 	SimData.BallJointRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.BallJointPos2D));
 	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
 
-	FVector2D TempInitialStrutDirection = SimData.TopMountPos2D - FVector2D(0, Config.ArmLength);
-	FVector2D TempCurrentStrutDirection = SimData.TopMountPos2D - SimData.BallJointPos2D;
-	TempInitialStrutDirection.Y *= -SimData.WheelPos;
-	TempCurrentStrutDirection.Y *= -SimData.WheelPos;
-	FQuat StrutBiasRotation = MakeQuatFrom2DVectors(TempInitialStrutDirection, TempCurrentStrutDirection, SimData.ComponentRelativeForwardVector);
+	FVector2D InitialStrutDirection = SimData.TopMountPos2D - FVector2D(0, Config.ArmLength);
+	FVector2D CurrentStrutDirection = SimData.TopMountPos2D - SimData.BallJointPos2D;
+	InitialStrutDirection.Y *= -SimData.WheelPos;
+	CurrentStrutDirection.Y *= -SimData.WheelPos;
+	FQuat StrutBiasRotation = MakeQuatFrom2DVectors(InitialStrutDirection, CurrentStrutDirection, SimData.ComponentRelativeForwardVector);
 
 	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.BallJointRelativePos).GetSafeNormal();
 	FQuat SteeringBiasRotation = FQuat(SimData.StrutRelativeDirection, FMath::DegreesToRadians(SimData.SteeringAngle));
@@ -583,8 +583,8 @@ void FVehicleSuspensionSolver::ComputeDoubleWishbone()
 	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.BallJointRelativePos).GetSafeNormal();
 	FQuat SteeringBiasRotation = FQuat(SimData.RelativeTransform.GetRotation().GetUpVector(), FMath::DegreesToRadians(SimData.SteeringAngle));
 
-	FVector TempEuler = GetCamberCasterToeFromCurve();
-	FQuat InitialWheelRelativeRotation = FQuat(FRotator(TempEuler.X, TempEuler.Y, TempEuler.Z));
+	FVector WheelAlignmentEuler = GetCamberCasterToeFromCurve();
+	FQuat InitialWheelRelativeRotation = FQuat(FRotator(WheelAlignmentEuler.X, WheelAlignmentEuler.Y, WheelAlignmentEuler.Z));
 	SimData.WheelRelativeTransform.SetRotation(SteeringBiasRotation * InitialWheelRelativeRotation);
 	FVector WheelRelativeRightVec = SimData.WheelRelativeTransform.GetRotation().GetRightVector();
 

@@ -59,7 +59,7 @@ void UVehicleGearboxComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 void UVehicleGearboxComponent::ShiftToTargetGear(int32 InTargetGear, bool bImmediate)
 {
 	//check if gearratios has to be calculated again
-	if (IsGearDateDirty())
+	if (IsGearDataDirty())
 	{
 		CalculateGearRatios();
 	}
@@ -96,13 +96,24 @@ void UVehicleGearboxComponent::ShiftToTargetGear(int32 InTargetGear, bool bImmed
 	);
 }
 
-void UVehicleGearboxComponent::UpdateOutputShaft(float InClutchTorque, float& OutTorque, float& OutReflectedInertia)
+void UVehicleGearboxComponent::UpdateOutputShaft(
+	float InClutchTorque, 
+	float& OutTorque, 
+	float& OutReflectedInertia
+)
 {
 	OutTorque = (InClutchTorque + P2MotorTorque) * CurrentGearRatio * Config.Efficiency;
 	OutReflectedInertia = Config.InputShaftInertia * CurrentGearRatio * CurrentGearRatio;
 }
 
-void UVehicleGearboxComponent::UpdateInputShaft(float InAxleVelocity, float InAxleInertia, float& OutClutchVelocity, float& OutReflectedInertia, float& OutCurrentGearRatio, float& OutFirstGearInertia)
+void UVehicleGearboxComponent::UpdateInputShaft(
+	float InAxleVelocity, 
+	float InAxleInertia, 
+	float& OutClutchVelocity, 
+	float& OutReflectedInertia,
+	float& OutCurrentGearRatio,
+	float& OutFirstGearInertia
+)
 {
 	OutClutchVelocity = InAxleVelocity * CurrentGearRatio;
 	OutReflectedInertia = Config.InputShaftInertia + SafeDivide(InAxleInertia, CurrentGearRatio * CurrentGearRatio);
@@ -117,6 +128,33 @@ float UVehicleGearboxComponent::GetGearRatio(int InTarget)
 	if (InTarget > 0)return GearRatios[InTarget - 1];
 	if (InTarget < 0)return ReverseGearRatios[-InTarget - 1];
 	return 0.0f;
+}
+
+void UVehicleGearboxComponent::CalculateSpeedRangeOfEachGear(
+	float InEffectiveWheelRadius,
+	float InEngineIdleRPM, 
+	float InEngineMaxRPM, 
+	TArray<FVector2D>& OutSpeedRanges
+)
+{
+	if (IsGearDataDirty())CalculateGearRatios();
+
+	int32 NumGears = FMath::Max(Config.NumberOfGears, Config.NumOfReverseGears);
+	OutSpeedRanges.SetNum(NumGears + 1);
+	OutSpeedRanges[0] = FVector2D(0);
+
+	float RPMToRad = PI * 0.0333333333333f;
+	float avgRPM = InEffectiveWheelRadius * RPMToRad * 0.036;
+
+	for (int32 i = 1; i <= NumGears; i++)
+	{
+		FVector2D SpeedRangeOfCurrentGear;
+		float GearRatio = GetGearRatio(i);
+		SpeedRangeOfCurrentGear.X = SafeDivide(InEngineIdleRPM * avgRPM, GearRatio);
+		SpeedRangeOfCurrentGear.Y = SafeDivide(InEngineMaxRPM * avgRPM, GearRatio);
+
+		OutSpeedRanges[i] = SpeedRangeOfCurrentGear;
+	}
 }
 
 bool UVehicleGearboxComponent::CalculateGearRatios()
@@ -181,7 +219,7 @@ bool UVehicleGearboxComponent::CalculateGearRatios(TArray<float>& LargerArray, T
 	return true;
 }
 
-bool UVehicleGearboxComponent::IsGearDateDirty()
+bool UVehicleGearboxComponent::IsGearDataDirty()
 {
 	//check if gearratios has to be calculated again
 	if (CachedFirstGear != Config.FirstGear || CachedTopGear != Config.TopGear || CachedGearRatioBias != Config.GearRatioBias

@@ -91,9 +91,9 @@ void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierar
 	//destory all axles
 	if (Axles.Num())
 	{
-		for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
+		for (UVehicleAxleAssemblyComponent* AxleToDestroy : Axles)
 		{
-			if (IsValid(TempAxle) && !TempAxle->IsBeingDestroyed())TempAxle->DestroyComponent();
+			if (IsValid(AxleToDestroy) && !AxleToDestroy->IsBeingDestroyed())AxleToDestroy->DestroyComponent();
 		}
 		Axles.Empty();
 	}
@@ -213,11 +213,11 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 		InputValues.Smoothened.Clutch = FMath::Min(InputValues.Smoothened.Clutch + Bias, TargetClutchValue);
 
 		//get interp speed, when changing gear, clutch should engage faster than gear changes
-		FVector2D TempInterpSpeed;
-		TempInterpSpeed.Y = InputConfig.Clutch.InterpSpeed.Y;
-		TempInterpSpeed.X = bNotInGearAndNotSequential ? SafeDivide(2.f, Gearbox->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
+		FVector2D FinalInterpSpeed;
+		FinalInterpSpeed.Y = InputConfig.Clutch.InterpSpeed.Y;
+		FinalInterpSpeed.X = bNotInGearAndNotSequential ? SafeDivide(2.f, Gearbox->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
 
-		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, TargetClutchValue, InDeltaTime, TempInterpSpeed);
+		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, TargetClutchValue, InDeltaTime, FinalInterpSpeed);
 	}
 	else
 	{
@@ -319,7 +319,11 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	//if in N gear, don't update
 	if (!Gearbox->GetCurrentGear())return;
 
-	SpeedRangeOfEachGear = CalculateSpeedRangeOfEachGear();
+	Gearbox->CalculateSpeedRangeOfEachGear(
+		TransferCase->CalculateEffectiveWheelRadius(Axles),
+		Engine->NAConfig.EngineIdleRPM,
+		Engine->NAConfig.EngineMaxRPM,
+		SpeedRangeOfEachGear);
 
 	//如果急刹车时，也希望尽早降档，发动机协助制动
 	float Input = FMath::Max(InputValues.Final.Throttle, InputValues.Final.Brake);
@@ -457,17 +461,17 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 	NumOfWheelsOnGround = 0;
 	FVector SumLocalLinVel = FVector(0.f);
 	FVector SumWorldLinVel = FVector(0.f);
-	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
+	for (UVehicleAxleAssemblyComponent* Axle : Axles)
 	{
-		if (!IsValid(TempAxle))continue;
+		if (!IsValid(Axle))continue;
 
 		//calculate linear velocity
-		FVector TempLocalVel;
-		FVector TempWorldVel;
-		NumOfWheelsOnGround += TempAxle->GetNumOfWheelsOnGround();
-		TempAxle->GetLinearVelocity(TempLocalVel, TempWorldVel);
-		SumLocalLinVel += TempLocalVel;
-		SumWorldLinVel += TempWorldVel;
+		FVector LocalVel;
+		FVector WorldVel;
+		NumOfWheelsOnGround += Axle->GetNumOfWheelsOnGround();
+		Axle->GetLinearVelocity(LocalVel, WorldVel);
+		SumLocalLinVel += LocalVel;
+		SumWorldLinVel += WorldVel;
 	}
 	bIsInAir = !NumOfWheelsOnGround;
 	float NumGroundedWheelsInv = SafeDivide(1.f, (float)NumOfWheelsOnGround);
@@ -563,54 +567,27 @@ void UVehicleDriveAssemblyComponent::RotateCamera(USceneComponent* InSpringArm, 
 
 TArray<UVehicleWheelComponent*> UVehicleDriveAssemblyComponent::GetWheels()
 {
-	TArray<UVehicleWheelComponent*> TempWheels;
+	TArray<UVehicleWheelComponent*> Wheels;
 
-	for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
+	for (UVehicleAxleAssemblyComponent* Axle : Axles)
 	{
-		if (!TempAxle)break;
+		if (!Axle)break;
 
-		UVehicleWheelComponent* TempLeftWheel;
-		UVehicleWheelComponent* TempRightWheel;
+		UVehicleWheelComponent* LeftWheel;
+		UVehicleWheelComponent* RightWheel;
 
-		TempAxle->GetWheels(TempLeftWheel, TempRightWheel);
+		Axle->GetWheels(LeftWheel, RightWheel);
 
-		TempWheels.Add(TempLeftWheel);
-		TempWheels.Add(TempRightWheel);
+		Wheels.Add(LeftWheel);
+		Wheels.Add(RightWheel);
 	}
-	return TempWheels;
+	return Wheels;
 }
 
 void UVehicleDriveAssemblyComponent::DestroyTargetAxle(UVehicleAxleAssemblyComponent* InTargetAxle)
 {
 	Axles.Remove(InTargetAxle);
 	InTargetAxle->DestroyComponent();
-}
-
-TArray<FVector2D> UVehicleDriveAssemblyComponent::CalculateSpeedRangeOfEachGear()
-{
-	if (Gearbox->IsGearDateDirty())Gearbox->CalculateGearRatios();
-
-	TArray<FVector2D> SpeedRange;
-	int32 NumGears = FMath::Max(Gearbox->Config.NumberOfGears, Gearbox->Config.NumOfReverseGears);
-	SpeedRange.SetNum(NumGears + 1);
-	SpeedRange[0] = FVector2D(0);
-
-	float avgOmega = 0.f;
-	if (IsValid(TransferCase))avgOmega = TransferCase->CalculateEffectiveWheelRadius(Axles);
-	float RPMToRad = PI * 0.0333333333333f;
-	float avgRPM = avgOmega * RPMToRad * 0.036;
-
-	for (int32 i = 1; i <= NumGears; i++)
-	{
-		FVector2D TempRange;
-		float TempGearRatio = Gearbox->GetGearRatio(i);
-		TempRange.X = SafeDivide(Engine->NAConfig.EngineIdleRPM * avgRPM, TempGearRatio);
-		TempRange.Y = SafeDivide(Engine->NAConfig.EngineMaxRPM * avgRPM, TempGearRatio);
-
-		SpeedRange[i] = TempRange;
-	}
-
-	return SpeedRange;
 }
 
 bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
@@ -678,46 +655,46 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 	//if there are axles, destroy them
 	if (Axles.Num() > 0)
 	{
-		for (UVehicleAxleAssemblyComponent* TempAxle : Axles)
+		for (UVehicleAxleAssemblyComponent* Axle : Axles)
 		{
-			if (IsValid(TempAxle))TempAxle->DestroyComponent();
+			if (IsValid(Axle))Axle->DestroyComponent();
 		}
 		Axles.Empty();
 	}
 
 	int32 n = 0;
-	for (FAxleAssemblyConfig TempAxleConfig : AxleConfigs)
+	for (FAxleAssemblyConfig AxleConfig : AxleConfigs)
 	{
-		TSubclassOf<UVehicleAxleAssemblyComponent> TempAxleClass = TempAxleConfig.AxleConfig;
-		UVehicleAxleAssemblyComponent* TempAxle;
-		if (TempAxleClass)
+		TSubclassOf<UVehicleAxleAssemblyComponent> AxleClass = AxleConfig.AxleConfig;
+		UVehicleAxleAssemblyComponent* Axle;
+		if (AxleClass)
 		{
-			TempAxle = Cast<UVehicleAxleAssemblyComponent>
-				(GetOwner()->AddComponentByClass(TempAxleClass, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)), true));
+			Axle = Cast<UVehicleAxleAssemblyComponent>
+				(GetOwner()->AddComponentByClass(AxleClass, true, FTransform(FQuat(), AxleConfig.AxlePosition, FVector(1)), true));
 		}
 		else
 		{
-			TempAxle = Cast<UVehicleAxleAssemblyComponent>
-				(GetOwner()->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)), true));
+			Axle = Cast<UVehicleAxleAssemblyComponent>
+				(GetOwner()->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), true, FTransform(FQuat(), AxleConfig.AxlePosition, FVector(1)), true));
 		}
-		TempAxle->AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepRelativeTransform);
+		Axle->AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepRelativeTransform);
 
-		if (IsValid(TempAxle))
+		if (IsValid(Axle))
 		{
 			//override these before registering the axle component
-			if (TempAxleConfig.WheelOverride)TempAxle->WheelConfig = TempAxleConfig.WheelOverride;
-			if (TempAxleConfig.DifferentialOverride)TempAxle->DifferentialConfig = TempAxleConfig.DifferentialOverride;
-			if (TempAxleConfig.TrackWidthOverride >= 0)TempAxle->AxleConfig.TrackWidth = TempAxleConfig.TrackWidthOverride;
-			if (TempAxleConfig.bDiasbleSteering)TempAxle->AxleSteeringConfig.bAffectedBySteering = false;
-			if (TempAxleConfig.bDisableHandbrake)TempAxle->AxleConfig.bAffectedByHandbrake = false;
-			if (TempAxleConfig.bDisableTractionControl)TempAxle->TCSConfig.bTractionControlSystemEnabled = false;
-			if (TempAxleConfig.TorqueWeightOverride >= 0)TempAxle->AxleConfig.TorqueWeight = TempAxleConfig.TorqueWeightOverride;
+			if (AxleConfig.WheelOverride)Axle->WheelConfig = AxleConfig.WheelOverride;
+			if (AxleConfig.DifferentialOverride)Axle->DifferentialConfig = AxleConfig.DifferentialOverride;
+			if (AxleConfig.TrackWidthOverride >= 0)Axle->AxleConfig.TrackWidth = AxleConfig.TrackWidthOverride;
+			if (AxleConfig.bDiasbleSteering)Axle->AxleSteeringConfig.bAffectedBySteering = false;
+			if (AxleConfig.bDisableHandbrake)Axle->AxleConfig.bAffectedByHandbrake = false;
+			if (AxleConfig.bDisableTractionControl)Axle->TCSConfig.bTractionControlSystemEnabled = false;
+			if (AxleConfig.TorqueWeightOverride >= 0)Axle->AxleConfig.TorqueWeight = AxleConfig.TorqueWeightOverride;
 
-			Axles.Add(TempAxle);
+			Axles.Add(Axle);
 			n++;
 		}
 
-		GetOwner()->FinishAddComponent(TempAxle, true, FTransform(FQuat(), TempAxleConfig.AxlePosition, FVector(1)));
+		GetOwner()->FinishAddComponent(Axle, true, FTransform(FQuat(), AxleConfig.AxlePosition, FVector(1)));
 	}
 	return n;
 }

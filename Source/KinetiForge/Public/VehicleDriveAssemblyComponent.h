@@ -170,8 +170,6 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
     void GetVehicleSpeed(float& OutKph, FVector& OutWorldLinearVelocity, FVector& OutLocalLinearVelocity) 
     { OutKph = Speed_kph;OutWorldLinearVelocity = WorldLinearVelocity;OutLocalLinearVelocity = LocalLinearVelocity; }
-    UFUNCTION(BlueprintCallable, Category = "Physics")
-    TArray<FVector2D> CalculateSpeedRangeOfEachGear();
 
 private:
     bool GeneratePowerUnit();

@@ -69,23 +69,22 @@ int UVehicleWheelCoordinatorComponent::FindAllWheels(TArray<UVehicleWheelCompone
 		if (!FindCarbody())return -1;
 	}
 
-	int TempIndex = 0;
+	int n = 0;
 	TArray<USceneComponent*> Children;
-	TArray<UVehicleWheelComponent*> TempWheels;
+	TArray<UVehicleWheelComponent*> FoundWheels;
 	Carbody->GetChildrenComponents(false, Children);
 	for (USceneComponent* Child : Children)
 	{
-		if (UVehicleWheelComponent* TempWheel = Cast<UVehicleWheelComponent>(Child))
+		if (UVehicleWheelComponent* Wheel = Cast<UVehicleWheelComponent>(Child))
 		{
-			TempWheels.Add(TempWheel);
-			//TempWheel->Index = WheelIndex;
-			TempIndex++;
+			FoundWheels.Add(Wheel);
+			n++;
 		}
 	}
 
-	OutWheels = TempWheels;
-	if (!TempIndex)UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: No wheel is found!"));
-	return TempIndex;	//or return the length of array
+	OutWheels = FoundWheels;
+	if (!n)UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: No wheel is found!"));
+	return n;	//or return the length of array
 	//return RegisteredWheels.Num();
 }
 
@@ -96,23 +95,22 @@ int UVehicleWheelCoordinatorComponent::FindAllAxles(TArray<UVehicleAxleAssemblyC
 		if (!FindCarbody())return -1;
 	}
 
-	int TempIndex = 0;
+	int n = 0;
 	TArray<USceneComponent*> Children;
-	TArray<UVehicleAxleAssemblyComponent*> TempAxles;
+	TArray<UVehicleAxleAssemblyComponent*> FoundAxles;
 	Carbody->GetChildrenComponents(false, Children);
 	for (USceneComponent* Child : Children)
 	{
-		if (UVehicleAxleAssemblyComponent* TempAxle = Cast<UVehicleAxleAssemblyComponent>(Child))
+		if (UVehicleAxleAssemblyComponent* Axle = Cast<UVehicleAxleAssemblyComponent>(Child))
 		{
-			TempAxles.Add(TempAxle);
-			//TempWheel->Index = WheelIndex;
-			TempIndex++;
+			FoundAxles.Add(Axle);
+			n++;
 		}
 	}
 
-	OutAxles = TempAxles;
-	if (!TempIndex)UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: No wheel is found!"));
-	return TempIndex;	//or return the length of array
+	OutAxles = FoundAxles;
+	if (!n)UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: No wheel is found!"));
+	return n;	//or return the length of array
 }
 
 int UVehicleWheelCoordinatorComponent::FindAllDriveAssemblies(TArray<UVehicleDriveAssemblyComponent*>& OutDriveAssemblies)
@@ -122,23 +120,22 @@ int UVehicleWheelCoordinatorComponent::FindAllDriveAssemblies(TArray<UVehicleDri
 		if (!FindCarbody())return -1;
 	}
 	
-	int TempIndex = 0;
+	int n = 0;
 	TArray<USceneComponent*> Children;
-	TArray<UVehicleDriveAssemblyComponent*> TempDriveAssemblies;
+	TArray<UVehicleDriveAssemblyComponent*> FoundDriveAssemblies;
 	Carbody->GetChildrenComponents(true, Children);
 	for (USceneComponent* Child : Children)
 	{
-		if (UVehicleDriveAssemblyComponent* TempDriveAssembly = Cast<UVehicleDriveAssemblyComponent>(Child))
+		if (UVehicleDriveAssemblyComponent* DriveAssembly = Cast<UVehicleDriveAssemblyComponent>(Child))
 		{
-			TempDriveAssemblies.Add(TempDriveAssembly);
-			//TempWheel->Index = WheelIndex;
-			TempIndex++;
+			FoundDriveAssemblies.Add(DriveAssembly);
+			n++;
 		}
 	}
 
-	OutDriveAssemblies = TempDriveAssemblies;
-	if (!TempIndex)UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: No wheel is found!"));
-	return TempIndex;
+	OutDriveAssemblies = FoundDriveAssemblies;
+	if (!n)UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: No wheel is found!"));
+	return n;
 }
 
 bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
@@ -148,11 +145,11 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 
 	//get wheel positions
 	TArray<FVector> Positions;
-	for (TWeakObjectPtr<UVehicleWheelComponent> TempWheel : RegisteredWheels)
+	for (TWeakObjectPtr<UVehicleWheelComponent> Wheel : RegisteredWheels)
 	{
-		FVector TempPos = TempWheel->GetRelativeLocation();
-		TempPos += TempWheel->GetRelativeTransform().GetRotation().GetRightVector() * TempWheel->SuspensionKinematicsConfig.SteeringAxleOffset;
-		Positions.Add(TempPos);
+		FVector RelativePos = Wheel->GetRelativeLocation();
+		RelativePos += Wheel->GetRelativeTransform().GetRotation().GetRightVector() * Wheel->SuspensionKinematicsConfig.SteeringAxleOffset;
+		Positions.Add(RelativePos);
 	}
 
 	TArray<float> SprungMasses;
@@ -166,9 +163,9 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 	}
 	else
 	{
-		for (TWeakObjectPtr<UVehicleWheelComponent> TempWheel : RegisteredWheels)
+		for (TWeakObjectPtr<UVehicleWheelComponent> Wheel : RegisteredWheels)
 		{
-			TempWheel->SetSprungMass(0);
+			Wheel->SetSprungMass(0);
 		}
 		return false;
 	}
@@ -181,15 +178,15 @@ void UVehicleWheelCoordinatorComponent::CalculateWheelBase()
 
 	//find the center of all axles
 	FVector AveragePos = FVector(0);
-	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> TempAxle : RegisteredAxles)
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> Axle : RegisteredAxles)
 	{
-		AveragePos += TempAxle->GetAxleCenter();
+		AveragePos += Axle->GetAxleCenter();
 	}
 	if (!NumOfAxles)return;
 	AveragePos = AveragePos / NumOfAxles;
-	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> TempAxle : RegisteredAxles)
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> Axle : RegisteredAxles)
 	{
-		TempAxle->SetWheelBase((AveragePos - TempAxle->GetRelativeLocation()).Length() * 2);
+		Axle->SetWheelBase((AveragePos - Axle->GetRelativeLocation()).Length() * 2);
 	}
 }
 
@@ -229,18 +226,18 @@ UPrimitiveComponent* UVehicleWheelCoordinatorComponent::FindPhysicalParent(UScen
 	ChildSceneComponent->GetParentComponents(AllParentComponents);
 
 	//向上查找所有可能作为车身的组件。而车轮、车轴、车轮协调器只向上查找一级
-	for (USceneComponent* tempParent : AllParentComponents)
+	for (USceneComponent* SceneComp : AllParentComponents)
 	{
-		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(tempParent))
+		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(SceneComp))
 		{
 			return Primitive;
 		}
 	}
 
 	// Fallback: 尝试找 Owner 的 RootComponent（通常是 mesh）
-	if (AActor* tempOwner = ChildSceneComponent->GetOwner())
+	if (AActor* CompOwner = ChildSceneComponent->GetOwner())
 	{
-		if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(tempOwner->GetRootComponent()))
+		if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(CompOwner->GetRootComponent()))
 		{
 			return RootPrimitive;
 		}
