@@ -19,9 +19,12 @@ bool FVehicleSuspensionSolver::Initialize(TWeakObjectPtr<UVehicleWheelComponent>
 	
 	if (TargetWheelComponent.IsValid())
 	{
-		QueryParams.AddIgnoredActor(InTargetWheelComponent->GetOwner());
+		QueryParams.AddIgnoredActor(TargetWheelComponent->GetOwner());
 		QueryParams.bReturnPhysicalMaterial = true;
+		
 		SimData.WheelPos = FMath::Sign(TargetWheelComponent->GetRelativeTransform().GetLocation().Y);
+		
+		ApplySuspensionStateDirect();
 
 		//initialize the cache, so that damping will not be Computed twice when game starts
 		CachedSpringStiffness  = TargetWheelComponent->SuspensionSpringConfig.SpringStiffness;
@@ -75,7 +78,6 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	SimData.SwaybarForce = InSwaybarForce;
 
 	PrepareSimulation();
-	ComputeValidPreload();
 	ComputeRayCastLocation();
 	SuspensionRayCast();
 
@@ -100,13 +102,14 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 
 void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
 {
-	PrepareSimulation();
-	ComputeRayCastLength();
-
 	SimData.SuspensionExtensionRatio = InExtensionRatio;
-	SimData.HitDistance = InExtensionRatio * SimData.RayCastLength;
 	SimData.SteeringAngle = InSteeringAngle;
-	
+
+	PrepareSimulation();
+	ComputeRayCastLocation();
+
+	SimData.HitDistance = InExtensionRatio * SimData.RayCastLength;
+
 	switch (TargetWheelComponent->SuspensionKinematicsConfig.SuspensionType)
 	{
 	case ESuspensionType::StraightLine:
@@ -129,7 +132,7 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 	if (!TargetWheelComponent.IsValid())return;
 
 	UWorld* TempWorld = TargetWheelComponent->GetWorld();
-	if (!TempWorld)return;
+	if (!IsValid(TempWorld))return;
 
 	const FTransform& CarbodyWorldTrans = SimData.CarbodyWorldTransform;
 
@@ -185,7 +188,7 @@ void FVehicleSuspensionSolver::DrawSuspensionForce(float Duration, float Thickne
 	if (!TargetWheelComponent.IsValid())return;
 
 	UWorld* TempWorld = TargetWheelComponent->GetWorld();
-	if (!TempWorld)return;
+	if (!IsValid(TempWorld))return;
 
 	FColor TempColor = FColor(0, 255, 127);
 	if (SimData.SuspensionForceRaw < 0)TempColor = FColor(255 - TempColor.R, 255 - TempColor.G, 255 - TempColor.B);
@@ -384,26 +387,18 @@ void FVehicleSuspensionSolver::PrepareSimulation()
 
 float FVehicleSuspensionSolver::ComputeValidPreload()
 {
-	FVehicleSuspensionSpringConfig& Config = TargetWheelComponent->SuspensionSpringConfig;
-
 	//check suspension preload
 	//preload should not be greater than gravity force on the wheel
 	float Proj = FVector::DotProduct(FVector(0, 0, 1), SimData.StrutRelativeDirection);
 	float MaxPreload = SafeDivide(0.99 * SimData.WorldGravityZ * SimData.SprungMass, Proj);
 
-	return SimData.ValidPreload = FMath::Min(Config.SpringPreload, MaxPreload);
-}
-
-void FVehicleSuspensionSolver::ComputeRayCastLength()
-{
-	SimData.StrutDirection2D = (SimData.TopMountPos2D - SimData.BallJointPos2D).GetSafeNormal();
-
-	SimData.RayCastLength = FMath::Abs(SimData.StrutDirection2D.X * TargetWheelComponent->SuspensionKinematicsConfig.Stroke);
+	return SimData.ValidPreload = FMath::Min(TargetWheelComponent->SuspensionSpringConfig.SpringPreload, MaxPreload);
 }
 
 void FVehicleSuspensionSolver::ComputeRayCastLocation()
 {
-	ComputeRayCastLength();
+	SimData.StrutDirection2D = (SimData.TopMountPos2D - SimData.BallJointPos2D).GetSafeNormal();
+	SimData.RayCastLength = FMath::Abs(SimData.StrutDirection2D.X * TargetWheelComponent->SuspensionKinematicsConfig.Stroke);
 
 	SimData.RayCastStart2D.X = SimData.TopMountPos2D.X - SimData.StrutDirection2D.X * TargetWheelComponent->SuspensionKinematicsConfig.MinStrutLength;
 	SimData.RayCastStart2D.Y = SimData.BallJointPos2D.Y;
@@ -426,11 +421,9 @@ void FVehicleSuspensionSolver::SuspensionRayCast()
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleSuspensionRayCast);
 
-	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
-
 	//switch to line trace if the suspension is completly compressed
 	//or if the raycastlength is too small
-	if (Config.RayCastMode == ESuspensionRayCastMode::SphereTrace
+	if (TargetWheelComponent->SuspensionKinematicsConfig.RayCastMode == ESuspensionRayCastMode::SphereTrace
 		&& SimData.RayCastLength > 1.f
 		&& SimData.HitDistance > SMALL_NUMBER)
 	{
@@ -617,6 +610,8 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce()
 
 	if (SimData.bHitGround)
 	{
+		ComputeValidPreload();
+
 		float Frequency = SafeDivide(1, SimData.PhysicsDelatTime);
 
 		float SpringForce = Config.SpringStiffness * (SuspensionStroke - SimData.SuspensionCurrentLength) + SimData.ValidPreload + SimData.SwaybarForce;

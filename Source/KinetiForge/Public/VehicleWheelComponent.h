@@ -49,7 +49,6 @@ protected:
 	virtual void OnRegister() override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 	bool GenerateMeshComponents();
-	void UpdateMeshes(float DeltaTime, float MaxAnimAngularVelocity = 60);
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> WheelHubComponent;
@@ -165,6 +164,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Mesh")
 	bool RefreshWheelMesh();
+
+	UFUNCTION(BlueprintCallable, Category = "Animation")
+	void UpdateWheelAnim(float DeltaTime, float MaxAnimAngularVelocity = 60);
 
 	UFUNCTION(BlueprintCallable, Category = "Animation")
 	void GetWheelHubComponent(USceneComponent*& OutHub) { OutHub = WheelHubComponent; }

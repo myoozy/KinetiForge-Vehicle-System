@@ -187,26 +187,6 @@ bool UVehicleWheelComponent::GenerateMeshComponents()
 	return RefreshWheelMesh();
 }
 
-void UVehicleWheelComponent::UpdateMeshes(float DeltaTime, float MaxAnimAngularVelocity)
-{
-	if (!IsValid(WheelHubComponent) || !IsValid(WheelMeshComponent))return;
-
-	WheelHubComponent->SetRelativeLocation(Suspension.SuspensionPlaneToZYPlane(Suspension.SimData.BallJointPos2D));
-	WheelHubComponent->SetRelativeRotation(Suspension.SimData.RelativeTransform.InverseTransformRotation(Suspension.SimData.WheelRelativeTransform.GetRotation()));
-	if (WheelMeshComponent)
-	{
-		if (MaxAnimAngularVelocity > 0)
-		{
-			WheelMeshComponent->AddLocalRotation(FRotator(FMath::RadiansToDegrees(
-				FMath::Clamp(-Wheel.SimData.AngularVelocity, -MaxAnimAngularVelocity, MaxAnimAngularVelocity)) * DeltaTime, 0, 0));
-		}
-		else
-		{
-			WheelMeshComponent->AddLocalRotation(FRotator(FMath::RadiansToDegrees(-Wheel.SimData.AngularVelocity) * DeltaTime, 0, 0));
-		}
-	}
-}
-
 // Called every frame
 void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
@@ -223,7 +203,7 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	Suspension.CheckIsDampingDirty();
 
-	if (bUpdateAnimAutomatically) UpdateMeshes(DeltaTime, 0);
+	if (bUpdateAnimAutomatically) UpdateWheelAnim(DeltaTime, 0);
 }
 
 void UVehicleWheelComponent::SetSprungMass(float NewSprungMass)
@@ -346,6 +326,26 @@ bool UVehicleWheelComponent::SetMesh(float SteeringAxleOffset,
 bool UVehicleWheelComponent::RefreshWheelMesh()
 {
 	return SetMesh(FMath::Sign(GetRelativeLocation().Y) * SuspensionKinematicsConfig.SteeringAxleOffset, WheelMesh, WheelMeshTransform, BrakeMesh, BrakeMeshTransform);
+}
+
+void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngularVelocity)
+{
+	if (!IsValid(WheelHubComponent) || !IsValid(WheelMeshComponent))return;
+
+	WheelHubComponent->SetRelativeLocation(Suspension.SuspensionPlaneToZYPlane(Suspension.SimData.BallJointPos2D));
+	WheelHubComponent->SetRelativeRotation(Suspension.SimData.RelativeTransform.InverseTransformRotation(Suspension.SimData.WheelRelativeTransform.GetRotation()));
+	if (WheelMeshComponent)
+	{
+		if (MaxAnimAngularVelocity > 0)
+		{
+			WheelMeshComponent->AddLocalRotation(FRotator(FMath::RadiansToDegrees(
+				FMath::Clamp(-Wheel.SimData.AngularVelocity, -MaxAnimAngularVelocity, MaxAnimAngularVelocity)) * DeltaTime, 0, 0));
+		}
+		else
+		{
+			WheelMeshComponent->AddLocalRotation(FRotator(FMath::RadiansToDegrees(-Wheel.SimData.AngularVelocity) * DeltaTime, 0, 0));
+		}
+	}
 }
 
 FTransform UVehicleWheelComponent::GetSkidMarkWorldTransform(float InSkidMarkBias, float InSkidMarkScale)

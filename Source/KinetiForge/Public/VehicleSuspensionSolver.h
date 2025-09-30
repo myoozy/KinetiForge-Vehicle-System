@@ -62,7 +62,6 @@ protected:
 private:
 	void PrepareSimulation();
 	float ComputeValidPreload();
-	void ComputeRayCastLength();
 	void ComputeRayCastLocation();
 	void SuspensionRayCast();
 	void SuspensionLineTrace();
