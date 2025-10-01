@@ -13,10 +13,10 @@ FVehicleWheelSolver::~FVehicleWheelSolver()
 {
 }
 
-bool FVehicleWheelSolver::Initialize(TWeakObjectPtr<UVehicleWheelComponent> InTargetWheelComponent)
+bool FVehicleWheelSolver::Initialize(UVehicleWheelComponent* InTargetWheelComponent)
 {
 	TargetWheelComponent = InTargetWheelComponent;
-	return TargetWheelComponent.IsValid();
+	return IsValid(TargetWheelComponent);
 }
 
 void FVehicleWheelSolver::UpdateWheel(
@@ -29,7 +29,7 @@ void FVehicleWheelSolver::UpdateWheel(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelSolver);
 
-	if (!TargetWheelComponent.IsValid()) return;
+	if (!IsValid(TargetWheelComponent)) return;
 
 	FVehicleWheelConfig& Config = TargetWheelComponent->WheelConfig;
 
@@ -76,7 +76,7 @@ void FVehicleWheelSolver::UpdateWheel(
 
 void FVehicleWheelSolver::DrawWheelForce(UWorld* InCurrentWorld, const FVehicleSuspensionSimData& InSuspensionSimData, float Duration, float Thickness, float Length, bool bDrawVelocity, bool bDrawSlip, bool bDrawInertia)
 {
-	if (!InCurrentWorld || !TargetWheelComponent.IsValid())return;
+	if (!InCurrentWorld || !IsValid(TargetWheelComponent))return;
 
 	FVehicleTireConfig& TireConfig = TargetWheelComponent->TireConfig;
 

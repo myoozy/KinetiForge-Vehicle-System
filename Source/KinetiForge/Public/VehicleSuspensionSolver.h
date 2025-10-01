@@ -16,7 +16,7 @@ public:
 	FVehicleSuspensionSolver();
 	~FVehicleSuspensionSolver();
 
-	bool Initialize(TWeakObjectPtr<UVehicleWheelComponent> InTargetWheelComponent);
+	bool Initialize(UVehicleWheelComponent* InTargetWheelComponent);
 	void SetSprungMass(float NewSprungMass);
 	float ComputeCriticalDamping();
 	void UpdateSuspension(
@@ -55,7 +55,7 @@ public:
 	FVehicleSuspensionSimData SimData;
 
 protected:
-	TWeakObjectPtr<UVehicleWheelComponent> TargetWheelComponent;
+	UVehicleWheelComponent* TargetWheelComponent;
 
 	FCollisionQueryParams QueryParams = FCollisionQueryParams::DefaultQueryParam;
 

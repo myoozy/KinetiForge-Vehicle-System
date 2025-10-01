@@ -27,6 +27,7 @@ void UVehicleGearboxComponent::PrepareShift()
 {
 	CurrentGearRatio = 0.f;
 	bIsInGear = false;
+	CurrentGear = 0;
 
 	if (FMath::Abs(TargetGear) >= FMath::Abs(CurrentGear))
 	{
@@ -72,7 +73,7 @@ void UVehicleGearboxComponent::ShiftToTargetGear(int32 InTargetGear, bool bImmed
 		return;
 
 	//if GetWorld()=false, can't set timer, if ShiftDelay to small, immediate
-	bImmediate = !(!bImmediate && GetWorld()) || Config.ShiftDelay < SMALL_NUMBER;
+	bImmediate = bImmediate || !GetWorld() || Config.ShiftDelay < SMALL_NUMBER;
 
 	//Sequential gearbox can only shift one gear once
 	if (Config.bSequentialGearbox)InTargetGear = FMath::Clamp(InTargetGear, CurrentGear - 1, CurrentGear + 1);
@@ -82,6 +83,11 @@ void UVehicleGearboxComponent::ShiftToTargetGear(int32 InTargetGear, bool bImmed
 
 	if (bImmediate)
 	{
+		//if there was a timer, clear it
+		if (GearShiftTimerHandle.IsValid())
+		{
+			GetWorld()->GetTimerManager().ClearTimer(GearShiftTimerHandle);
+		}
 		FinalizeShift();
 		return;
 	}

@@ -13,11 +13,11 @@ FVehicleSuspensionSolver::~FVehicleSuspensionSolver()
 {
 }
 
-bool FVehicleSuspensionSolver::Initialize(TWeakObjectPtr<UVehicleWheelComponent> InTargetWheelComponent)
+bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* InTargetWheelComponent)
 {
 	TargetWheelComponent = InTargetWheelComponent;
 	
-	if (TargetWheelComponent.IsValid())
+	if (IsValid(TargetWheelComponent))
 	{
 		QueryParams.AddIgnoredActor(TargetWheelComponent->GetOwner());
 		QueryParams.bReturnPhysicalMaterial = true;
@@ -71,7 +71,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleSuspensionSolver);
 
-	if (!TargetWheelComponent.IsValid())return;
+	if (!IsValid(TargetWheelComponent))return;
 
 	SimData.PhysicsDelatTime = InDeltaTime;
 	SimData.SteeringAngle = InSteeringAngle;
@@ -129,7 +129,7 @@ void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio
 
 void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)
 {
-	if (!TargetWheelComponent.IsValid())return;
+	if (!IsValid(TargetWheelComponent))return;
 
 	UWorld* TempWorld = TargetWheelComponent->GetWorld();
 	if (!IsValid(TempWorld))return;
@@ -185,7 +185,7 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 
 void FVehicleSuspensionSolver::DrawSuspensionForce(float Duration, float Thickness, float Length)
 {
-	if (!TargetWheelComponent.IsValid())return;
+	if (!IsValid(TargetWheelComponent))return;
 
 	UWorld* TempWorld = TargetWheelComponent->GetWorld();
 	if (!IsValid(TempWorld))return;
@@ -202,7 +202,7 @@ void FVehicleSuspensionSolver::DrawSuspensionForce(float Duration, float Thickne
 
 bool FVehicleSuspensionSolver::CheckIsDampingDirty()
 {
-	if (!TargetWheelComponent.IsValid())return false;
+	if (!IsValid(TargetWheelComponent))return false;
 
 	float Stiffness = TargetWheelComponent->SuspensionSpringConfig.SpringStiffness;
 
@@ -220,7 +220,7 @@ bool FVehicleSuspensionSolver::CheckIsDampingDirty()
 
 bool FVehicleSuspensionSolver::CheckAndFixTriangle()
 {
-	if(!TargetWheelComponent.IsValid())return false;
+	if(!IsValid(TargetWheelComponent))return false;
 	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
 
 	bool valid = true;

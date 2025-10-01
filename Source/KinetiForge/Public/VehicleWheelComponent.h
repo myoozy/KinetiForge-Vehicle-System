@@ -59,11 +59,11 @@ protected:
 	
 	//Parent
 	UPROPERTY()
-	TWeakObjectPtr<UWorld> CurrentWorld;
+	TObjectPtr<UWorld> CurrentWorld;
 	UPROPERTY()
-	TWeakObjectPtr<UPrimitiveComponent> Carbody;
+	TObjectPtr<UPrimitiveComponent> Carbody;
 	UPROPERTY()
-	TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
+	TObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
 
 	//suspension movement
 	FVehicleSuspensionSolver Suspension;
@@ -115,7 +115,7 @@ public:
 	void GetSuspensionMovement(FVehicleSuspensionSimData& Out) { Out = Suspension.SimData; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ReadOnly")
-	UPrimitiveComponent* GetCarbody() { return Carbody.Get(); }
+	UPrimitiveComponent* GetCarbody() { return Carbody; }
 
 	UFUNCTION(BlueprintCallable, Category = "ReadOnly")
 	bool GetRayCastResult(FHitResult& OutHitResult, bool& OutRevised);

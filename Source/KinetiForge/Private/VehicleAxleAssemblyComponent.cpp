@@ -23,8 +23,8 @@ void UVehicleAxleAssemblyComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
-	if (IsValid(WheelCoordinator.Get()))WheelCoordinator->RegisterAxle(this);
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody);
+	if (IsValid(WheelCoordinator))WheelCoordinator->RegisterAxle(this);
 }
 
 void UVehicleAxleAssemblyComponent::OnRegister()
@@ -44,18 +44,18 @@ void UVehicleAxleAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarc
 		Differential->DestroyComponent();
 		Differential = nullptr;
 	}
-	if (LeftWheel.IsValid() && !LeftWheel->IsBeingDestroyed())
+	if (IsValid(LeftWheel) && !LeftWheel->IsBeingDestroyed())
 	{
 		LeftWheel->DestroyComponent();
 		LeftWheel = nullptr;
 	}
-	if (RightWheel.IsValid() && !RightWheel->IsBeingDestroyed())
+	if (IsValid(RightWheel) && !RightWheel->IsBeingDestroyed())
 	{
 		RightWheel->DestroyComponent();
 		RightWheel = nullptr;
 	}
 
-	if (Carbody.IsValid())Carbody = nullptr;
+	if (IsValid(Carbody))Carbody = nullptr;
 
 	//...
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
@@ -145,7 +145,7 @@ void UVehicleAxleAssemblyComponent::UpdateSingleWheelAxle(float InDriveTorque, f
 
 	float ReflectedInertiaOfWheels = 0.f;
 
-	if (LeftWheel.IsValid())
+	if (IsValid(LeftWheel))
 	{
 		LeftWheel->UpdatePhysics(
 			SimData.PhysicsDeltaTime,
@@ -162,7 +162,7 @@ void UVehicleAxleAssemblyComponent::UpdateSingleWheelAxle(float InDriveTorque, f
 		ReflectedInertiaOfWheels = (DiffGearRatio > SMALL_NUMBER) ? LeftWheel->GetTotalInertia() / (DiffGearRatio * DiffGearRatio) : 0.f;
 	}
 
-	if (RightWheel.IsValid())
+	if (IsValid(RightWheel))
 	{
 		RightWheel->UpdatePhysics(
 			SimData.PhysicsDeltaTime,
@@ -264,10 +264,10 @@ void UVehicleAxleAssemblyComponent::UpdateSteeringAssist(float InSteeringInput)
 void UVehicleAxleAssemblyComponent::CalculateLinearVelocity()
 {
 	FVector LeftWorldVel, RightWorldVel = FVector(0.f);
-	if (LeftWheel.IsValid())LeftWorldVel = LeftWheel->GetWorldLinaerVelocity();
-	if (RightWheel.IsValid())RightWorldVel = RightWheel->GetWorldLinaerVelocity();
+	if (IsValid(LeftWheel))LeftWorldVel = LeftWheel->GetWorldLinaerVelocity();
+	if (IsValid(RightWheel))RightWorldVel = RightWheel->GetWorldLinaerVelocity();
 	SimData.WorldLinearVelocity = (LeftWorldVel + RightWorldVel) / SimData.NumOfWheels;
-	SimData.LocalLinearVelocity = UAsyncTickFunctions::ATP_GetTransform(Carbody.Get()).InverseTransformVectorNoScale(SimData.WorldLinearVelocity);
+	SimData.LocalLinearVelocity = UAsyncTickFunctions::ATP_GetTransform(Carbody).InverseTransformVectorNoScale(SimData.WorldLinearVelocity);
 }
 
 void UVehicleAxleAssemblyComponent::UpdateSwaybarForce()
@@ -285,8 +285,8 @@ void UVehicleAxleAssemblyComponent::UpdateTCS(float TargetDriveTorque)
 	else
 	{
 		float SumSlipRatio = 0.f;
-		if (LeftWheel.IsValid())SumSlipRatio += FMath::Abs(LeftWheel->GetSlipRatio());
-		if (RightWheel.IsValid())SumSlipRatio += FMath::Abs(RightWheel->GetSlipRatio());
+		if (IsValid(LeftWheel))SumSlipRatio += FMath::Abs(LeftWheel->GetSlipRatio());
+		if (IsValid(RightWheel))SumSlipRatio += FMath::Abs(RightWheel->GetSlipRatio());
 		float AvrgSlipRatio = SumSlipRatio / SimData.NumOfWheels;
 
 		SimData.bTCSTriggered = 
@@ -326,7 +326,7 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleAxle);
 
-	if (!Carbody.IsValid())
+	if (!IsValid(Carbody))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: No Valid Carbody"));
 		return;
@@ -338,7 +338,7 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 		return;
 	}
 
-	SimData.NumOfWheels = LeftWheel.IsValid() + RightWheel.IsValid();
+	SimData.NumOfWheels = IsValid(LeftWheel) + IsValid(RightWheel);
 	if (SimData.NumOfWheels <= 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: No Valid Wheels"));
@@ -381,7 +381,7 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 void UVehicleAxleAssemblyComponent::SetWheelPosition(float NewTrackWidth)
 {
 	//set left wheel
-	if (LeftWheel.IsValid())
+	if (IsValid(LeftWheel))
 	{
 		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, -VehicleWheelComponentSetupRotation.Yaw, VehicleWheelComponentSetupRotation.Roll));
 		FVector WheelCompPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y - FMath::Abs(NewTrackWidth * 0.5), GetRelativeLocation().Z);
@@ -391,7 +391,7 @@ void UVehicleAxleAssemblyComponent::SetWheelPosition(float NewTrackWidth)
 	}
 
 	//set right wheel
-	if (RightWheel.IsValid())
+	if (IsValid(RightWheel))
 	{
 		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, VehicleWheelComponentSetupRotation.Yaw, -VehicleWheelComponentSetupRotation.Roll));
 		FVector WheelCompPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y + FMath::Abs(NewTrackWidth * 0.5), GetRelativeLocation().Z);
@@ -414,7 +414,7 @@ void UVehicleAxleAssemblyComponent::GetLinearVelocity(FVector& OutLocalVelocity,
 
 FVector UVehicleAxleAssemblyComponent::GetAxleCenter()
 {
-	int32 n = LeftWheel.IsValid() + RightWheel.IsValid();
+	int32 n = IsValid(LeftWheel) + IsValid(RightWheel);
 
 	if (n == 2)
 	{
@@ -422,18 +422,18 @@ FVector UVehicleAxleAssemblyComponent::GetAxleCenter()
 	}
 	else
 	{
-		if (LeftWheel.IsValid())return LeftWheel->GetRelativeLocation();
-		if (RightWheel.IsValid())return RightWheel->GetRelativeLocation();
+		if (IsValid(LeftWheel))return LeftWheel->GetRelativeLocation();
+		if (IsValid(RightWheel))return RightWheel->GetRelativeLocation();
 		return FVector(0.f);
 	}
 }
 
 bool UVehicleAxleAssemblyComponent::GenerateWheels()
 {
-	if (!Carbody.IsValid())return false;
+	if (!IsValid(Carbody))return false;
 	
 	//set left wheel
-	if (!LeftWheel.IsValid() && AxleLayout != EVehicleAxleLayout::SingleRight)
+	if (!IsValid(LeftWheel) && AxleLayout != EVehicleAxleLayout::SingleRight)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: GeneratingLeftWheel"));
 		// check if user has set wheel class
@@ -447,12 +447,12 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 			LeftWheel = Cast<UVehicleWheelComponent>
 				(GetOwner()->AddComponentByClass(UVehicleWheelComponent::StaticClass(), true, FTransform(), true));
 		}
-		LeftWheel->AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepRelativeTransform);
-		GetOwner()->FinishAddComponent(LeftWheel.Get(), false, FTransform());
+		LeftWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+		GetOwner()->FinishAddComponent(LeftWheel, false, FTransform());
 	}
 
 	//set right wheel
-	if (!RightWheel.IsValid() && AxleLayout != EVehicleAxleLayout::SingleLeft)
+	if (!IsValid(RightWheel) && AxleLayout != EVehicleAxleLayout::SingleLeft)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: GeneratingRightWheel"));
 		if (WheelConfig)
@@ -465,16 +465,16 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 			RightWheel = Cast<UVehicleWheelComponent>
 				(GetOwner()->AddComponentByClass(UVehicleWheelComponent::StaticClass(), true, FTransform(), true));
 		}
-		RightWheel->AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepRelativeTransform);
-		GetOwner()->FinishAddComponent(RightWheel.Get(), false, FTransform());
+		RightWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+		GetOwner()->FinishAddComponent(RightWheel, false, FTransform());
 	}
 
 	UpdateTrackWidth();
-	if (LeftWheel.IsValid())
+	if (IsValid(LeftWheel))
 	{
 		LeftWheel->RefreshWheelMesh();
 	}
-	if (RightWheel.IsValid())
+	if (IsValid(RightWheel))
 	{
 		RightWheel->RefreshWheelMesh();
 	}
@@ -482,16 +482,16 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 	switch (AxleLayout)
 	{
 	case EVehicleAxleLayout::TwoWheels:
-		return LeftWheel.IsValid() && RightWheel.IsValid();
+		return IsValid(LeftWheel) && IsValid(RightWheel);
 		break;
 	case EVehicleAxleLayout::SingleLeft:
-		return LeftWheel.IsValid();
+		return IsValid(LeftWheel);
 		break;
 	case EVehicleAxleLayout::SingleRight:
-		return RightWheel.IsValid();
+		return IsValid(RightWheel);
 		break;
 	default:
-		return LeftWheel.IsValid() && RightWheel.IsValid();
+		return IsValid(LeftWheel) && IsValid(RightWheel);
 		break;
 	}
 }

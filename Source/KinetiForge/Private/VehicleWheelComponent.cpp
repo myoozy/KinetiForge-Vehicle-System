@@ -92,8 +92,8 @@ void UVehicleWheelComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
-	if (WheelCoordinator.IsValid())
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody);
+	if (IsValid(WheelCoordinator))
 	{
 		WheelCoordinator->RegisterWheel(this);
 	}
@@ -112,7 +112,7 @@ void UVehicleWheelComponent::OnRegister()
 	CurrentWorld = GetWorld();
 	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
 
-	if (!Carbody.IsValid())
+	if (!IsValid(Carbody))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: Carbody Not Found!"));
 	}
@@ -126,27 +126,27 @@ void UVehicleWheelComponent::OnRegister()
 
 void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
-	if (WheelHubComponent && !WheelHubComponent->IsBeingDestroyed())
+	if (IsValid(WheelHubComponent) && !WheelHubComponent->IsBeingDestroyed())
 	{
 		WheelHubComponent->DestroyComponent();
 		WheelHubComponent = nullptr;
 	}
 
-	if (WheelMeshComponent && !WheelMeshComponent->IsBeingDestroyed())
+	if (IsValid(WheelMeshComponent) && !WheelMeshComponent->IsBeingDestroyed())
 	{
 		WheelMeshComponent->DestroyComponent();
 		WheelMeshComponent = nullptr;
 	}
-	if (BrakeMeshComponent && !BrakeMeshComponent->IsBeingDestroyed())
+	if (IsValid(BrakeMeshComponent) && !BrakeMeshComponent->IsBeingDestroyed())
 	{
 		BrakeMeshComponent->DestroyComponent();
 		BrakeMeshComponent = nullptr;
 	}
 
-	if (WheelCoordinator.IsValid() && !WheelCoordinator->IsBeingDestroyed()) { WheelCoordinator->NotifyWheelMoved(); }
+	if (IsValid(WheelCoordinator) && !WheelCoordinator->IsBeingDestroyed()) { WheelCoordinator->NotifyWheelMoved(); }
 
-	if (CurrentWorld.IsValid())CurrentWorld = nullptr;
-	if (Carbody.IsValid())Carbody = nullptr;
+	if (IsValid(CurrentWorld))CurrentWorld = nullptr;
+	if (IsValid(Carbody))Carbody = nullptr;
 	if (TireConfig.Fx)TireConfig.Fx = nullptr;
 	if (TireConfig.Fy)TireConfig.Fy = nullptr;
 	if (TireConfig.Gx)TireConfig.Gx = nullptr;
@@ -223,14 +223,14 @@ void UVehicleWheelComponent::UpdatePhysics(
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheel);
 
 	//check if carbody is valid
-	if (!Carbody.IsValid())
+	if (!IsValid(Carbody))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CarBody!!!"));
 		return;
 	}
 
 	//check if current world is valid
-	if (!CurrentWorld.IsValid())
+	if (!IsValid(CurrentWorld))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CurrentWorld!!!"));
 		return;
@@ -254,7 +254,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 
 void UVehicleWheelComponent::GetWheelCoordinator(UVehicleWheelCoordinatorComponent*& OutWheelCoordinator)
 {
-	OutWheelCoordinator = WheelCoordinator.Get();
+	OutWheelCoordinator = WheelCoordinator;
 }
 
 float UVehicleWheelComponent::ComputeFeedBackTorque()
@@ -283,7 +283,7 @@ void UVehicleWheelComponent::DrawSuspensionForce(float Duration, float Thickness
 
 void UVehicleWheelComponent::DrawWheelForce(float Duration, float Thickness, float Length, bool bDrawVelocity, bool bDrawSlip, bool bDrawInertia)
 {
-	Wheel.DrawWheelForce(CurrentWorld.Get(), Suspension.SimData, Duration, Thickness, Length, bDrawVelocity, bDrawSlip, bDrawInertia);
+	Wheel.DrawWheelForce(CurrentWorld, Suspension.SimData, Duration, Thickness, Length, bDrawVelocity, bDrawSlip, bDrawInertia);
 }
 
 bool UVehicleWheelComponent::SetMesh(float SteeringAxleOffset,

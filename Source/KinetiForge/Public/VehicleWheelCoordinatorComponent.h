@@ -33,6 +33,8 @@ protected:
 	UPROPERTY()
 	UPrimitiveComponent* Carbody;
 	FVector CarbodyCOM;		//local position
+
+	//abandoned, I tried to use convex instead of sphere trace
 	TSharedPtr<Chaos::FConvex> SharedConvex; // ¹²ÏíÍ¹°üÖ¸Õë
 
 	UPROPERTY()

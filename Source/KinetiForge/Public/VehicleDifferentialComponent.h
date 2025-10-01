@@ -63,7 +63,7 @@ public:
 	);
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	int32 UpdateTransferCase(
-		const TArray<UVehicleAxleAssemblyComponent*> Axles,
+		const TArray<UVehicleAxleAssemblyComponent*>& InAxles,
 		float InDeltaTime,
 		float InGearboxOutputTorque,
 		float InReflectedInertia,
@@ -75,7 +75,7 @@ public:
 		float& OutTotalInertia);
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	float CalculateEffectiveWheelRadius(
-		const TArray<UVehicleAxleAssemblyComponent*> Axles
+		const TArray<UVehicleAxleAssemblyComponent*>& InAxles
 	);
 
 	void GetOutputTorque(

@@ -59,7 +59,7 @@ void UVehicleDifferentialComponent::UpdateInputShaft(float InLeftOutputShaftAngu
 }
 
 int32 UVehicleDifferentialComponent::UpdateTransferCase(
-	const TArray<UVehicleAxleAssemblyComponent*> Axles, 
+	const TArray<UVehicleAxleAssemblyComponent*>& InAxles, 
 	float InDeltaTime,
 	float InGearboxOutputTorque, 
 	float InReflectedInertia,
@@ -75,7 +75,7 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	int32 NumOfDriveAxles = 0;
 	float SumTorqueWeight = 0.f;
 	float SumAngVel = 0.f;
-	for (UVehicleAxleAssemblyComponent* Axle : Axles)
+	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
 		if (!IsValid(Axle))continue;
 
@@ -95,7 +95,7 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 
 	SumAngVel = 0.f;
 	float SumDriveAxleInertia = 0.f;
-	for (UVehicleAxleAssemblyComponent* Axle : Axles)
+	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
 		if (!IsValid(Axle))continue;
 		float AxleInertia = 0.f;
@@ -149,11 +149,11 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 }
 
 float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(
-	const TArray<UVehicleAxleAssemblyComponent*> Axles)
+	const TArray<UVehicleAxleAssemblyComponent*>& InAxles)
 {
 	float effectiveR = 0.f;
 	int32 driveAxleNum = 0;
-	for (UVehicleAxleAssemblyComponent* Axle : Axles)
+	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
 		if (!IsValid(Axle))continue;
 

@@ -92,7 +92,7 @@ protected:
     void UpdateAutomaticGearbox(float InDeltaTime);
 
     UPROPERTY()
-    TArray<UVehicleAxleAssemblyComponent*> Axles;
+    TArray <TObjectPtr<UVehicleAxleAssemblyComponent>> Axles;
     UPROPERTY()
     TObjectPtr<UVehicleEngineComponent> Engine;
     UPROPERTY()
@@ -102,11 +102,11 @@ protected:
     UPROPERTY()
     TObjectPtr<UVehicleDifferentialComponent> TransferCase;
     UPROPERTY()
-    TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
+    TObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
     UPROPERTY()
-    TWeakObjectPtr<UVehicleAsyncTickComponent> VehicleAsyncTickComponent;
+    TObjectPtr<UVehicleAsyncTickComponent> VehicleAsyncTickComponent;
     UPROPERTY()
-    TWeakObjectPtr<UPrimitiveComponent> Carbody;
+    TObjectPtr<UPrimitiveComponent> Carbody;
 
     //physics
     float PhysicsDeltaTime;
@@ -154,7 +154,7 @@ public:
     void UpdateDriftCamera(USceneComponent* InSpringArm, float InPitch, float InDriftCamRate = 1.f, float InDriftCamInterpSpeed = 5.f, float InDriftCamStartSpeed_mps = 5.f);
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Input")
     void GetInputValues(FVehicleInputPipeline& Out) { Out = InputValues; }
-    UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator.Get(); }
+    UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator; }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Components")
     TArray<UVehicleAxleAssemblyComponent*> GetAxles() { return Axles; }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Components")
