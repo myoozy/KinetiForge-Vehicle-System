@@ -93,6 +93,7 @@ void UVehicleClutchComponent::TickComponent(float DeltaTime, ELevelTick TickType
 void UVehicleClutchComponent::UpdatePhysics(float InDeltaTime, float InClutchValue, float InGearboxInputShaftVelocity, float InReflectedInertia, float InCurrentGearRatio, float InFirstGearReflectedInertia, UVehicleEngineComponent* TargetEngine)
 {
 	SimData.PhysicsDeltaTime = InDeltaTime;
+	InClutchValue = FMath::Clamp(InClutchValue, 0.f, 1.f);
 
 	if (!IsValid(TargetEngine))return;
 	SimData.EngineAngularVelocity = TargetEngine->GetAngularVelocity();

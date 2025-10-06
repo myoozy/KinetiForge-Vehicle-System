@@ -84,12 +84,46 @@ protected:
     virtual void BeginPlay() override;
     virtual void OnRegister() override;
     virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     void UpdateInput(float InDeltaTime);
     void UpdateThrottle(float InDeltaTime);
     void UpdateBrake(float InDeltaTime);
     void UpdateClutch(float InDeltaTime);
     void UpdateSteering(float InDeltaTime);
     void UpdateAutomaticGearbox(float InDeltaTime);
+
+    UFUNCTION(Server, Reliable, Category = "Input")
+    void ServerInputThrottle(float InValue);
+    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    void MultiCastInputThrottle(float InValue);
+    UFUNCTION(Server, Reliable, Category = "Input")
+    void ServerInputBrake(float InValue);
+    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    void MultiCastInputBrake(float InValue);
+    UFUNCTION(Server, Reliable, Category = "Input")
+    void ServerInputClutch(float InValue);
+    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    void MultiCastInputClutch(float InValue);
+    UFUNCTION(Server, Reliable, Category = "Input")
+    void ServerInputSteering(float InValue);
+    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    void MultiCastInputSteering(float InValue);
+    UFUNCTION(Server, Reliable, Category = "Input")
+    void ServerInputHandbrake(float InValue);
+    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    void MultiCastInputHandbrake(float InValue);
+
+    UFUNCTION(Server, Reliable, Category = "Input")
+    void ServerShiftToTargetGear(int32 InTargetGear, bool bImmediate = false);
+    UFUNCTION(Server, Reliable, Category = "Input")
+    void ServerShiftFinishedCallback();
+    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    void MultiCastShiftToTargetGear(int32 InTargetGear, bool bImmediate = false);
+    UFUNCTION()
+    void OnRep_ServerCurrentGear();
+
+    UPROPERTY(ReplicatedUsing = OnRep_ServerCurrentGear)
+    int32 ServerCurrentGear;
 
     UPROPERTY()
     TArray <TObjectPtr<UVehicleAxleAssemblyComponent>> Axles;

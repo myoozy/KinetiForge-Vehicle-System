@@ -11,6 +11,7 @@
 #include "VehicleClutchComponent.h"
 #include "VehicleGearboxComponent.h"
 #include "VehicleAsyncTickComponent.h"
+#include "Net/UnrealNetwork.h" 
 
 // Sets default values for this component's properties
 UVehicleDriveAssemblyComponent::UVehicleDriveAssemblyComponent()
@@ -21,6 +22,7 @@ UVehicleDriveAssemblyComponent::UVehicleDriveAssemblyComponent()
 	PrimaryComponentTick.TickGroup = ETickingGroup::TG_PostPhysics;
 
 	// ...
+	SetIsReplicatedByDefault(true); // enable replication
 
 	//load default curves
 	if (!InputConfig.Steering.ResponseCurve)
@@ -83,6 +85,7 @@ void UVehicleDriveAssemblyComponent::OnRegister()
 	//...
 	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
 	GetOwner()->bRunConstructionScriptOnDrag = false;	//to improve performance
+	GetOwner()->SetReplicates(true);
 	GenerateAxles();
 }
 
@@ -119,6 +122,13 @@ void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierar
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
 
+void UVehicleDriveAssemblyComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(UVehicleDriveAssemblyComponent, ServerCurrentGear);
+}
+
 void UVehicleDriveAssemblyComponent::UpdateInput(float InDeltaTime)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleInput);
@@ -141,7 +151,7 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 		InputValues.Smoothened.Throttle *= !(InputAssistConfig.bEVClutchLogic && Gearbox->GetCurrentGearRatio() == 0.f);
 	}
 	//if not in gear and should rev-match
-	else if(Gearbox->GetShouldRavMatch() && FMath::Abs(Speed_kph) > 0.5 && AutoGearboxConfig.bSportMode)
+	else if(Gearbox->GetShouldRevMatch() && FMath::Abs(Speed_kph) > 0.5 && AutoGearboxConfig.bSportMode)
 	{
 		InputValues.Smoothened.Throttle += SafeDivide(InDeltaTime, Gearbox->Config.ShiftDelay);
 		InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
@@ -261,6 +271,9 @@ void UVehicleDriveAssemblyComponent::UpdateSteering(float InDeltaTime)
 
 void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 {	
+	APawn* p = Cast<APawn>(GetOwner());
+	if (!p->IsLocallyControlled())return;
+
 	AutoGearboxCount += InDeltaTime;
 	//reset timer
 	//±£ÁôÎó²î
@@ -283,13 +296,13 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 		{
 			if (InputValues.Raw.Throttle > SMALL_NUMBER)
 			{
-				Gearbox->ShiftToTargetGear(1, AutoGearboxConfig.bArcadeShiftInstant);
+				ShiftToTargetGear(1, 0.f, AutoGearboxConfig.bArcadeShiftInstant);
 				AutoGearboxCount += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
 				return;
 			}
 			else if (InputValues.Raw.Brake > SMALL_NUMBER && InputValues.Raw.Throttle <= SMALL_NUMBER)
 			{
-				Gearbox->ShiftToTargetGear(-1, AutoGearboxConfig.bArcadeShiftInstant);
+				ShiftToTargetGear(-1, 0.f, AutoGearboxConfig.bArcadeShiftInstant);
 				AutoGearboxCount += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
 				return;
 			}
@@ -299,19 +312,19 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 		{
 			if (InputValues.Raw.Throttle > SMALL_NUMBER)
 			{
-				Gearbox->ShiftToTargetGear(1, AutoGearboxConfig.bArcadeShiftInstant);
+				ShiftToTargetGear(1, 0.f, AutoGearboxConfig.bArcadeShiftInstant);
 				AutoGearboxCount += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
 				return;
 			}
 			else if (InputValues.Raw.Brake > SMALL_NUMBER)
 			{
-				Gearbox->ShiftToTargetGear(-1, AutoGearboxConfig.bArcadeShiftInstant);
+				ShiftToTargetGear(-1, 0.f, AutoGearboxConfig.bArcadeShiftInstant);
 				AutoGearboxCount += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
 				return;
 			}
 			else
 			{
-				Gearbox->ShiftToTargetGear(0, AutoGearboxConfig.bArcadeShiftInstant);
+				ShiftToTargetGear(0, 0.f, AutoGearboxConfig.bArcadeShiftInstant);
 				AutoGearboxCount += AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxConfig.bArcadeShiftInstant;
 				return;
 			}
@@ -374,9 +387,118 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	{
 		if (TargetGear * Gearbox->GetCurrentGear() > 0)
 		{
-			Gearbox->ShiftToTargetGear(TargetGear);
+			ShiftToTargetGear(TargetGear, 0.f);
 			AutoGearboxCount -= AutoGearboxConfig.AutoShiftCoolDown;
 		}
+	}
+}
+
+//RPC
+void UVehicleDriveAssemblyComponent::ServerInputThrottle_Implementation(float InValue)
+{
+	InputValues.Raw.Throttle = InValue;
+	MultiCastInputThrottle(InValue);
+}
+
+void UVehicleDriveAssemblyComponent::MultiCastInputThrottle_Implementation(float InValue)
+{
+	APawn* p = Cast<APawn>(GetOwner());
+	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	{
+		InputValues.Raw.Throttle = InValue;
+	}
+}
+
+void UVehicleDriveAssemblyComponent::ServerInputBrake_Implementation(float InValue)
+{
+	InputValues.Raw.Brake = InValue;
+}
+
+void UVehicleDriveAssemblyComponent::MultiCastInputBrake_Implementation(float InValue)
+{
+	APawn* p = Cast<APawn>(GetOwner());
+	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	{
+		InputValues.Raw.Brake = InValue;
+	}
+}
+
+void UVehicleDriveAssemblyComponent::ServerInputClutch_Implementation(float InValue)
+{
+	InputValues.Raw.Clutch = InValue;
+}
+
+void UVehicleDriveAssemblyComponent::MultiCastInputClutch_Implementation(float InValue)
+{
+	APawn* p = Cast<APawn>(GetOwner());
+	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	{
+		InputValues.Raw.Clutch = InValue;
+	}
+}
+
+void UVehicleDriveAssemblyComponent::ServerInputSteering_Implementation(float InValue)
+{
+	InputValues.Raw.Steering = InValue;
+}
+
+void UVehicleDriveAssemblyComponent::MultiCastInputSteering_Implementation(float InValue)
+{
+	APawn* p = Cast<APawn>(GetOwner());
+	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	{
+		InputValues.Raw.Steering = InValue;
+	}
+}
+
+void UVehicleDriveAssemblyComponent::ServerInputHandbrake_Implementation(float InValue)
+{
+	InputValues.Raw.Handbrake = InValue;
+}
+
+void UVehicleDriveAssemblyComponent::MultiCastInputHandbrake_Implementation(float InValue)
+{
+	APawn* p = Cast<APawn>(GetOwner());
+	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	{
+		InputValues.Raw.Handbrake = InValue;
+	}
+}
+
+void UVehicleDriveAssemblyComponent::ServerShiftToTargetGear_Implementation(int32 InTargetGear, bool bImmediate)
+{
+	//bind function to delegate
+	FOnShiftFinishedDelegate Delegate;
+	Delegate.BindUFunction(this, FName("ServerShiftFinishedCallback"));
+
+	//shift to target gear on server
+	Gearbox->ShiftToTargetGearWithDelegate(Delegate, InTargetGear, bImmediate);
+
+	//multicast to every client
+	MultiCastShiftToTargetGear(InTargetGear, bImmediate);
+}
+
+void UVehicleDriveAssemblyComponent::ServerShiftFinishedCallback_Implementation()
+{
+	//called after shift
+	ServerCurrentGear = Gearbox->GetCurrentGear();
+}
+
+void UVehicleDriveAssemblyComponent::MultiCastShiftToTargetGear_Implementation(int32 InTargetGear, bool bImmediate)
+{
+	APawn* p = Cast<APawn>(GetOwner());
+	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	{
+		Gearbox->ShiftToTargetGear(InTargetGear, bImmediate);
+	}
+}
+
+void UVehicleDriveAssemblyComponent::OnRep_ServerCurrentGear()
+{
+	//make sure the current gear equals to server current gear
+	if (Gearbox->GetCurrentGear() != ServerCurrentGear)
+	{
+		Gearbox->ShiftToTargetGear(ServerCurrentGear, true);
 	}
 }
 
@@ -489,27 +611,32 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 
 void UVehicleDriveAssemblyComponent::InputThrottle(float InValue)
 {
-	InputValues.Raw.Throttle = InValue;
+	if (!GetOwner()->HasAuthority())InputValues.Raw.Throttle = InValue;
+	ServerInputThrottle(InValue);
 }
 
 void UVehicleDriveAssemblyComponent::InputBrake(float InValue)
 {
-	InputValues.Raw.Brake = InValue;
+	if (!GetOwner()->HasAuthority())InputValues.Raw.Brake = InValue;
+	ServerInputBrake(InValue);
 }
 
 void UVehicleDriveAssemblyComponent::InputClutch(float InValue)
 {
-	InputValues.Raw.Clutch = InValue;
+	if (!GetOwner()->HasAuthority())InputValues.Raw.Clutch = InValue;
+	ServerInputClutch(InValue);
 }
 
 void UVehicleDriveAssemblyComponent::InputSteering(float InValue)
 {
-	InputValues.Raw.Steering = InValue;
+	if (!GetOwner()->HasAuthority())InputValues.Raw.Steering = InValue;
+	ServerInputSteering(InValue);
 }
 
 void UVehicleDriveAssemblyComponent::InputHandbrake(float InValue)
 {
-	InputValues.Raw.Handbrake = InValue;
+	if (!GetOwner()->HasAuthority())InputValues.Raw.Handbrake = InValue;
+	ServerInputHandbrake(InValue);
 }
 
 void UVehicleDriveAssemblyComponent::ShiftToTargetGear(int32 InTargetGear, float InAutoShiftCoolDown, bool bImmediate)
@@ -517,16 +644,22 @@ void UVehicleDriveAssemblyComponent::ShiftToTargetGear(int32 InTargetGear, float
 	if (IsValid(Gearbox)) 
 	{
 		AutoGearboxCount = -InAutoShiftCoolDown;
-		Gearbox->ShiftToTargetGear(InTargetGear, bImmediate);
+
+		//Client predict
+		if (!GetOwner()->HasAuthority())
+		{
+			Gearbox->ShiftToTargetGear(InTargetGear, bImmediate);
+		}
 	}
+
+	ServerShiftToTargetGear(InTargetGear, bImmediate);
 }
 
 void UVehicleDriveAssemblyComponent::ShiftUp(float InAutoShiftCoolDown, bool bImmediate)
 {
 	if (IsValid(Gearbox))
 	{
-		AutoGearboxCount = -InAutoShiftCoolDown;
-		Gearbox->ShiftToTargetGear(Gearbox->GetCurrentGear() + 1, bImmediate);
+		ShiftToTargetGear(Gearbox->GetCurrentGear() + 1, InAutoShiftCoolDown, bImmediate);
 	}
 }
 
@@ -534,8 +667,7 @@ void UVehicleDriveAssemblyComponent::ShiftDown(float InAutoShiftCoolDown, bool b
 {
 	if (IsValid(Gearbox))
 	{
-		AutoGearboxCount = -InAutoShiftCoolDown;
-		Gearbox->ShiftToTargetGear(Gearbox->GetCurrentGear() - 1, bImmediate);
+		ShiftToTargetGear(Gearbox->GetCurrentGear() - 1, InAutoShiftCoolDown, bImmediate);
 	}
 }
 
@@ -611,12 +743,15 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (EngineConfig)
 		{
-			Engine = Cast<UVehicleEngineComponent>(GetOwner()->AddComponentByClass(EngineConfig, false, FTransform(), false));
+			Engine = Cast<UVehicleEngineComponent>
+				(GetOwner()->AddComponentByClass(
+					EngineConfig, false, FTransform(), false));
 		}
 		else
 		{
-			Engine = NewObject<UVehicleEngineComponent>(this);
-			Engine->RegisterComponent();
+			Engine = Cast<UVehicleEngineComponent>
+				(GetOwner()->AddComponentByClass(
+					UVehicleEngineComponent::StaticClass(), false, FTransform(), false));
 		}
 	}
 
@@ -624,12 +759,15 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (ClutchConfig)
 		{
-			Clutch = Cast<UVehicleClutchComponent>(GetOwner()->AddComponentByClass(ClutchConfig, false, FTransform(), false));
+			Clutch = Cast<UVehicleClutchComponent>
+				(GetOwner()->AddComponentByClass(
+					ClutchConfig, false, FTransform(), false));
 		}
 		else
 		{
-			Clutch = NewObject<UVehicleClutchComponent>(this);
-			Clutch->RegisterComponent();
+			Clutch = Cast<UVehicleClutchComponent>
+				(GetOwner()->AddComponentByClass(
+					UVehicleClutchComponent::StaticClass(), false, FTransform(), false));
 		}
 	}
 
@@ -637,12 +775,15 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (GearboxConfig)
 		{
-			Gearbox = Cast<UVehicleGearboxComponent>(GetOwner()->AddComponentByClass(GearboxConfig, false, FTransform(), false));
+			Gearbox = Cast<UVehicleGearboxComponent>
+				(GetOwner()->AddComponentByClass(
+					GearboxConfig, false, FTransform(), false));
 		}
 		else
 		{
-			Gearbox = NewObject<UVehicleGearboxComponent>(this);
-			Gearbox->RegisterComponent();
+			Gearbox = Cast<UVehicleGearboxComponent>
+				(GetOwner()->AddComponentByClass(
+					UVehicleGearboxComponent::StaticClass(), false, FTransform(), false));
 		}
 	}
 
@@ -650,13 +791,16 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (TransferCaseConfig)
 		{
-			TransferCase = Cast<UVehicleDifferentialComponent>(GetOwner()->AddComponentByClass(TransferCaseConfig, false, FTransform(), false));
+			TransferCase = Cast<UVehicleDifferentialComponent>
+				(GetOwner()->AddComponentByClass(
+					TransferCaseConfig, false, FTransform(), false));
 		}
 		else
 		{
-			TransferCase = NewObject<UVehicleDifferentialComponent>(this);
-			TransferCase->Config.GearRatio = 1.f;	//set gear ratio to 1
-			TransferCase->RegisterComponent();
+			TransferCase = Cast<UVehicleDifferentialComponent>
+				(GetOwner()->AddComponentByClass(
+					UVehicleDifferentialComponent::StaticClass(), false, FTransform(), false));
+			TransferCase->Config.GearRatio = 1.f;
 		}
 	}
 

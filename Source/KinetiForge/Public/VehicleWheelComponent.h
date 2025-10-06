@@ -76,13 +76,23 @@ public:
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void SetSprungMass(float NewSprungMass);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetSuspensionLength() { return Suspension.SimData.SuspensionCurrentLength; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetSlipRatio() { return Wheel.SimData.SlipRatio; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetAngularVelocity() { return Wheel.SimData.AngularVelocity; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetTotalInertia() { return Wheel.SimData.TotalInertia; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	FVector GetWorldLinaerVelocity() { return Wheel.SimData.WorldLinearVelocity; }
-	FTransform GetWheelRelativeTransform() { return Suspension.SimData.WheelRelativeTransform; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void UpdatePhysics(
@@ -96,6 +106,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void ApplySuspensionStateDirect(float InExtensionRatio = 1.f, float InSteeringAngle = 0.f)
 	{ Suspension.ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle); }
+
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	void GetWheelCoordinator(UVehicleWheelCoordinatorComponent*& OutWheelCoordinator);
 

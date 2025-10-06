@@ -184,6 +184,7 @@ void UVehicleAxleAssemblyComponent::UpdateSingleWheelAxle(float InDriveTorque, f
 
 void UVehicleAxleAssemblyComponent::UpdateSteering(float InSteeringInput)
 {
+	InSteeringInput = FMath::Clamp(InSteeringInput, -1.f, 1.f);
 	float InsideWheelSteeringAngle = InSteeringInput * AxleSteeringConfig.MaxSteeringAngle;
 	if (AxleSteeringConfig.bAckermannSteering 
 		&& SimData.WheelBase > SMALL_NUMBER 

@@ -128,7 +128,7 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque)
 {
 	SimData.PhysicsDeltaTime = InDeltaTime;
-	SimData.RawThrottleInput = InThrottle;
+	SimData.RawThrottleInput = FMath::Clamp(InThrottle, 0.f, 1.f);
 	SimData.LoadTorque = InLoadTorque;
 
 	//update revlimit timer

@@ -22,20 +22,51 @@ void UVehicleGearboxComponent::BeginPlay()
 	CalculateGearRatios();	//to avoid nullptr
 }
 
-
-void UVehicleGearboxComponent::PrepareShift()
+void UVehicleGearboxComponent::StartShift(int32 InTargetGear, bool bImmediate)
 {
+	//check if gearratios has to be calculated again
+	if (IsGearDataDirty())
+	{
+		CalculateGearRatios();
+	}
+
+	//check if target gear is valid
+	if (InTargetGear == CurrentGear
+		|| InTargetGear > GearRatios.Num()
+		|| InTargetGear < -ReverseGearRatios.Num()
+		|| !bIsInGear)
+		return;
+
+	//if GetWorld()=false, can't set timer, if ShiftDelay to small, immediate
+	bImmediate = bImmediate || !IsValid(GetWorld()) || Config.ShiftDelay < SMALL_NUMBER;
+
+	//Sequential gearbox can only shift one gear once
+	if (Config.bSequentialGearbox)InTargetGear = FMath::Clamp(InTargetGear, CurrentGear - 1, CurrentGear + 1);
+
+	//prepare shift
+	TargetGear = InTargetGear;
 	CurrentGearRatio = 0.f;
 	bIsInGear = false;
-	CurrentGear = 0;
-
-	if (FMath::Abs(TargetGear) >= FMath::Abs(CurrentGear))
+	if (FMath::Abs(TargetGear) < FMath::Abs(CurrentGear) && TargetGear != 0)
 	{
-		bShouldCutThrottle = true;
+		bShouldRevMatch = true;
+	}
+
+	//start shift
+	if (bImmediate)
+	{
+		FinalizeShift();
 	}
 	else
 	{
-		if (TargetGear != 0)bShouldRevMatch = true;
+		//set timer
+		GetWorld()->GetTimerManager().SetTimer(
+			GearShiftTimerHandle,
+			this,
+			&UVehicleGearboxComponent::FinalizeShift,	//call this function after delay
+			Config.ShiftDelay,
+			false // non cycle
+		);
 	}
 }
 
@@ -44,9 +75,14 @@ void UVehicleGearboxComponent::FinalizeShift()
 	CurrentGear = TargetGear;
 	bIsInGear = true;
 	bShouldRevMatch = false;
-	bShouldCutThrottle = false;
 	CurrentGearRatio = GetGearRatio(CurrentGear);
 	TargetGear = 0;
+
+	if (ShiftFinishedCallback.IsBound())
+	{
+		ShiftFinishedCallback.Execute();
+		ShiftFinishedCallback.Unbind();	//if it is not manually unbound, the delegate will be called after every shift
+	}
 }
 
 // Called every frame
@@ -59,47 +95,13 @@ void UVehicleGearboxComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 void UVehicleGearboxComponent::ShiftToTargetGear(int32 InTargetGear, bool bImmediate)
 {
-	//check if gearratios has to be calculated again
-	if (IsGearDataDirty())
-	{
-		CalculateGearRatios();
-	}
+	StartShift(InTargetGear, bImmediate);
+}
 
-	//check if target gear is valid
-	if (InTargetGear == CurrentGear 
-		|| InTargetGear > GearRatios.Num() 
-		|| InTargetGear < -ReverseGearRatios.Num() 
-		|| !bIsInGear)
-		return;
-
-	//if GetWorld()=false, can't set timer, if ShiftDelay to small, immediate
-	bImmediate = bImmediate || !GetWorld() || Config.ShiftDelay < SMALL_NUMBER;
-
-	//Sequential gearbox can only shift one gear once
-	if (Config.bSequentialGearbox)InTargetGear = FMath::Clamp(InTargetGear, CurrentGear - 1, CurrentGear + 1);
-
-	TargetGear = InTargetGear;
-	PrepareShift();
-
-	if (bImmediate)
-	{
-		//if there was a timer, clear it
-		if (GearShiftTimerHandle.IsValid())
-		{
-			GetWorld()->GetTimerManager().ClearTimer(GearShiftTimerHandle);
-		}
-		FinalizeShift();
-		return;
-	}
-
-	//set timer
-	GetWorld()->GetTimerManager().SetTimer(
-		GearShiftTimerHandle,
-		this,
-		&UVehicleGearboxComponent::FinalizeShift,	//call this function after delay
-		Config.ShiftDelay,
-		false // non cycle
-	);
+void UVehicleGearboxComponent::ShiftToTargetGearWithDelegate(FOnShiftFinishedDelegate InOnShiftFinished, int32 InTargetGear, bool bImmediate)
+{
+	ShiftFinishedCallback = InOnShiftFinished;
+	StartShift(InTargetGear, bImmediate);
 }
 
 void UVehicleGearboxComponent::UpdateOutputShaft(
