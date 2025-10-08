@@ -412,6 +412,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputThrottle_Implementation(float
 void UVehicleDriveAssemblyComponent::ServerInputBrake_Implementation(float InValue)
 {
 	InputValues.Raw.Brake = InValue;
+	MultiCastInputBrake(InValue);
 }
 
 void UVehicleDriveAssemblyComponent::MultiCastInputBrake_Implementation(float InValue)
@@ -426,6 +427,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputBrake_Implementation(float In
 void UVehicleDriveAssemblyComponent::ServerInputClutch_Implementation(float InValue)
 {
 	InputValues.Raw.Clutch = InValue;
+	MultiCastInputClutch(InValue);
 }
 
 void UVehicleDriveAssemblyComponent::MultiCastInputClutch_Implementation(float InValue)
@@ -440,6 +442,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputClutch_Implementation(float I
 void UVehicleDriveAssemblyComponent::ServerInputSteering_Implementation(float InValue)
 {
 	InputValues.Raw.Steering = InValue;
+	MultiCastInputSteering(InValue);
 }
 
 void UVehicleDriveAssemblyComponent::MultiCastInputSteering_Implementation(float InValue)
@@ -454,6 +457,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputSteering_Implementation(float
 void UVehicleDriveAssemblyComponent::ServerInputHandbrake_Implementation(float InValue)
 {
 	InputValues.Raw.Handbrake = InValue;
+	MultiCastInputHandbrake(InValue);
 }
 
 void UVehicleDriveAssemblyComponent::MultiCastInputHandbrake_Implementation(float InValue)
