@@ -40,7 +40,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque);
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void GetEngineMovement(FVehicleEngineSimData& Out) { Out = SimData; }
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void SetP1MotorTorque(float NewTorque) {SimData.P1MotorTorque = NewTorque; }
@@ -49,9 +49,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Initialize")
 	void Initialize();
 	UFUNCTION(BlueprintCallable, Category = "Input")
-	EEngineState StartVehicleEngine();
+	EVehicleEngineState StartVehicleEngine();
 	UFUNCTION(BlueprintCallable, Category = "Input")
-	EEngineState ShutVehicleEngine();
+	EVehicleEngineState ShutVehicleEngine();
 	float GetRPM() { return SimData.EngineRPM; }
 	float GetAngularVelocity() { return SimData.EngineAngularVelocity; }
 

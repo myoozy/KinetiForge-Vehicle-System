@@ -139,7 +139,7 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 
 	switch (SimData.State)
 	{
-	case EEngineState::On:
+	case EVehicleEngineState::On:
 		//cut throttle at max rpm
 		if (SimData.EngineRPM > NAConfig.EngineMaxRPM)
 		{
@@ -152,7 +152,7 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 		}
 
 		//check if throttle is released
-		if (SimData.bSpark || SimData.bIdleRPMInValid)
+		if (SimData.bSpark || NAConfig.EngineIdleRPM <= 0)
 		{
 			SimData.RealThrottle = FMath::Lerp(SimData.IdleThrottle, 1.f, SimData.RawThrottleInput);
 		}
@@ -173,25 +173,25 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 
 		if (SimData.EngineRPM <= SimData.EngineOffRPM)
 		{
-			SimData.State = EEngineState::Off;
+			SimData.State = EVehicleEngineState::Off;
 			SimData.bSpark = false;
 		}
 		break;
-	case EEngineState::Off:
+	case EVehicleEngineState::Off:
 		SimData.bSpark = false;
 		if (SimData.EngineRPM > SimData.EngineOffRPM)
 		{
-			SimData.State = EEngineState::On;
+			SimData.State = EVehicleEngineState::On;
 			SimData.bSpark = true;
 		}
 		break;
-	case EEngineState::Starting:
+	case EVehicleEngineState::Starting:
 		SimData.RealThrottle = FMath::Lerp(SimData.IdleThrottle, 1.f, SimData.RawThrottleInput);
 		SimData.bSpark = true;
 		//check if engine is started
 		if (SimData.EngineRPM > FMath::Min(1.5 * NAConfig.EngineIdleRPM, 0.9 * NAConfig.EngineMaxRPM))
 		{
-			SimData.State = EEngineState::On;
+			SimData.State = EVehicleEngineState::On;
 			SimData.StarterMotorTorque = 0.f;
 		}
 		else
@@ -199,16 +199,16 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 			SimData.StarterMotorTorque += SimData.PhysicsDeltaTime * SimData.TorqueRequiredToStartEngine * 10;
 		}
 		break;
-	case EEngineState::Shutting:
+	case EVehicleEngineState::Shutting:
 		SimData.StarterMotorTorque = 0.f;
 		SimData.bSpark = false;
 		if (SimData.EngineRPM <= SimData.EngineOffRPM)
 		{
-			SimData.State = EEngineState::Off;
+			SimData.State = EVehicleEngineState::Off;
 		}
 		break;
 	default:
-		SimData.State = EEngineState::On;
+		SimData.State = EVehicleEngineState::On;
 		break;
 	}
 
@@ -239,28 +239,26 @@ void UVehicleEngineComponent::Initialize()
 	//check if idle rpm is valid
 	if (NAConfig.EngineIdleRPM > 0)
 	{
-		SimData.bIdleRPMInValid = false;
 		SimData.EngineOffRPM = 0.7 * NAConfig.EngineIdleRPM;
 	}
 	else
 	{
-		SimData.bIdleRPMInValid = true;
 		SimData.IdleThrottle = 0;
 		SimData.EngineOffRPM = -BIG_NUMBER;
 	}
 }
 
-EEngineState UVehicleEngineComponent::StartVehicleEngine()
+EVehicleEngineState UVehicleEngineComponent::StartVehicleEngine()
 {
 	switch (SimData.State)
 	{
-	case EEngineState::On:
+	case EVehicleEngineState::On:
 		break;
-	case EEngineState::Off:SimData.State = EEngineState::Starting;
+	case EVehicleEngineState::Off:SimData.State = EVehicleEngineState::Starting;
 		break;
-	case EEngineState::Starting:
+	case EVehicleEngineState::Starting:
 		break;
-	case EEngineState::Shutting://State = EEngineState::Starting;
+	case EVehicleEngineState::Shutting://State = EVehicleEngineState::Starting;
 		break;
 	default:
 		break;
@@ -269,17 +267,17 @@ EEngineState UVehicleEngineComponent::StartVehicleEngine()
 	return SimData.State;
 }
 
-EEngineState UVehicleEngineComponent::ShutVehicleEngine()
+EVehicleEngineState UVehicleEngineComponent::ShutVehicleEngine()
 {
 	switch (SimData.State)
 	{
-	case EEngineState::On:SimData.State = EEngineState::Shutting;
+	case EVehicleEngineState::On:SimData.State = EVehicleEngineState::Shutting;
 		break;
-	case EEngineState::Off:
+	case EVehicleEngineState::Off:
 		break;
-	case EEngineState::Starting://State = EEngineState::Shutting;
+	case EVehicleEngineState::Starting://State = EVehicleEngineState::Shutting;
 		break;
-	case EEngineState::Shutting:
+	case EVehicleEngineState::Shutting:
 		break;
 	default:
 		break;

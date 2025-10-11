@@ -8,7 +8,7 @@
 /*****************************ENGINE******************************/
 
 UENUM(BlueprintType)
-enum class EEngineState : uint8
+enum class EVehicleEngineState : uint8
 {
 	On  UMETA(DisplayName = "EngineON"),
 	Off UMETA(DisplayName = "EngineOFF"),
@@ -71,7 +71,7 @@ struct FVehicleEngineSimData
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
-	EEngineState State = EEngineState::Starting;
+	EVehicleEngineState State = EVehicleEngineState::Starting;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
 	float PhysicsDeltaTime = 0.00833333;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -102,8 +102,6 @@ struct FVehicleEngineSimData
 	float P1MotorTorque = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	bool bSpark = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	bool bIdleRPMInValid = false;
 };
 
 /*******************************CLUTCH********************************/

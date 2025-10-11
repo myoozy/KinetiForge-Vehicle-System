@@ -86,6 +86,9 @@ public:
 	float GetSlipRatio() { return Wheel.SimData.SlipRatio; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	float GetSlipAngle() { return Wheel.SimData.SlipAngle; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetAngularVelocity() { return Wheel.SimData.AngularVelocity; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
@@ -119,10 +122,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetP4MotorTorque() { return Wheel.SimData.P4MotorTorque; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ReadOnly")
+	UFUNCTION(BlueprintCallable, Category = "ReadOnly")
 	void GetWheelMovement(FVehicleWheelSimData& Out) { Out = Wheel.SimData; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ReadOnly")
+	UFUNCTION(BlueprintCallable, Category = "ReadOnly")
 	void GetSuspensionMovement(FVehicleSuspensionSimData& Out) { Out = Suspension.SimData; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ReadOnly")

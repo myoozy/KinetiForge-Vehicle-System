@@ -122,8 +122,21 @@ protected:
     UFUNCTION()
     void OnRep_ServerCurrentGear();
 
+    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    void ServerStartVehicleEngine();
+    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    void MultiCastStartVehicleEngine();
+    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    void ServerShutVehicleEngine();
+    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    void MultiCastShutVehicleEngine();
+    UFUNCTION()
+    void OnRep_ServerVehicleEngineState();
+
     UPROPERTY(ReplicatedUsing = OnRep_ServerCurrentGear)
     int32 ServerCurrentGear;
+    UPROPERTY(ReplicatedUsing = OnRep_ServerVehicleEngineState)
+    EVehicleEngineState ServerVehicleEngineState;
 
     UPROPERTY()
     TArray <TObjectPtr<UVehicleAxleAssemblyComponent>> Axles;
@@ -179,9 +192,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Input")
     void ShiftDown(float InAutoShiftCoolDown = 5.f, bool bImmediate = false);
     UFUNCTION(BlueprintCallable, Category = "Input")
-    EEngineState StartVehicleEngine();
+    EVehicleEngineState StartVehicleEngine();
     UFUNCTION(BlueprintCallable, Category = "Input")
-    EEngineState ShutVehicleEngine();
+    EVehicleEngineState ShutVehicleEngine();
     UFUNCTION(BlueprintCallable, Category = "Input")
     void RotateCamera(USceneComponent* InSpringArm, FVector2D InMouseInput, bool bInvertYAxis = false, float InMaxPitch = 80);
     UFUNCTION(BlueprintCallable, Category = "Input")

@@ -85,7 +85,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Component")
 	void GetDifferential(UVehicleDifferentialComponent*& OutDifferential)
 	{ OutDifferential = Differential; }
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void GetAxleMovement(FVehicleAxleSimData& Out) { Out = SimData; }
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void SetP3MotorTorque(float NewTorque) { SimData.P3MotorTorque = NewTorque; }

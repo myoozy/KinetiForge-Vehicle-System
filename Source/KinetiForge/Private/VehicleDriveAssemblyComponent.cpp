@@ -506,6 +506,63 @@ void UVehicleDriveAssemblyComponent::OnRep_ServerCurrentGear()
 	}
 }
 
+void UVehicleDriveAssemblyComponent::ServerStartVehicleEngine_Implementation()
+{
+	ServerVehicleEngineState = Engine->StartVehicleEngine();
+	MultiCastStartVehicleEngine();
+}
+
+void UVehicleDriveAssemblyComponent::MultiCastStartVehicleEngine_Implementation()
+{
+	APawn* p = Cast<APawn>(GetOwner());
+	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	{
+		Engine->StartVehicleEngine();
+	}
+}
+
+void UVehicleDriveAssemblyComponent::ServerShutVehicleEngine_Implementation()
+{
+	ServerVehicleEngineState = Engine->ShutVehicleEngine();
+	MultiCastShutVehicleEngine();
+}
+
+void UVehicleDriveAssemblyComponent::MultiCastShutVehicleEngine_Implementation()
+{
+	APawn* p = Cast<APawn>(GetOwner());
+	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	{
+		Engine->ShutVehicleEngine();
+	}
+}
+
+void UVehicleDriveAssemblyComponent::OnRep_ServerVehicleEngineState()
+{
+	FVehicleEngineSimData e;
+	Engine->GetEngineMovement(e);
+
+	if (e.State != ServerVehicleEngineState)
+	{
+		switch (ServerVehicleEngineState)
+		{
+		case EVehicleEngineState::On:
+			Engine->StartVehicleEngine();
+			break;
+		case EVehicleEngineState::Off:
+			Engine->ShutVehicleEngine();
+			break;
+		case EVehicleEngineState::Starting:
+			Engine->StartVehicleEngine();
+			break;
+		case EVehicleEngineState::Shutting:
+			Engine->ShutVehicleEngine();
+			break;
+		default:
+			break;
+		}
+	}
+}
+
 // Called every frame
 void UVehicleDriveAssemblyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
@@ -654,9 +711,9 @@ void UVehicleDriveAssemblyComponent::ShiftToTargetGear(int32 InTargetGear, float
 		{
 			Gearbox->ShiftToTargetGear(InTargetGear, bImmediate);
 		}
-	}
 
-	ServerShiftToTargetGear(InTargetGear, bImmediate);
+		ServerShiftToTargetGear(InTargetGear, bImmediate);
+	}
 }
 
 void UVehicleDriveAssemblyComponent::ShiftUp(float InAutoShiftCoolDown, bool bImmediate)
@@ -675,14 +732,40 @@ void UVehicleDriveAssemblyComponent::ShiftDown(float InAutoShiftCoolDown, bool b
 	}
 }
 
-EEngineState UVehicleDriveAssemblyComponent::StartVehicleEngine()
+EVehicleEngineState UVehicleDriveAssemblyComponent::StartVehicleEngine()
 {
-	return Engine->StartVehicleEngine();
+	if (IsValid(Engine))
+	{
+		if (!GetOwner()->HasAuthority())
+		{
+			Engine->StartVehicleEngine();
+		}
+
+		ServerStartVehicleEngine();
+		return ServerVehicleEngineState;
+	}
+	else
+	{
+		return EVehicleEngineState::Off;
+	}
 }
 
-EEngineState UVehicleDriveAssemblyComponent::ShutVehicleEngine()
+EVehicleEngineState UVehicleDriveAssemblyComponent::ShutVehicleEngine()
 {
-	return Engine->ShutVehicleEngine();
+	if (IsValid(Engine))
+	{
+		if (!GetOwner()->HasAuthority())
+		{
+			Engine->ShutVehicleEngine();
+		}
+
+		ServerShutVehicleEngine();
+		return ServerVehicleEngineState;
+	}
+	else
+	{
+		return EVehicleEngineState::On;
+	}
 }
 
 void UVehicleDriveAssemblyComponent::UpdateDriftCamera(USceneComponent* InSpringArm, float InPitch, float InDriftCamRate, float InDriftCamInterpSpeed, float InDriftCamStartSpeed_mps)
