@@ -87,11 +87,15 @@ void FVehicleWheelSolver::DrawWheelForce(UWorld* InCurrentWorld, const FVehicleS
 	FTransform TempTrans = FTransform(TempRot, TempImpactPoint, TempScale);
 
 	Length *= 0.01;
-	float ScaledSuspForce = Length * InSuspensionSimData.WheelLoad;
+	float ScaledWheelLoad = CalculateScaledWheelLoad(
+		InSuspensionSimData.SprungMass, 
+		InSuspensionSimData.WheelLoad, 
+		TireConfig.WheelLoadInfluenceFactor);
+	float AvailableGrip = Length * SimData.DynFrictionMultiplier * ScaledWheelLoad;
 
 	//draw grip circle
 	FColor GripCircleColor = FColor(0, 191, 255);
-	DrawDebugCircle(InCurrentWorld, TempTrans.ToMatrixWithScale(), Length * InSuspensionSimData.WheelLoad * SimData.DynFrictionMultiplier, 16, GripCircleColor,
+	DrawDebugCircle(InCurrentWorld, TempTrans.ToMatrixWithScale(), AvailableGrip, 16, GripCircleColor,
 		false, Duration, 0, Thickness, false);
 
 	//draw raw force
@@ -370,6 +374,16 @@ FVector2D FVehicleWheelSolver::ComputeTireSmoothingFactor()
 	return Result;
 }
 
+float FVehicleWheelSolver::CalculateScaledWheelLoad(float SprungMass, float WheelLoad, float Saturation)
+{
+	float NormWheelLoad = SprungMass * 9.8;
+	float LoadRatio = SafeDivide(WheelLoad, NormWheelLoad);
+	float k = (1.f / Saturation) - 1.f;
+	float LoadRatio_Minus_1 = LoadRatio - 1.f;
+	float LoadScale = 1.f + LoadRatio_Minus_1 / (k * LoadRatio_Minus_1 + 1.f);
+	return LoadScale * NormWheelLoad;
+}
+
 void FVehicleWheelSolver::ComputeTireForce(float SprungMass, float WheelLoad,	bool bHitGround, FVector LongForceDirUnNorm, FVector LatForceDirUnNorm, FVector2D GravityProjOnSlope)
 {
 	if (!bHitGround)
@@ -388,15 +402,8 @@ void FVehicleWheelSolver::ComputeTireForce(float SprungMass, float WheelLoad,	bo
 	float TargetLatForce = ComputeRigidLatForce(SprungMass);
 
 	//interp wheel load
-	float NormWheelLoad = SprungMass * 9.8;
-	float DoubleRatio = 1.f + TireConfig.WheelLoadInfluenceFactor;
-	float LoadRatio = SafeDivide(WheelLoad, NormWheelLoad);
-	float a = (DoubleRatio - 2.f) / 2.f;
-	float b = (4.f - DoubleRatio) / 2.f;
-	float LoadScale = (a * LoadRatio * LoadRatio) + (b * LoadRatio);
-
-	//scale grip
-	float AvailableGrip = SimData.DynFrictionMultiplier * NormWheelLoad * LoadScale;
+	float ScaledWheelLoad = CalculateScaledWheelLoad(SprungMass, WheelLoad, TireConfig.WheelLoadInfluenceFactor);
+	float AvailableGrip = SimData.DynFrictionMultiplier * ScaledWheelLoad;
 	float SlipInputScale = SafeDivide(TireConfig.FrictionMultiplier, SimData.DynFrictionMultiplier);
 
 	//if the user has only setup one of the Fx or Fy curve, the rigid force on the other direction should be cut, before computing combined slip

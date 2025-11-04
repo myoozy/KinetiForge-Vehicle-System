@@ -57,6 +57,10 @@ private:
 		FVector LongForceDir,
 		FVector LatForceDir);
 	FVector2D ComputeTireSmoothingFactor();
+	float CalculateScaledWheelLoad(
+		float SprungMass,
+		float WheelLoad,
+		float Saturation);
 	void ComputeTireForce(
 		float SprungMass,
 		float PositiveSuspensionForce,
