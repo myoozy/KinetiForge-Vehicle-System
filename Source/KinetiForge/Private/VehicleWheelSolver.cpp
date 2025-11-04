@@ -378,9 +378,8 @@ float FVehicleWheelSolver::CalculateScaledWheelLoad(float SprungMass, float Whee
 {
 	float NormWheelLoad = SprungMass * 9.8;
 	float LoadRatio = SafeDivide(WheelLoad, NormWheelLoad);
-	float k = (1.f / Saturation) - 1.f;
-	float LoadRatio_Minus_1 = LoadRatio - 1.f;
-	float LoadScale = 1.f + LoadRatio_Minus_1 / (k * LoadRatio_Minus_1 + 1.f);
+	float b = (1.f - Saturation) / (2.f + 2.f * Saturation);
+	float LoadScale = LoadRatio / (1.f + b * LoadRatio);
 	return LoadScale * NormWheelLoad;
 }
 
