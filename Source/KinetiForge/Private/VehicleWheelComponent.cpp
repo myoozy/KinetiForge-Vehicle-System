@@ -112,7 +112,10 @@ void UVehicleWheelComponent::OnRegister()
 	//get parent
 	CurrentWorld = GetWorld();
 	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
-
+	if (IsValid(Carbody) && Carbody != GetAttachParent())
+	{
+		AttachToComponent(Carbody, FAttachmentTransformRules::KeepWorldTransform);
+	}
 	if (!IsValid(Carbody))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: Carbody Not Found!"));
