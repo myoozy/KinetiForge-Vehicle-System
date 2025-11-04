@@ -152,7 +152,7 @@ void UVehicleGearboxComponent::CalculateSpeedRangeOfEachGear(
 	OutSpeedRanges[0] = FVector2D(0);
 
 	float RPMToRad = PI * 0.0333333333333f;
-	float avgRPM = InEffectiveWheelRadius * RPMToRad * 0.036;
+	float avgRPM = InEffectiveWheelRadius * RPMToRad * 0.01;
 
 	for (int32 i = 1; i <= NumGears; i++)
 	{

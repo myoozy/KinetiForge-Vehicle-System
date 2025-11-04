@@ -61,17 +61,15 @@ void FVehicleWheelSolver::UpdateWheel(
 
 	WheelAcceleration();
 
-	FVector2D GravProj = ComputeGravityProjectionOnSlope(SuspensionSimData.PositiveSuspensionForce, LongForceDir, LatForceDir);
+	FVector2D GravProj = ComputeGravityProjectionOnSlope(SuspensionSimData.WheelLoad, LongForceDir, LatForceDir);
 
 	ComputeTireForce(
 		SuspensionSimData.SprungMass,
-		SuspensionSimData.PositiveSuspensionForce,
+		SuspensionSimData.WheelLoad,
 		SuspensionSimData.bHitGround,
 		LongForceDirUnNorm,
 		LatForceDirUnNorm, 
 		GravProj);
-
-	ApplyTireForce(SuspensionSimData);
 }
 
 void FVehicleWheelSolver::DrawWheelForce(UWorld* InCurrentWorld, const FVehicleSuspensionSimData& InSuspensionSimData, float Duration, float Thickness, float Length, bool bDrawVelocity, bool bDrawSlip, bool bDrawInertia)
@@ -89,11 +87,11 @@ void FVehicleWheelSolver::DrawWheelForce(UWorld* InCurrentWorld, const FVehicleS
 	FTransform TempTrans = FTransform(TempRot, TempImpactPoint, TempScale);
 
 	Length *= 0.01;
-	float ScaledSuspForce = Length * InSuspensionSimData.PositiveSuspensionForce;
+	float ScaledSuspForce = Length * InSuspensionSimData.WheelLoad;
 
 	//draw grip circle
 	FColor GripCircleColor = FColor(0, 191, 255);
-	DrawDebugCircle(InCurrentWorld, TempTrans.ToMatrixWithScale(), Length * InSuspensionSimData.PositiveSuspensionForce * SimData.DynFrictionMultiplier, 16, GripCircleColor,
+	DrawDebugCircle(InCurrentWorld, TempTrans.ToMatrixWithScale(), Length * InSuspensionSimData.WheelLoad * SimData.DynFrictionMultiplier, 16, GripCircleColor,
 		false, Duration, 0, Thickness, false);
 
 	//draw raw force
@@ -323,7 +321,7 @@ float FVehicleWheelSolver::ComputeRigidLatForce(float SprungMass)
 	return ForceRequiredToBringToStop * Scale;
 }
 
-FVector2D FVehicleWheelSolver::ComputeGravityProjectionOnSlope(float PositiveSuspensionForce, FVector LongForceDir, FVector LatForceDir)
+FVector2D FVehicleWheelSolver::ComputeGravityProjectionOnSlope(float WheelLoad, FVector LongForceDir, FVector LatForceDir)
 {
 	FVector2D GravityProj = FVector2D(0.f, 0.f);
 
@@ -340,13 +338,13 @@ FVector2D FVehicleWheelSolver::ComputeGravityProjectionOnSlope(float PositiveSus
 
 	//Lateral:
 	float SlipSign = FMath::Sign(-SimData.LocalLinearVelocity.Y);
-	GravityProj.Y = (LatForceDir.Z + FMath::Abs(LatForceDir.Z) * SlipSign * Mu) * PositiveSuspensionForce;
+	GravityProj.Y = (LatForceDir.Z + FMath::Abs(LatForceDir.Z) * SlipSign * Mu) * WheelLoad;
 
 	//longitudinal:
 	if (SimData.bIsLocked)
 	{
 		SlipSign = FMath::Sign(SimData.LongSlipVelocity);
-		GravityProj.X = (LongForceDir.Z + FMath::Abs(LongForceDir.Z) * SlipSign * Mu) * PositiveSuspensionForce;
+		GravityProj.X = (LongForceDir.Z + FMath::Abs(LongForceDir.Z) * SlipSign * Mu) * WheelLoad;
 
 		//consider brake force?
 		float BrakeForce = SimData.BrakeTorque * SimData.RInv;	//SimData.BrakeTorque is always positive
@@ -372,7 +370,7 @@ FVector2D FVehicleWheelSolver::ComputeTireSmoothingFactor()
 	return Result;
 }
 
-void FVehicleWheelSolver::ComputeTireForce(float SprungMass, float PositiveSuspensionForce,	bool bHitGround, FVector LongForceDirUnNorm, FVector LatForceDirUnNorm, FVector2D GravityProjOnSlope)
+void FVehicleWheelSolver::ComputeTireForce(float SprungMass, float WheelLoad,	bool bHitGround, FVector LongForceDirUnNorm, FVector LatForceDirUnNorm, FVector2D GravityProjOnSlope)
 {
 	if (!bHitGround)
 	{
@@ -388,7 +386,18 @@ void FVehicleWheelSolver::ComputeTireForce(float SprungMass, float PositiveSuspe
 	//rigid tire force
 	float TargetLongForce = ComputeRigidLongForce(SprungMass);
 	float TargetLatForce = ComputeRigidLatForce(SprungMass);
-	float AvailableGrip = SimData.DynFrictionMultiplier * PositiveSuspensionForce;
+
+	//interp wheel load
+	float NormWheelLoad = SprungMass * 9.8;
+	float DoubleRatio = 1.f + TireConfig.WheelLoadInfluenceFactor;
+	float LoadRatio = SafeDivide(WheelLoad, NormWheelLoad);
+	float a = (DoubleRatio - 2.f) / 2.f;
+	float b = (4.f - DoubleRatio) / 2.f;
+	float LoadScale = (a * LoadRatio * LoadRatio) + (b * LoadRatio);
+
+	//scale grip
+	float AvailableGrip = SimData.DynFrictionMultiplier * NormWheelLoad * LoadScale;
+	float SlipInputScale = SafeDivide(TireConfig.FrictionMultiplier, SimData.DynFrictionMultiplier);
 
 	//if the user has only setup one of the Fx or Fy curve, the rigid force on the other direction should be cut, before computing combined slip
 	bool bUseFxCurve = (TireConfig.Fx != nullptr);
@@ -399,12 +408,12 @@ void FVehicleWheelSolver::ComputeTireForce(float SprungMass, float PositiveSuspe
 	float MaxFy = TireConfig.MaxFy * AvailableGrip;
 	if (bUseFxCurve)
 	{
-		float Fx = MaxFx * TireConfig.Fx->GetFloatValue(FMath::Abs(SimData.SlipRatio));
+		float Fx = MaxFx * TireConfig.Fx->GetFloatValue(FMath::Abs(SimData.SlipRatio * SlipInputScale));
 		TargetLongForce = FMath::Clamp(TargetLongForce, -Fx, Fx);
 	}
 	if (bUseFyCurve)
 	{
-		float Fy = MaxFy * TireConfig.Fy->GetFloatValue(FMath::Abs(SimData.SlipAngle));
+		float Fy = MaxFy * TireConfig.Fy->GetFloatValue(FMath::Abs(SimData.SlipAngle * SlipInputScale));
 		TargetLatForce = FMath::Clamp(TargetLatForce, -Fy, Fy);
 	}
 	if (bUseFxCurve != bUseFyCurve) {
@@ -419,8 +428,8 @@ void FVehicleWheelSolver::ComputeTireForce(float SprungMass, float PositiveSuspe
 	//combined slip, if the user has setup curves
 	float Gx = 1.f;
 	float Gy = 1.f;
-	if (TireConfig.Gx)Gx = TireConfig.Gx->GetFloatValue(FMath::Abs(SimData.SlipAngle));
-	if (TireConfig.Gy)Gy = TireConfig.Gy->GetFloatValue(FMath::Abs(SimData.SlipRatio));
+	if (TireConfig.Gx)Gx = TireConfig.Gx->GetFloatValue(FMath::Abs(SimData.SlipAngle * SlipInputScale));
+	if (TireConfig.Gy)Gy = TireConfig.Gy->GetFloatValue(FMath::Abs(SimData.SlipRatio * SlipInputScale));
 	TargetLongForce *= Gx;
 	TargetLatForce  *= Gy;
 
@@ -443,44 +452,6 @@ void FVehicleWheelSolver::ComputeTireForce(float SprungMass, float PositiveSuspe
 	}
 
 	SimData.TyreForce = SimData.LongForce * LongForceDirUnNorm + SimData.LatForce * LatForceDirUnNorm;
-}
-
-void FVehicleWheelSolver::ApplyTireForce(const FVehicleSuspensionSimData& SuspensionSimData)
-{
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelAddForce);
-
-	if (!SuspensionSimData.HitStruct.bBlockingHit)return;
-
-	FVector TotalImpulse = (SimData.TyreForce + SuspensionSimData.SuspensionForceVector) * SimData.PhysicsDeltaTime;
-
-	FVector WidthBias = FVector(0.f);
-	FVector PosToApplyImpulse = FVector(0.f);
-
-	switch (TargetWheelComponent->SuspensionKinematicsConfig.PositionToApplyForce)
-	{
-	case EPositionToApplyForce::ImpactPoint:
-		PosToApplyImpulse = SuspensionSimData.HitStruct.ImpactPoint;
-		break;
-	case EPositionToApplyForce::ImpactPointWithBias:
-		WidthBias = SuspensionSimData.WheelRightVector * (SuspensionSimData.WheelPos * TargetWheelComponent->WheelConfig.Width * 0.5);
-		WidthBias = FVector::VectorPlaneProject(WidthBias, SuspensionSimData.HitStruct.ImpactNormal);
-		PosToApplyImpulse = SuspensionSimData.HitStruct.ImpactPoint + WidthBias;
-		break;
-	case EPositionToApplyForce::WheelCenter:
-		PosToApplyImpulse = SuspensionSimData.WheelWorldPos;
-		break;
-	default:
-		PosToApplyImpulse = SuspensionSimData.HitStruct.ImpactPoint;
-		break;
-	}
-
-	UAsyncTickFunctions::ATP_AddImpulseAtPosition(TargetWheelComponent->GetCarbody(), PosToApplyImpulse, TotalImpulse * 100, "NONE");
-
-	if (IsValid(SuspensionSimData.HitStruct.GetComponent()) &&
-		SuspensionSimData.HitStruct.GetComponent()->IsSimulatingPhysics())
-	{
-		UAsyncTickFunctions::ATP_AddImpulseAtPosition(SuspensionSimData.HitStruct.GetComponent(), SuspensionSimData.HitStruct.ImpactPoint, TotalImpulse * -100, SuspensionSimData.HitStruct.BoneName);
-	}
 }
 
 float FVehicleWheelSolver::SafeDivide(float a, float b)

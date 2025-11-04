@@ -64,6 +64,5 @@ private:
 		FVector LongForceDirUnNorm,
 		FVector LatForceDirUnNorm,
 		FVector2D GravityProjOnSlope);
-	void ApplyTireForce(const FVehicleSuspensionSimData& SuspensionSimData);
 	float SafeDivide(float a, float b);
 };

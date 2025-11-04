@@ -3,6 +3,7 @@
 
 #include "VehicleWheelComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
+#include "AsyncTickFunctions.h"
 
 // Sets default values for this component's properties
 UVehicleWheelComponent::UVehicleWheelComponent()
@@ -187,6 +188,60 @@ bool UVehicleWheelComponent::GenerateMeshComponents()
 	return RefreshWheelMesh();
 }
 
+void UVehicleWheelComponent::ApplyWheelForce()
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelAddForce);
+
+	if (!Suspension.SimData.HitStruct.bBlockingHit)return;
+
+	FVector WidthBias = FVector(0.f);
+	FVector PosToApplyImpulse = FVector(0.f);
+
+	switch (SuspensionKinematicsConfig.PositionToApplyForce)
+	{
+	case EPositionToApplyForce::ImpactPoint:
+		PosToApplyImpulse = Suspension.SimData.HitStruct.ImpactPoint;
+		break;
+	case EPositionToApplyForce::ImpactPointWithBias:
+		WidthBias = Suspension.SimData.WheelRightVector * (Suspension.SimData.WheelPos * WheelConfig.Width * 0.5);
+		WidthBias = FVector::VectorPlaneProject(WidthBias, Suspension.SimData.HitStruct.ImpactNormal);
+		PosToApplyImpulse = Suspension.SimData.HitStruct.ImpactPoint + WidthBias;
+		break;
+	case EPositionToApplyForce::WheelCenter:
+		PosToApplyImpulse = Suspension.SimData.WheelWorldPos;
+		break;
+	default:
+		PosToApplyImpulse = Suspension.SimData.HitStruct.ImpactPoint;
+		break;
+	}
+
+	float dt = Wheel.SimData.PhysicsDeltaTime;
+	FVector SuspensionForceProj = Suspension.SimData.SuspensionForceVector.ProjectOnTo(Suspension.SimData.HitStruct.ImpactNormal);
+	FVector LinearImpulse = (Wheel.SimData.TyreForce + SuspensionForceProj) * dt;
+
+	if (Chaos::FRigidBodyHandle_Internal* RigidHandle = GetInternalHandle(Carbody, NAME_None))
+	{
+		// split linear force and angular force
+		//FVector TotalImpulse = (Wheel.SimData.TyreForce + Suspension.SimData.SuspensionForceVector) * dt;
+		const Chaos::FVec3 WorldCOM = Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(RigidHandle);
+		const Chaos::FVec3 AngularImpulse = Chaos::FVec3::CrossProduct(PosToApplyImpulse - WorldCOM, LinearImpulse);
+
+		RigidHandle->SetLinearImpulse(RigidHandle->LinearImpulse() + LinearImpulse * 100, false);
+		RigidHandle->SetAngularImpulse(RigidHandle->AngularImpulse() + AngularImpulse * 100, false);
+	}
+
+	// also add force to the contacted component
+	if (IsValid(Suspension.SimData.HitStruct.GetComponent()) &&
+		Suspension.SimData.HitStruct.GetComponent()->IsSimulatingPhysics())
+	{
+		UAsyncTickFunctions::ATP_AddImpulseAtPosition(
+			Suspension.SimData.HitStruct.GetComponent(),
+			Suspension.SimData.HitStruct.ImpactPoint, 
+			LinearImpulse * -100,
+			Suspension.SimData.HitStruct.BoneName);
+	}
+}
+
 // Called every frame
 void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
@@ -204,6 +259,24 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	Suspension.CheckIsDampingDirty();
 
 	if (bUpdateAnimAutomatically) UpdateWheelAnim(DeltaTime, 0);
+}
+
+Chaos::FRigidBodyHandle_Internal* UVehicleWheelComponent::GetInternalHandle(UPrimitiveComponent* Component, FName BoneName)
+{
+	if (IsValid(Component))
+	{
+		if (const FBodyInstance* BodyInstance = Component->GetBodyInstance(BoneName))
+		{
+			if (const auto Handle = BodyInstance->ActorHandle)
+			{
+				if (Chaos::FRigidBodyHandle_Internal* RigidHandle = Handle->GetPhysicsThreadAPI())
+				{
+					return RigidHandle;
+				}
+			}
+		}
+	}
+	return nullptr;
 }
 
 void UVehicleWheelComponent::SetSprungMass(float NewSprungMass)
@@ -250,6 +323,8 @@ void UVehicleWheelComponent::UpdatePhysics(
 		InHandbrakeTorque,
 		InReflectedInertia,
 		Suspension.SimData);
+
+	ApplyWheelForce();
 }
 
 void UVehicleWheelComponent::GetWheelCoordinator(UVehicleWheelCoordinatorComponent*& OutWheelCoordinator)
@@ -262,6 +337,38 @@ float UVehicleWheelComponent::ComputeFeedBackTorque()
 	FVector LeverArm = Suspension.SimData.HitStruct.ImpactPoint - Suspension.SimData.HitStruct.Location;
 	FVector Torque = FVector::CrossProduct(LeverArm, Wheel.SimData.TyreForce);
 	return FVector::DotProduct(Suspension.SimData.StrutDirection, Torque);
+}
+
+void UVehicleWheelComponent::SetInertiaTensor(UPrimitiveComponent* InComponent, FVector InInertia)
+{
+	if (!IsValid(InComponent)) return;
+	FBodyInstance* BI = InComponent->GetBodyInstance();
+	if (!BI || !BI->IsValidBodyInstance()) return;
+
+	if (!FPhysicsInterface::IsValid(BI->ActorHandle) || !FPhysicsInterface::IsRigidBody(BI->ActorHandle))
+	{
+		// actor is not created, maybe try again later
+		return;
+	}
+
+
+	// cm^2 to m^2
+	InInertia *= 10000;
+
+	// input check
+	if (InInertia.X <= 0.f || InInertia.Y <= 0.f || InInertia.Z <= 0.f)
+	{
+		FVector OriginalInertia = BI->GetBodyInertiaTensor();
+		if (InInertia.X <= 0)InInertia.X = OriginalInertia.X;
+		if (InInertia.Y <= 0)InInertia.Y = OriginalInertia.X;
+		if (InInertia.Z <= 0)InInertia.Z = OriginalInertia.X;
+	}
+
+	// setup in physical callback
+	FPhysicsCommand::ExecuteWrite(BI->ActorHandle, [&](FPhysicsActorHandle& Actor)
+	{
+		FPhysicsInterface::SetMassSpaceInertiaTensor_AssumesLocked(Actor, InInertia);
+	});
 }
 
 bool UVehicleWheelComponent::GetRayCastResult(FHitResult& OutHitResult, bool& OutRevised)
@@ -428,7 +535,7 @@ void UVehicleWheelComponent::AttachWheelHubMeshToSuspension(USceneComponent* InW
 	InWheelHub->SetRelativeTransform(InTransform);
 }
 
-float UVehicleWheelComponent::SafeDivide(float a, float b)
+float UVehicleWheelComponent::SafeDivide(auto a, auto b)
 {
 	return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
 }

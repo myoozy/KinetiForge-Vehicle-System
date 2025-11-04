@@ -157,14 +157,16 @@ protected:
 
     //physics
     float PhysicsDeltaTime;
-    float Speed_kph;
     float AutoGearboxCount;
     int32 NumOfWheelsOnGround;
     int32 NumOfDriveAxles;
     bool bIsInAir;
-    FVector LocalLinearVelocity;
-    FVector WorldLinearVelocity;
+    FVector AbsoluteWorldLinearVelocity;
+    FVector LocalLinearVelocity;//relative to ground
+    FVector WorldLinearVelocity;//relative to ground
     FVector LocalVelocityClamped;
+    FVector WorldAcceleration;
+    FVector LocalAcceleration;
     TArray<FVector2D> SpeedRangeOfEachGear;
 
     FVehicleInputPipeline InputValues;
@@ -196,10 +198,19 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Input")
     EVehicleEngineState ShutVehicleEngine();
     UFUNCTION(BlueprintCallable, Category = "Input")
-    void RotateCamera(USceneComponent* InSpringArm, FVector2D InMouseInput, bool bInvertYAxis = false, float InMaxPitch = 80);
+    void RotateCamera(
+        USceneComponent* InSpringArm,
+        FVector2D InMouseInput,
+        bool bInvertYAxis = false, 
+        float InMaxPitch = 80);
     UFUNCTION(BlueprintCallable, Category = "Input")
-    void UpdateDriftCamera(USceneComponent* InSpringArm, float InPitch, float InDriftCamRate = 1.f, float InDriftCamInterpSpeed = 5.f, float InDriftCamStartSpeed_mps = 5.f);
-    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Input")
+    void UpdateDriftCamera(
+        USceneComponent* InSpringArm, 
+        float InPitch, 
+        float InDriftCamRate = 1.f,
+        float InDriftCamInterpSpeed = 5.f, 
+        float InDriftCamStartSpeed_mps = 5.f);
+    UFUNCTION(BlueprintCallable, Category = "Input")
     void GetInputValues(FVehicleInputPipeline& Out) { Out = InputValues; }
     UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator; }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Components")
@@ -210,13 +221,32 @@ public:
     UVehicleClutchComponent* GetClutch() { return Clutch; }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Components")
     UVehicleGearboxComponent* GetGearbox() { return Gearbox; }
-    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Components")
+    UFUNCTION(BlueprintCallable, Category = "Components")
     TArray<UVehicleWheelComponent*> GetWheels();
     UFUNCTION(BlueprintCallable, Category = "Components")
     void DestroyTargetAxle(UVehicleAxleAssemblyComponent* InTargetAxle);
-    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-    void GetVehicleSpeed(float& OutKph, FVector& OutWorldLinearVelocity, FVector& OutLocalLinearVelocity) 
-    { OutKph = Speed_kph;OutWorldLinearVelocity = WorldLinearVelocity;OutLocalLinearVelocity = LocalLinearVelocity; }
+    UFUNCTION(BlueprintCallable, Category = "Physics")
+    void GetVehicleSpeed(
+        FVector& OutAbsoluteWorldLinearVelocity, 
+        FVector& OutWorldLinearVelocity,
+        FVector& OutLocalLinearVelocity,
+        float& OutKph, 
+        float& OutMph)
+    {
+        OutAbsoluteWorldLinearVelocity = AbsoluteWorldLinearVelocity; 
+        OutWorldLinearVelocity = WorldLinearVelocity;
+        OutLocalLinearVelocity = LocalLinearVelocity;
+        OutKph = LocalLinearVelocity.X * 3.6; 
+        OutMph = LocalLinearVelocity.X * 2.237;
+    }
+    UFUNCTION(BlueprintCallable, Category = "Physics")
+    void GetVehicleAcceleration(
+        FVector& OutWorldAcceleration, 
+        FVector& OutLocalAcceleration)
+    {
+        OutWorldAcceleration = WorldAcceleration; 
+        OutLocalAcceleration = LocalAcceleration;
+    }
 
 private:
     bool GeneratePowerUnit();

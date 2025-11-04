@@ -113,9 +113,7 @@ struct FVehicleSuspensionSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float SuspensionForceRaw = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float SuspensionForce = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float PositiveSuspensionForce = 0.f;
+	float WheelLoad = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float SprungMass = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")

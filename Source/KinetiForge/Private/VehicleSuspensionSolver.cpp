@@ -648,13 +648,14 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce()
 			TotalForce = SimData.SuspensionForceVecRaw + TyreSpringForce + TyreDampingForce;
 		}
 
-		SimData.SuspensionForceVector = TotalForce.ProjectOnTo(SimData.HitStruct.ImpactNormal);
-		SimData.SuspensionForce = FVector::DotProduct(TotalForce, SimData.HitStruct.ImpactNormal);
-		SimData.PositiveSuspensionForce = FMath::Max(0, SimData.SuspensionForce);
+		//SimData.SuspensionForceVector = TotalForce.ProjectOnTo(SimData.HitStruct.ImpactNormal);
+		SimData.SuspensionForceVector = TotalForce;
+		float Fn = FVector::DotProduct(TotalForce, SimData.HitStruct.ImpactNormal);
+		SimData.WheelLoad = FMath::Max(0, Fn);
 	}
 	else
 	{
-		SimData.SuspensionForceRaw = SimData.SuspensionForce = SimData.PositiveSuspensionForce = 0;
+		SimData.SuspensionForceRaw = SimData.WheelLoad = 0;
 		SimData.SuspensionForceVecRaw = SimData.SuspensionForceVector = FVector(0);
 		SimData.ImpactPointToRayCastStart = SimData.ComponentUpVector * -WheelRadius;
 	}

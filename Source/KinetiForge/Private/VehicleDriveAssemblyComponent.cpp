@@ -11,6 +11,7 @@
 #include "VehicleClutchComponent.h"
 #include "VehicleGearboxComponent.h"
 #include "VehicleAsyncTickComponent.h"
+#include "AsyncTickFunctions.h"
 #include "Net/UnrealNetwork.h" 
 
 // Sets default values for this component's properties
@@ -151,7 +152,7 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 		InputValues.Smoothened.Throttle *= !(InputAssistConfig.bEVClutchLogic && Gearbox->GetCurrentGearRatio() == 0.f);
 	}
 	//if not in gear and should rev-match
-	else if(Gearbox->GetShouldRevMatch() && FMath::Abs(Speed_kph) > 0.5 && AutoGearboxConfig.bSportMode)
+	else if(Gearbox->GetShouldRevMatch() && FMath::Abs(LocalLinearVelocity.X) > 0.5 && AutoGearboxConfig.bSportMode)
 	{
 		InputValues.Smoothened.Throttle += SafeDivide(InDeltaTime, Gearbox->Config.ShiftDelay);
 		InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
@@ -253,7 +254,7 @@ void UVehicleDriveAssemblyComponent::UpdateSteering(float InDeltaTime)
 	//reduce the steering value when driving at high speed
 	if (InputConfig.HighSpeedSteeringScale)
 	{
-		RealSteeringInput *= InputConfig.HighSpeedSteeringScale->GetFloatValue(FMath::Abs(Speed_kph));
+		RealSteeringInput *= InputConfig.HighSpeedSteeringScale->GetFloatValue(FMath::Abs(LocalLinearVelocity.X));
 	}
 
 	InputValues.Smoothened.Steering = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Steering, RealSteeringInput, InDeltaTime, InputConfig.Steering.InterpSpeed);
@@ -366,7 +367,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 		FMath::Max(Gearbox->Config.NumberOfGears, Gearbox->Config.NumOfReverseGears));
 	
 	int32 TargetGear = StartGear;
-	float UnsignedSpeed = FMath::Abs(Speed_kph);
+	float UnsignedSpeed = FMath::Abs(LocalLinearVelocity.X);
 
 	//search for target gear
 	for (int i = -EndGear; i < -StartGear; i++)
@@ -381,7 +382,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	bool GearingUp = FMath::Abs(Gearbox->GetCurrentGear()) < TargetGear;
 
 	//check sign
-	if (Speed_kph < 0)TargetGear = -TargetGear;
+	if (LocalLinearVelocity.X < 0)TargetGear = -TargetGear;
 
 	if (Gearbox->GetCurrentGear() != TargetGear && !(GearingUp && InputValues.Final.Brake > SMALL_NUMBER))
 	{
@@ -629,7 +630,7 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		InputAssistConfig.bBurnOutAssist
 		&& InputValues.Final.Throttle > 0.9
 		&& InputValues.Final.Brake > 0.9
-		&& Speed_kph < 1.f,
+		&& LocalLinearVelocity.X < 1.f,
 		GearboxOutputShaftAngularVelocity,
 		SumAxleInertia
 	);
@@ -667,7 +668,12 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 	LocalLinearVelocity = SumLocalLinVel * 2.f * NumGroundedWheelsInv;
 	WorldLinearVelocity = SumWorldLinVel * 2.f * NumGroundedWheelsInv;
 	LocalVelocityClamped = ClampToZero(LocalLinearVelocity, 0.1);
-	Speed_kph = LocalLinearVelocity.X * 3.6;
+
+	//get acceleration
+	FVector LastAbsVelocity = AbsoluteWorldLinearVelocity;
+	AbsoluteWorldLinearVelocity = 0.01 * UAsyncTickFunctions::ATP_GetLinearVelocity(Carbody);
+	WorldAcceleration = SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, PhysicsDeltaTime);
+	LocalAcceleration = UAsyncTickFunctions::ATP_GetTransform(Carbody).InverseTransformVectorNoScale(WorldAcceleration);
 }
 
 void UVehicleDriveAssemblyComponent::InputThrottle(float InValue)

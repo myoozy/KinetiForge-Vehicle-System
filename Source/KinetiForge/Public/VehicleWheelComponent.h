@@ -49,6 +49,7 @@ protected:
 	virtual void OnRegister() override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 	bool GenerateMeshComponents();
+	void ApplyWheelForce();
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> WheelHubComponent;
@@ -75,6 +76,10 @@ protected:
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+	static Chaos::FRigidBodyHandle_Internal* GetInternalHandle(
+		UPrimitiveComponent* Component,
+		FName BoneName = NAME_None);
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void SetSprungMass(float NewSprungMass);
@@ -121,6 +126,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetP4MotorTorque() { return Wheel.SimData.P4MotorTorque; }
+
+	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "kg/m^2"))
+	static void SetInertiaTensor(UPrimitiveComponent* InComponent, FVector InInertia);
 
 	UFUNCTION(BlueprintCallable, Category = "ReadOnly")
 	void GetWheelMovement(FVehicleWheelSimData& Out) { Out = Wheel.SimData; }
@@ -205,5 +213,5 @@ public:
 	void AttachWheelHubMeshToSuspension(USceneComponent* InWheelHub, FTransform InTransform);
 
 private:
-	float SafeDivide(float a, float b);
+	float SafeDivide(auto a, auto b);
 };
