@@ -37,6 +37,18 @@ void UVehicleAxleAssemblyComponent::OnRegister()
 	GenerateComponents();
 }
 
+#if WITH_EDITOR
+void UVehicleAxleAssemblyComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	//...
+	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
+	//PreviewWheelMesh();
+	GenerateComponents();
+}
+#endif
+
 void UVehicleAxleAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
 	if (Differential && !Differential->IsBeingDestroyed())
@@ -471,6 +483,7 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 	}
 
 	UpdateTrackWidth();
+
 	if (IsValid(LeftWheel))
 	{
 		LeftWheel->RefreshWheelMesh();

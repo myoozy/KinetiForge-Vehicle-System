@@ -90,6 +90,19 @@ void UVehicleDriveAssemblyComponent::OnRegister()
 	GenerateAxles();
 }
 
+#if WITH_EDITOR
+void UVehicleDriveAssemblyComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	//...
+	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
+	GetOwner()->bRunConstructionScriptOnDrag = false;	//to improve performance
+	GetOwner()->SetReplicates(true);
+	GenerateAxles();
+}
+#endif
+
 void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
 	//destory all axles

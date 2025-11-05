@@ -47,7 +47,8 @@ public class KinetiForge : ModuleRules
 				"Chaos", 
 				"ChaosSolverEngine", 
 				"PhysicsCore",
-                "AsyncTickPhysics"
+                "AsyncTickPhysics",
+                "MovieScene"
             }
 			);
 		

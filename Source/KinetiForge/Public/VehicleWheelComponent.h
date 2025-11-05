@@ -20,6 +20,8 @@ public:
 	// Sets default values for this component's properties
 	UVehicleWheelComponent();
 
+	// Physics Setup
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleWheelConfig WheelConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -30,10 +32,16 @@ public:
 	FVehicleSuspensionKinematicsConfig SuspensionKinematicsConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleSuspensionSpringConfig SuspensionSpringConfig;
+
+	// Anim Setup
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	bool bUpdateAnimAutomatically = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
+	float AnimInterpSpeed = 50.f;
 
-	//Mesh Setup
+	// Mesh Setup
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	UStaticMesh* WheelMesh;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -58,7 +66,7 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> BrakeMeshComponent;
 	
-	//Parent
+	//
 	UPROPERTY()
 	TObjectPtr<UWorld> CurrentWorld;
 	UPROPERTY()
@@ -70,6 +78,14 @@ protected:
 	FVehicleSuspensionSolver Suspension;
 	//wheel movement
 	FVehicleWheelSolver Wheel;
+
+	//anim
+	FVector2D PrevBallJointPos2D;
+	FQuat PrevWheelRelativeRot;
+	FVector2D AnimBallJointPos2D;
+	FQuat AnimWheelRelativeRot;
+	float TimeSinceLastPhysicsTick = 0.0f;
+
 	//cache
 	FVector CachedComponentRelativeLocation;
 
@@ -169,8 +185,12 @@ public:
 
 
 	UFUNCTION(BlueprintCallable, Category = "Mesh")
-	bool SetMesh(float SteeringAxleOffset, UStaticMesh* NewWheelMesh, FTransform WheelMeshRelatvieTransform,
-		UStaticMesh* NewBrakeMesh, FTransform BrakeMeshRelativeTransform);
+	bool SetMesh(
+		float SteeringAxleOffset,
+		UStaticMesh* NewWheelMesh,
+		FTransform WheelMeshRelatvieTransform,
+		UStaticMesh* NewBrakeMesh, 
+		FTransform BrakeMeshRelativeTransform);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Mesh")
 	void GetWheelAndBrakeMeshComponents(UStaticMeshComponent*& OutWheel, UStaticMeshComponent*& OutBrake)

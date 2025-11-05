@@ -312,6 +312,11 @@ void UVehicleWheelComponent::UpdatePhysics(
 		return;
 	}
 
+	//Update anim cache
+	PrevBallJointPos2D = Suspension.SimData.BallJointPos2D;
+	PrevWheelRelativeRot = Suspension.SimData.WheelRelativeTransform.GetRotation();
+	TimeSinceLastPhysicsTick = 0.f;
+
 	//Suspension
 	Suspension.UpdateSuspension(
 		InPhysicsDeltaTime, 
@@ -396,38 +401,42 @@ void UVehicleWheelComponent::DrawWheelForce(float Duration, float Thickness, flo
 	Wheel.DrawWheelForce(CurrentWorld, Suspension.SimData, Duration, Thickness, Length, bDrawVelocity, bDrawSlip, bDrawInertia);
 }
 
-bool UVehicleWheelComponent::SetMesh(float SteeringAxleOffset,
-	UStaticMesh* NewWheelMesh, FTransform WheelMeshRelatvieTransform,
-	UStaticMesh* NewBrakeMesh, FTransform BrakeMeshRelativeTransform)
+bool UVehicleWheelComponent::SetMesh(
+	float SteeringAxleOffset,
+	UStaticMesh* NewWheelMesh, 
+	FTransform WheelMeshRelatvieTransform,
+	UStaticMesh* NewBrakeMesh, 
+	FTransform BrakeMeshRelativeTransform)
 {
 	if (!IsValid(WheelHubComponent) || !IsValid(WheelMeshComponent) || !IsValid(BrakeMeshComponent))return false;
 
+	WheelMeshRelatvieTransform.SetLocation(WheelMeshRelatvieTransform.GetLocation() + FVector(0, SteeringAxleOffset, 0));
+	BrakeMeshRelativeTransform.SetLocation(BrakeMeshRelativeTransform.GetLocation() + FVector(0, SteeringAxleOffset, 0));
+
+	float WheelPos = FMath::Sign(GetRelativeLocation().Y);
+
 	//if is left wheel
-	if (GetRelativeLocation().Y < 0)
+	if (WheelPos < 0)
 	{
 		FTransform TempTrans = FTransform(FQuat(FRotator(0.f)), FVector(0.f), FVector(1.f, -1.f, 1.f));
 		WheelMeshRelatvieTransform *= TempTrans;
 		BrakeMeshRelativeTransform *= TempTrans;
 	}
 
-	FQuat TempRot = FQuat(FRotator(0, SuspensionKinematicsConfig.BaseToe * Suspension.SimData.WheelPos, SuspensionKinematicsConfig.BaseCamber * Suspension.SimData.WheelPos));
+	FQuat TempRot = FQuat(FRotator(0, SuspensionKinematicsConfig.BaseToe * WheelPos, SuspensionKinematicsConfig.BaseCamber * WheelPos));
 	WheelHubComponent->SetRelativeTransform(FTransform(GetRelativeTransform().InverseTransformRotation(TempRot), FVector(0), FVector(1)));
 
 	if (NewWheelMesh)
 	{
 		WheelMeshComponent->SetStaticMesh(NewWheelMesh);
 	}
-	WheelMeshComponent->SetRelativeLocation(WheelMeshRelatvieTransform.GetLocation() + FVector(0, SteeringAxleOffset, 0));
-	WheelMeshComponent->SetRelativeRotation(WheelMeshRelatvieTransform.GetRotation());
-	WheelMeshComponent->SetRelativeScale3D(WheelMeshRelatvieTransform.GetScale3D());
+	WheelMeshComponent->SetRelativeTransform(WheelMeshRelatvieTransform);
 	WheelMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	if (NewBrakeMesh)
 	{
 		BrakeMeshComponent->SetStaticMesh(NewBrakeMesh);
 	}
-	BrakeMeshComponent->SetRelativeLocation(BrakeMeshRelativeTransform.GetLocation() + FVector(0, SteeringAxleOffset, 0));
-	BrakeMeshComponent->SetRelativeRotation(BrakeMeshRelativeTransform.GetRotation());
-	BrakeMeshComponent->SetRelativeScale3D(BrakeMeshRelativeTransform.GetScale3D());
+	BrakeMeshComponent->SetRelativeTransform(BrakeMeshRelativeTransform);
 	BrakeMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	return WheelMeshComponent->GetStaticMesh() && BrakeMeshComponent->GetStaticMesh();
@@ -435,16 +444,33 @@ bool UVehicleWheelComponent::SetMesh(float SteeringAxleOffset,
 
 bool UVehicleWheelComponent::RefreshWheelMesh()
 {
-	return SetMesh(FMath::Sign(GetRelativeLocation().Y) * SuspensionKinematicsConfig.SteeringAxleOffset, WheelMesh, WheelMeshTransform, BrakeMesh, BrakeMeshTransform);
+	return SetMesh(
+		SuspensionKinematicsConfig.SteeringAxleOffset, 
+		WheelMesh,
+		WheelMeshTransform, 
+		BrakeMesh, 
+		BrakeMeshTransform);
 }
 
 void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngularVelocity)
 {
+	TimeSinceLastPhysicsTick += DeltaTime;
+
 	if (!IsValid(WheelHubComponent) || !IsValid(WheelMeshComponent))return;
 
-	WheelHubComponent->SetRelativeLocation(Suspension.SuspensionPlaneToZYPlane(Suspension.SimData.BallJointPos2D));
-	WheelHubComponent->SetRelativeRotation(Suspension.SimData.RelativeTransform.InverseTransformRotation(Suspension.SimData.WheelRelativeTransform.GetRotation()));
-	if (WheelMeshComponent)
+	// blend between physics frames
+	float Alpha = FMath::Clamp(TimeSinceLastPhysicsTick / Wheel.SimData.PhysicsDeltaTime, 0.0f, 1.0f);
+	FVector2D TargetAnimBallJointPos2D = FMath::Lerp(PrevBallJointPos2D, Suspension.SimData.BallJointPos2D, Alpha);
+	FQuat TargetAnimWheelRelativeRot = FMath::Lerp(PrevWheelRelativeRot, Suspension.SimData.WheelRelativeTransform.GetRotation(), Alpha);
+
+	// interp
+	AnimBallJointPos2D = FMath::Vector2DInterpTo(AnimBallJointPos2D, TargetAnimBallJointPos2D, DeltaTime, AnimInterpSpeed);
+	AnimWheelRelativeRot = FMath::QInterpTo(AnimWheelRelativeRot, TargetAnimWheelRelativeRot, DeltaTime, AnimInterpSpeed);
+
+	WheelHubComponent->SetRelativeLocation(Suspension.SuspensionPlaneToZYPlane(AnimBallJointPos2D));
+	WheelHubComponent->SetRelativeRotation(Suspension.SimData.RelativeTransform.InverseTransformRotation(AnimWheelRelativeRot));
+	
+	if (IsValid(WheelMeshComponent))
 	{
 		if (MaxAnimAngularVelocity > 0)
 		{
