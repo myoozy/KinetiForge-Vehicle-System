@@ -14,6 +14,10 @@ UVehicleAxleAssemblyComponent::UVehicleAxleAssemblyComponent()
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = false;
 	// ...
+
+	// Create default wheels so that they can be recognized by Sequencer
+	LeftWheel = CreateDefaultSubobject<UVehicleWheelComponent>(FName("LeftWheel"));
+	RightWheel = CreateDefaultSubobject<UVehicleWheelComponent>(FName("RightWheel"));
 }
 
 
@@ -23,6 +27,7 @@ void UVehicleAxleAssemblyComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
+	GenerateDifferential();
 	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody);
 	if (IsValid(WheelCoordinator))WheelCoordinator->RegisterAxle(this);
 }
@@ -34,20 +39,9 @@ void UVehicleAxleAssemblyComponent::OnRegister()
 	//...
 	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
 	//PreviewWheelMesh();
-	GenerateComponents();
+	GenerateWheels();
+	InitializeWheels();
 }
-
-#if WITH_EDITOR
-void UVehicleAxleAssemblyComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-
-	//...
-	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
-	//PreviewWheelMesh();
-	GenerateComponents();
-}
-#endif
 
 void UVehicleAxleAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
@@ -327,6 +321,20 @@ void UVehicleAxleAssemblyComponent::TickComponent(float DeltaTime, ELevelTick Ti
 	//make sure the wheel preview is destoryed
 }
 
+void UVehicleAxleAssemblyComponent::InitializeWheels()
+{
+	UpdateTrackWidth();
+
+	if (IsValid(LeftWheel))
+	{
+		LeftWheel->InitializeWheel();
+	}
+	if (IsValid(RightWheel))
+	{
+		RightWheel->InitializeWheel();
+	}
+}
+
 void UVehicleAxleAssemblyComponent::UpdatePhysics(
 	float InPhysicsDeltaTime,
 	float InDriveTorque, 
@@ -396,6 +404,11 @@ void UVehicleAxleAssemblyComponent::SetWheelPosition(float NewTrackWidth)
 	//set left wheel
 	if (IsValid(LeftWheel))
 	{
+		if (IsValid(Carbody) && LeftWheel->GetAttachParent() != Carbody)
+		{
+			LeftWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+		}
+
 		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, -VehicleWheelComponentSetupRotation.Yaw, VehicleWheelComponentSetupRotation.Roll));
 		FVector WheelCompPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y - FMath::Abs(NewTrackWidth * 0.5), GetRelativeLocation().Z);
 		FQuat WheelAlignmentRot = FQuat(FRotator(0, -LeftWheel->SuspensionKinematicsConfig.BaseToe, -LeftWheel->SuspensionKinematicsConfig.BaseCamber));
@@ -406,6 +419,11 @@ void UVehicleAxleAssemblyComponent::SetWheelPosition(float NewTrackWidth)
 	//set right wheel
 	if (IsValid(RightWheel))
 	{
+		if (IsValid(Carbody) && RightWheel->GetAttachParent() != Carbody)
+		{
+			RightWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+		}
+
 		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, VehicleWheelComponentSetupRotation.Yaw, -VehicleWheelComponentSetupRotation.Roll));
 		FVector WheelCompPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y + FMath::Abs(NewTrackWidth * 0.5), GetRelativeLocation().Z);
 		FQuat WheelAlignmentRot = FQuat(FRotator(0, RightWheel->SuspensionKinematicsConfig.BaseToe, RightWheel->SuspensionKinematicsConfig.BaseCamber));
@@ -443,54 +461,41 @@ FVector UVehicleAxleAssemblyComponent::GetAxleCenter()
 
 bool UVehicleAxleAssemblyComponent::GenerateWheels()
 {
-	if (!IsValid(Carbody))return false;
-	
-	//set left wheel
+	//Destroy unused wheels
+	if (IsValid(LeftWheel) && AxleLayout == EVehicleAxleLayout::SingleRight)
+	{
+		LeftWheel->DestroyComponent();
+	}
+	if (IsValid(RightWheel) && AxleLayout == EVehicleAxleLayout::SingleLeft)
+	{
+		RightWheel->DestroyComponent();
+	}
+
+	//Generate left wheel
 	if (!IsValid(LeftWheel) && AxleLayout != EVehicleAxleLayout::SingleRight)
 	{
-		//UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: GeneratingLeftWheel"));
-		// check if user has set wheel class
-		if (WheelConfig)
-		{
-			LeftWheel = Cast<UVehicleWheelComponent>
-				(GetOwner()->AddComponentByClass(WheelConfig, true, FTransform(), true));
-		}
-		else
-		{
-			LeftWheel = Cast<UVehicleWheelComponent>
-				(GetOwner()->AddComponentByClass(UVehicleWheelComponent::StaticClass(), true, FTransform(), true));
-		}
-		LeftWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-		GetOwner()->FinishAddComponent(LeftWheel, false, FTransform());
+		LeftWheel = Cast<UVehicleWheelComponent>
+			(GetOwner()->AddComponentByClass(UVehicleWheelComponent::StaticClass(), false, FTransform(), false));
 	}
 
-	//set right wheel
+	//Generate right wheel
 	if (!IsValid(RightWheel) && AxleLayout != EVehicleAxleLayout::SingleLeft)
 	{
-		//UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: GeneratingRightWheel"));
-		if (WheelConfig)
-		{
-			RightWheel = Cast<UVehicleWheelComponent>
-				(GetOwner()->AddComponentByClass(WheelConfig, true, FTransform(), true));
-		}
-		else
-		{
-			RightWheel = Cast<UVehicleWheelComponent>
-				(GetOwner()->AddComponentByClass(UVehicleWheelComponent::StaticClass(), true, FTransform(), true));
-		}
-		RightWheel->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-		GetOwner()->FinishAddComponent(RightWheel, false, FTransform());
+		RightWheel = Cast<UVehicleWheelComponent>
+			(GetOwner()->AddComponentByClass(UVehicleWheelComponent::StaticClass(), false, FTransform(), false));
 	}
 
-	UpdateTrackWidth();
-
-	if (IsValid(LeftWheel))
+	if (IsValid(WheelConfig))
 	{
-		LeftWheel->RefreshWheelMesh();
-	}
-	if (IsValid(RightWheel))
-	{
-		RightWheel->RefreshWheelMesh();
+		const UVehicleWheelComponent* TemplateWheel = Cast<UVehicleWheelComponent>(WheelConfig->GetDefaultObject());
+		if (IsValid(LeftWheel))
+		{
+			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, LeftWheel);
+		}
+		if (IsValid(RightWheel))
+		{
+			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, RightWheel);
+		}
 	}
 
 	switch (AxleLayout)

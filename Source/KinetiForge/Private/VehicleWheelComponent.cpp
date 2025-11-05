@@ -110,22 +110,7 @@ void UVehicleWheelComponent::OnRegister()
 
 	//...
 	//get parent
-	CurrentWorld = GetWorld();
-	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
-	if (IsValid(Carbody) && Carbody != GetAttachParent())
-	{
-		AttachToComponent(Carbody, FAttachmentTransformRules::KeepWorldTransform);
-	}
-	if (!IsValid(Carbody))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: Carbody Not Found!"));
-	}
-
-	Suspension.Initialize(this);
-	Wheel.Initialize(this);
-
-	//initialize meshes
-	GenerateMeshComponents();
+	InitializeWheel();
 }
 
 void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
@@ -256,7 +241,7 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	FVector NewRelativeLocation = GetRelativeLocation();
 	if ((CachedComponentRelativeLocation - NewRelativeLocation).SquaredLength() > 1.f)
 	{
-		WheelCoordinator->NotifyWheelMoved();
+		if (IsValid(WheelCoordinator))WheelCoordinator->NotifyWheelMoved();
 	}
 
 	Suspension.CheckIsDampingDirty();
@@ -280,6 +265,41 @@ Chaos::FRigidBodyHandle_Internal* UVehicleWheelComponent::GetInternalHandle(UPri
 		}
 	}
 	return nullptr;
+}
+
+void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target)
+{
+	Target->WheelConfig = Source->WheelConfig;
+	Target->TireConfig = Source->TireConfig;
+	Target->ABSConfig = Source->ABSConfig;
+	Target->SuspensionKinematicsConfig = Source->SuspensionKinematicsConfig;
+	Target->SuspensionSpringConfig = Source->SuspensionSpringConfig;
+	Target->bUpdateAnimAutomatically = Source->bUpdateAnimAutomatically;
+	Target->AnimInterpSpeed = Source->AnimInterpSpeed;
+	Target->WheelMesh = Source->WheelMesh;
+	Target->WheelMeshTransform = Source->WheelMeshTransform;
+	Target->BrakeMesh = Source->BrakeMesh;
+	Target->BrakeMeshTransform = Source->BrakeMeshTransform;
+}
+
+void UVehicleWheelComponent::InitializeWheel()
+{
+	CurrentWorld = GetWorld();
+	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
+	if (IsValid(Carbody) && Carbody != GetAttachParent())
+	{
+		AttachToComponent(Carbody, FAttachmentTransformRules::KeepWorldTransform);
+	}
+	if (!IsValid(Carbody))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: Carbody Not Found!"));
+	}
+
+	Suspension.Initialize(this);
+	Wheel.Initialize(this);
+
+	//initialize meshes
+	GenerateMeshComponents();
 }
 
 void UVehicleWheelComponent::SetSprungMass(float NewSprungMass)
@@ -458,14 +478,22 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 
 	if (!IsValid(WheelHubComponent) || !IsValid(WheelMeshComponent))return;
 
-	// blend between physics frames
-	float Alpha = FMath::Clamp(TimeSinceLastPhysicsTick / Wheel.SimData.PhysicsDeltaTime, 0.0f, 1.0f);
-	FVector2D TargetAnimBallJointPos2D = FMath::Lerp(PrevBallJointPos2D, Suspension.SimData.BallJointPos2D, Alpha);
-	FQuat TargetAnimWheelRelativeRot = FMath::Lerp(PrevWheelRelativeRot, Suspension.SimData.WheelRelativeTransform.GetRotation(), Alpha);
+	if (DeltaTime > 0)
+	{
+		// blend between physics frames
+		float Alpha = FMath::Clamp(TimeSinceLastPhysicsTick / Wheel.SimData.PhysicsDeltaTime, 0.0f, 1.0f);
+		FVector2D TargetAnimBallJointPos2D = FMath::Lerp(PrevBallJointPos2D, Suspension.SimData.BallJointPos2D, Alpha);
+		FQuat TargetAnimWheelRelativeRot = FMath::Lerp(PrevWheelRelativeRot, Suspension.SimData.WheelRelativeTransform.GetRotation(), Alpha);
 
-	// interp
-	AnimBallJointPos2D = FMath::Vector2DInterpTo(AnimBallJointPos2D, TargetAnimBallJointPos2D, DeltaTime, AnimInterpSpeed);
-	AnimWheelRelativeRot = FMath::QInterpTo(AnimWheelRelativeRot, TargetAnimWheelRelativeRot, DeltaTime, AnimInterpSpeed);
+		// interp
+		AnimBallJointPos2D = FMath::Vector2DInterpTo(AnimBallJointPos2D, TargetAnimBallJointPos2D, DeltaTime, AnimInterpSpeed);
+		AnimWheelRelativeRot = FMath::QInterpTo(AnimWheelRelativeRot, TargetAnimWheelRelativeRot, DeltaTime, AnimInterpSpeed);
+	}
+	else
+	{
+		AnimBallJointPos2D = Suspension.SimData.BallJointPos2D;
+		AnimWheelRelativeRot = Suspension.SimData.WheelRelativeTransform.GetRotation();
+	}
 
 	WheelHubComponent->SetRelativeLocation(Suspension.SuspensionPlaneToZYPlane(AnimBallJointPos2D));
 	WheelHubComponent->SetRelativeRotation(Suspension.SimData.RelativeTransform.InverseTransformRotation(AnimWheelRelativeRot));

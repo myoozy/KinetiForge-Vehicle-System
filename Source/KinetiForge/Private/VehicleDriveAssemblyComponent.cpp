@@ -96,10 +96,6 @@ void UVehicleDriveAssemblyComponent::PostEditChangeProperty(FPropertyChangedEven
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
 	//...
-	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
-	GetOwner()->bRunConstructionScriptOnDrag = false;	//to improve performance
-	GetOwner()->SetReplicates(true);
-	GenerateAxles();
 }
 #endif
 
@@ -915,7 +911,14 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 int UVehicleDriveAssemblyComponent::GenerateAxles()
 {
-	if (!IsValid(Carbody))return -1;
+	if (!IsValid(Carbody))
+	{
+		Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
+		if (!IsValid(Carbody))
+		{
+			return -1;
+		}
+	}
 
 	//if there are axles, destroy them
 	if (Axles.Num() > 0)
@@ -935,14 +938,16 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 		if (AxleClass)
 		{
 			Axle = Cast<UVehicleAxleAssemblyComponent>
-				(GetOwner()->AddComponentByClass(AxleClass, true, FTransform(FQuat(), AxleConfig.AxlePosition, FVector(1)), true));
+				(GetOwner()->AddComponentByClass(AxleClass, true, FTransform(), true));
 		}
 		else
 		{
 			Axle = Cast<UVehicleAxleAssemblyComponent>
-				(GetOwner()->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), true, FTransform(FQuat(), AxleConfig.AxlePosition, FVector(1)), true));
+				(GetOwner()->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), true, FTransform(), true));
 		}
+
 		Axle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+		Axle->SetRelativeLocation(AxleConfig.AxlePosition);
 
 		if (IsValid(Axle))
 		{

@@ -97,6 +97,10 @@ public:
 		UPrimitiveComponent* Component,
 		FName BoneName = NAME_None);
 
+	static void CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target);
+
+	void InitializeWheel();
+
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void SetSprungMass(float NewSprungMass);
 
