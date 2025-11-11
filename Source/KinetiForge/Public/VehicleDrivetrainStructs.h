@@ -168,8 +168,6 @@ struct FVehicleClutchSimData
 	float ReflectedInertia = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float FirstGearReflectedInertia = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	bool ClutchSlipping = 0.f;
 };
 
 /*******************************GEARBOX********************************/

@@ -43,7 +43,7 @@ void FVehicleWheelSolver::UpdateWheel(
 	SimData.TotalInertia = Config.Inertia + SimData.ReflectedInertia;
 	SimData.TotalInertiaInv = SafeDivide(1, SimData.TotalInertia);
 
-	UpdateABS(FMath::Abs(InBrakeTorque), SuspensionSimData.bHitGround);
+	UpdateABS(FMath::Abs(InBrakeTorque + SimData.BrakeTorqueFromESP), SuspensionSimData.bHitGround);
 	SimData.BrakeTorqueFromHandbrake = FMath::Abs(InHandbrakeTorque);
 	SimData.BrakeTorque = SimData.BrakeTorqueFromBrake + Config.RollingRisistance + SimData.BrakeTorqueFromHandbrake;
 

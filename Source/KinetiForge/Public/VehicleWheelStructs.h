@@ -114,11 +114,13 @@ struct FVehicleWheelSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float DriveTorque = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float BrakeTorque = 0.f;		//braketorque + rolling resistance
+	float BrakeTorque = 0.f;		//brake torque from brake + rolling resistance
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float BrakeTorqueFromBrake = 0.f;	//not including the rolling resistance
+	float BrakeTorqueFromBrake = 0.f;	//brake torque input + brake torque from esp; not including the rolling resistance
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float BrakeTorqueFromHandbrake = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
+	float BrakeTorqueFromESP = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float TorqueFromGroundInteraction = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")

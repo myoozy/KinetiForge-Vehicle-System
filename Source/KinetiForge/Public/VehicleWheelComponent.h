@@ -101,25 +101,25 @@ public:
 
 	void InitializeWheel();
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
 	void SetSprungMass(float NewSprungMass);
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Suspension")
 	float GetSuspensionLength() { return Suspension.SimData.SuspensionCurrentLength; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tire")
 	float GetSlipRatio() { return Wheel.SimData.SlipRatio; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tire")
 	float GetSlipAngle() { return Wheel.SimData.SlipAngle; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Wheel")
 	float GetAngularVelocity() { return Wheel.SimData.AngularVelocity; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Wheel")
 	float GetTotalInertia() { return Wheel.SimData.TotalInertia; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Wheel")
 	FVector GetWorldLinaerVelocity() { return Wheel.SimData.WorldLinearVelocity; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
@@ -131,7 +131,7 @@ public:
 		float InSteeringAngle, 
 		float InSwaybarForce, 
 		float InReflectedInertia);
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
 	void ApplySuspensionStateDirect(float InExtensionRatio = 1.f, float InSteeringAngle = 0.f)
 	{ Suspension.ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle); }
 
@@ -142,7 +142,13 @@ public:
 	float ComputeFeedBackTorque();
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
-	void SetP4MotorTorque(float NewTorque) { Wheel.SimData.P4MotorTorque = NewTorque; }
+	void SetEspBrakeTorque(float NewTorque = 0.f) { Wheel.SimData.BrakeTorqueFromESP = NewTorque; }
+
+	UFUNCTION(BlueprintCallable, Category = "Physics")
+	float GetEspBrakeTorque() { return Wheel.SimData.BrakeTorqueFromESP; }
+
+	UFUNCTION(BlueprintCallable, Category = "Physics")
+	void SetP4MotorTorque(float NewTorque = 0.f) { Wheel.SimData.P4MotorTorque = NewTorque; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetP4MotorTorque() { return Wheel.SimData.P4MotorTorque; }
@@ -150,17 +156,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "kg/m^2"))
 	static void SetInertiaTensor(UPrimitiveComponent* InComponent, FVector InInertia);
 
-	UFUNCTION(BlueprintCallable, Category = "ReadOnly")
+	UFUNCTION(BlueprintCallable, Category = "Wheel")
 	void GetWheelMovement(FVehicleWheelSimData& Out) { Out = Wheel.SimData; }
 
-	UFUNCTION(BlueprintCallable, Category = "ReadOnly")
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
 	void GetSuspensionMovement(FVehicleSuspensionSimData& Out) { Out = Suspension.SimData; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ReadOnly")
 	UPrimitiveComponent* GetCarbody() { return Carbody; }
 
-	UFUNCTION(BlueprintCallable, Category = "ReadOnly")
-	bool GetRayCastResult(FHitResult& OutHitResult, bool& OutRevised);
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	bool GetRayCastResult(FHitResult& OutHitResult, bool& OutRefinement);
 	bool GetRayCastResult() { return Suspension.SimData.bHitGround; }
 
 	//debug draw

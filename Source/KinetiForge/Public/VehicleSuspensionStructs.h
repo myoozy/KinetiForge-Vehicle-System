@@ -17,7 +17,9 @@ UENUM(BlueprintType)
 enum class ESuspensionRayCastMode : uint8
 {
 	LineTrace,
-	SphereTrace
+	SphereTrace,
+	BoxTrace,
+	SphereTraceNoRefinement
 };
 
 UENUM(BlueprintType)
@@ -91,7 +93,7 @@ struct FVehicleSuspensionSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	bool bHitGround = true;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	bool bRayCastRevised = false;
+	bool bRayCastRefined = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
 	float PhysicsDelatTime = 0.00833333;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")

@@ -399,10 +399,10 @@ void UVehicleWheelComponent::SetInertiaTensor(UPrimitiveComponent* InComponent, 
 	});
 }
 
-bool UVehicleWheelComponent::GetRayCastResult(FHitResult& OutHitResult, bool& OutRevised)
+bool UVehicleWheelComponent::GetRayCastResult(FHitResult& OutHitResult, bool& OutRefinement)
 {
 	OutHitResult = Suspension.SimData.HitStruct;
-	OutRevised = Suspension.SimData.bRayCastRevised;
+	OutRefinement = Suspension.SimData.bRayCastRefined;
 	return Suspension.SimData.bHitGround;
 }
 

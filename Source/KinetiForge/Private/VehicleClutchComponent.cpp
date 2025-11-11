@@ -61,8 +61,7 @@ float UVehicleClutchComponent::GetTorqueSpringModel()
 	float DampingModelTorque = SimData.ClutchLock * FMath::Clamp(SimData.CriticalDamping * SimData.ClutchSlip, -SimData.MaxClutchTorque, SimData.MaxClutchTorque);
 	float SpringModelTorque = SpringTorque + DampingTorque;
 
-	SimData.ClutchSlipping = FMath::Abs(SpringModelTorque) > SimData.MaxClutchTorque;
-	if (SimData.ClutchSlipping)
+	if (FMath::Abs(SpringModelTorque) > SimData.MaxClutchTorque)
 	{
 		SpringModelTorque = FMath::Sign(SpringModelTorque) * SimData.MaxClutchTorque;
 		SimData.AngleDiff = LastAngleDiff;

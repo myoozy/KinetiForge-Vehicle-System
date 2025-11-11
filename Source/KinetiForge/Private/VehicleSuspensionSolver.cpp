@@ -162,6 +162,11 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 	if (bDrawRayCast)
 	{
 		float TempR = TargetWheelComponent->WheelConfig.Radius;
+		float TempHalfWidth = TargetWheelComponent->WheelConfig.Width * 0.5;
+		float ValidR = FMath::Min(TempR, TempHalfWidth);
+		FVector HalfSize = FVector(TempR, TempHalfWidth, TempR) * 0.707;
+		FQuat Orientation = SimData.RayCastTransform.TransformRotation(
+			FQuat(0.0f, 0.38268343f, 0.0f, 0.92387953f));	// this is Rotator(0.0, 45.0, 0.0)
 		switch (TargetWheelComponent->SuspensionKinematicsConfig.RayCastMode)
 		{
 		case ESuspensionRayCastMode::LineTrace:
@@ -170,10 +175,19 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 			break;
 		case ESuspensionRayCastMode::SphereTrace:
 			//draw capsule
-			if (SimData.bRayCastRevised)TempR = TargetWheelComponent->WheelConfig.Width * 0.5;
+			if (SimData.bRayCastRefined)TempR = TargetWheelComponent->WheelConfig.Width * 0.5;
 			DrawDebugCapsule(TempWorld, (SimData.HitStruct.TraceStart + SimData.HitStruct.TraceEnd) * 0.5,
 				SimData.RayCastLength * 0.5 + TempR, TempR, SimData.RayCastTransform.GetRotation().GetNormalized(), FColor(0, 255, 0), false, Duration, 0, Thickness);
 			if (SimData.bHitGround)DrawDebugSphere(TempWorld, SimData.HitStruct.Location, TempR, 8, FColor(255, 0, 0), false, Duration, 0, Thickness);
+			break;
+		case ESuspensionRayCastMode::BoxTrace:
+			if (SimData.bHitGround)DrawDebugBox(TempWorld, SimData.HitStruct.Location, HalfSize, Orientation, FColor(0, 255, 0), false, Duration, 0, Thickness);
+			break;
+		case ESuspensionRayCastMode::SphereTraceNoRefinement:
+			DrawDebugCapsule(TempWorld, (SimData.HitStruct.TraceStart + SimData.HitStruct.TraceEnd) * 0.5,
+				FVector::Distance(SimData.HitStruct.TraceStart, SimData.HitStruct.TraceEnd) * 0.5 + ValidR,
+				ValidR, SimData.RayCastTransform.GetRotation().GetNormalized(), FColor(0, 255, 0), false, Duration, 0, Thickness);
+			if (SimData.bHitGround)DrawDebugSphere(TempWorld, SimData.HitStruct.Location, ValidR, 8, FColor(255, 0, 0), false, Duration, 0, Thickness);
 			break;
 		default:
 			DrawDebugLine(TempWorld, SimData.HitStruct.TraceStart, SimData.HitStruct.TraceEnd, FColor(0, 255, 0), false, Duration, 0, Thickness);
@@ -423,15 +437,30 @@ void FVehicleSuspensionSolver::SuspensionRayCast()
 
 	//switch to line trace if the suspension is completly compressed
 	//or if the raycastlength is too small
-	if (TargetWheelComponent->SuspensionKinematicsConfig.RayCastMode == ESuspensionRayCastMode::SphereTrace
-		&& SimData.RayCastLength > 1.f
-		&& SimData.HitDistance > SMALL_NUMBER)
+	if (SimData.RayCastLength < 1.f || SimData.HitDistance <= SMALL_NUMBER)
 	{
-		SuspensionSphereTrace();
+		SuspensionLineTrace();
 	}
 	else
 	{
-		SuspensionLineTrace();
+		switch (TargetWheelComponent->SuspensionKinematicsConfig.RayCastMode)
+		{
+		case ESuspensionRayCastMode::LineTrace:
+			SuspensionLineTrace();
+			break;
+		case ESuspensionRayCastMode::SphereTrace:
+			SuspensionSphereTrace();
+			break;
+		case ESuspensionRayCastMode::BoxTrace:
+			SuspensionBoxTrace();
+			break;
+		case ESuspensionRayCastMode::SphereTraceNoRefinement:
+			SuspensionSphereTraceNoRefinement();
+			break;
+		default:
+			SuspensionLineTrace();
+			break;
+		}
 	}
 }
 
@@ -441,7 +470,7 @@ void FVehicleSuspensionSolver::SuspensionLineTrace()
 
 	FVector LineTraceEnd = SimData.RayCastEndPos - SimData.ComponentUpVector * WheelRadius;
 
-	SimData.bRayCastRevised = false;
+	SimData.bRayCastRefined = false;
 
 	/**************RaycastSingle**************/
 	SimData.bHitGround = FPhysicsInterface::RaycastSingle(TargetWheelComponent->GetWorld(), SimData.HitStruct,
@@ -465,7 +494,7 @@ void FVehicleSuspensionSolver::SuspensionSphereTrace()
 	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
 	float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
 
-	SimData.bRayCastRevised = false;
+	SimData.bRayCastRefined = false;
 	SimData.bHitGround = SingleSphereTrace(SimData.RayCastStartPos, SimData.RayCastEndPos, WheelRadius, SimData.HitStruct);
 
 	if (SimData.bHitGround)
@@ -473,9 +502,9 @@ void FVehicleSuspensionSolver::SuspensionSphereTrace()
 		float HalfWidth = TargetWheelComponent->WheelConfig.Width * 0.5;
 
 		FVector LocalImpactPoint = SimData.RayCastTransform.InverseTransformPositionNoScale(SimData.HitStruct.ImpactPoint);
-		SimData.bRayCastRevised = FMath::Abs(LocalImpactPoint.Y) > HalfWidth || LocalImpactPoint.Z > Config.Stroke;
+		SimData.bRayCastRefined = FMath::Abs(LocalImpactPoint.Y) > HalfWidth || LocalImpactPoint.Z > Config.Stroke;
 
-		if (SimData.bRayCastRevised)
+		if (SimData.bRayCastRefined)
 		{
 			FVector SecondStepRayCastStart = SimData.RayCastStartPos + SimData.ComponentUpVector * (HalfWidth - WheelRadius);
 			FVector SecondStepRayCastEnd = SecondStepRayCastStart - SimData.ComponentUpVector * SimData.RayCastLength;
@@ -505,6 +534,72 @@ void FVehicleSuspensionSolver::SuspensionSphereTrace()
 		SimData.SuspensionExtensionRatio = 1.f;
 	}
 
+}
+
+void FVehicleSuspensionSolver::SuspensionBoxTrace()
+{
+	SimData.bRayCastRefined = false;
+
+	float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
+	float WheelHalfWidth = TargetWheelComponent->WheelConfig.Width * 0.5;
+
+	FVector HalfSize = FVector(WheelRadius, WheelHalfWidth, WheelRadius) * 0.707;
+	FQuat Orientation = SimData.RayCastTransform.TransformRotation(
+		FQuat(0.0f, 0.38268343f, 0.0f, 0.92387953f));	// this is Rotator(0.0, 45.0, 0.0)
+	
+	/*****GeomSweepSingle*****/
+	SimData.bHitGround = FPhysicsInterface::GeomSweepSingle(
+		TargetWheelComponent->GetWorld(), 
+		FCollisionShape::MakeBox(HalfSize), 
+		Orientation, 
+		SimData.HitStruct,
+		SimData.RayCastStartPos,
+		SimData.RayCastEndPos, 
+		TargetWheelComponent->SuspensionKinematicsConfig.TraceChannel, 
+		QueryParams,
+		FCollisionResponseParams::DefaultResponseParam, 
+		FCollisionObjectQueryParams::DefaultObjectQueryParam);
+
+	if (SimData.bHitGround)
+	{
+		SimData.HitDistance = SimData.HitStruct.Distance;
+		SimData.SuspensionExtensionRatio = SafeDivide(SimData.HitDistance, SimData.RayCastLength);
+
+		// try to maintain the impact point in the middle of the shape so that it will be more stable
+		FVector NormalVec = SimData.CarbodyWorldTransform.GetRotation().GetRightVector();
+		FVector RelativeBias = SimData.HitStruct.ImpactPoint - SimData.HitStruct.Location;
+		FVector BiasProjection = FVector::VectorPlaneProject(RelativeBias, NormalVec);
+		SimData.HitStruct.ImpactPoint = SimData.HitStruct.Location + BiasProjection;
+	}
+	else
+	{
+		SimData.HitDistance = SimData.RayCastLength;
+		SimData.SuspensionExtensionRatio = 1.f;
+	}
+}
+
+void FVehicleSuspensionSolver::SuspensionSphereTraceNoRefinement()
+{
+	SimData.bRayCastRefined = false;
+
+	float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
+	float WheelHalfWidth = TargetWheelComponent->WheelConfig.Width * 0.5;
+	float ValidRadius = FMath::Min(WheelRadius, WheelHalfWidth);
+	float RadiusDifference = WheelRadius - ValidRadius;
+	FVector TraceEnd = SimData.RayCastEndPos - SimData.ComponentUpVector * RadiusDifference;
+
+	SimData.bHitGround = SingleSphereTrace(SimData.RayCastStartPos, TraceEnd, ValidRadius, SimData.HitStruct);
+
+	if (SimData.bHitGround)
+	{
+		SimData.HitDistance = FMath::Max(0, SimData.HitStruct.Distance - RadiusDifference);
+		SimData.SuspensionExtensionRatio = SafeDivide(SimData.HitDistance, SimData.RayCastLength);
+	}
+	else
+	{
+		SimData.HitDistance = SimData.RayCastLength;
+		SimData.SuspensionExtensionRatio = 1.f;
+	}
 }
 
 void FVehicleSuspensionSolver::ComputeStraightSuspension()

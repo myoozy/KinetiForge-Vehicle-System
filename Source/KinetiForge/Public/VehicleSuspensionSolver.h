@@ -66,6 +66,8 @@ private:
 	void SuspensionRayCast();
 	void SuspensionLineTrace();
 	void SuspensionSphereTrace();
+	void SuspensionBoxTrace();
+	void SuspensionSphereTraceNoRefinement();
 	void ComputeStraightSuspension();
 	void ComputeMacpherson();
 	void ComputeDoubleWishbone();
