@@ -16,10 +16,11 @@ enum class ESuspensionType : uint8
 UENUM(BlueprintType)
 enum class ESuspensionRayCastMode : uint8
 {
-	LineTrace,
-	SphereTrace,
-	BoxTrace,
-	SphereTraceNoRefinement
+	LineTrace					UMETA(ToolTip = "The fastest raycast mode."),
+	SphereTrace					UMETA(ToolTip = "Using sphere(radius is wheel radius) instead of line trace. If impact point is wrong(e.g. hit the wall), it will do sphere trace again."),
+	BoxTrace					UMETA(ToolTip = "Using a box (with 45deg of pitch displacement) to trace."),
+	SphereTraceNoRefinement		UMETA(ToolTip = "Using a small sphere to trace(radius = min(WheelRadius, WheelWidth * 0.5)."),
+	MultiSphereTrace			UMETA(ToolTip = "Similar to sphere trace. First it uses sphere trace. If the result is not valid(e.g. hit the wall), it will do box trace(to roughly check if there're obstacles). If box trace did hit, then it will do multi-sphere trace. The performance can be really bad in worst case. But normally the same as SphereTrace.")
 };
 
 UENUM(BlueprintType)

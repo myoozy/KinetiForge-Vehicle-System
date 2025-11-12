@@ -68,7 +68,9 @@ private:
 	void SuspensionSphereTrace();
 	void SuspensionBoxTrace();
 	void SuspensionSphereTraceNoRefinement();
+	void SuspensionMultiSphereTrace();
 	void ComputeHitDistance(float EquivalentSphereTraceRadius = 0.f);
+	void IterateBallJointPos();	// only for macpherson or wishbone suspension
 	void ComputeStraightSuspension();
 	void ComputeMacpherson();
 	void ComputeDoubleWishbone();
