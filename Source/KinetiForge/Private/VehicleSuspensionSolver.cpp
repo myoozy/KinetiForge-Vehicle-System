@@ -108,7 +108,7 @@ void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio
 	PrepareSimulation();
 	ComputeRayCastLocation();
 
-	SimData.HitDistance = InExtensionRatio * SimData.RayCastLength;
+	SimData.HitDistance = InExtensionRatio * SimData.RayCastLength + TargetWheelComponent->WheelConfig.Radius;
 
 	switch (TargetWheelComponent->SuspensionKinematicsConfig.SuspensionType)
 	{
