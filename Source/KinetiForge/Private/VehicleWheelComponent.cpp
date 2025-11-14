@@ -81,10 +81,6 @@ UVehicleWheelComponent::UVehicleWheelComponent()
 			WheelMesh = DefaultWheelMeshObj.Object;
 		}
 	}
-
-	WheelHubComponent = CreateDefaultSubobject<USceneComponent>(FName(TEXT("WheelHubComponent")));
-	WheelMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(FName(TEXT("WheelMeshComponent")));
-	BrakeMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(FName(TEXT("BrakeMeshComponent")));
 }
 
 // Called when the game starts
@@ -109,7 +105,6 @@ void UVehicleWheelComponent::OnRegister()
 	Super::OnRegister();
 
 	//...
-	//get parent
 	InitializeWheel();
 }
 
@@ -151,25 +146,22 @@ bool UVehicleWheelComponent::GenerateMeshComponents()
 {
 	if (!IsValid(WheelHubComponent))
 	{
-		WheelHubComponent = NewObject<USceneComponent>(this, USceneComponent::StaticClass());
-		GetOwner()->AddInstanceComponent(WheelHubComponent);
-		WheelHubComponent->RegisterComponent();
+		WheelHubComponent = Cast<USceneComponent>
+			(GetOwner()->AddComponentByClass(USceneComponent::StaticClass(), false, FTransform(), false));
 	}
 	WheelHubComponent->AttachToComponent(this, FAttachmentTransformRules::KeepRelativeTransform);
 
 	if (!IsValid(WheelMeshComponent) && WheelHubComponent)
 	{
-		WheelMeshComponent = NewObject<UStaticMeshComponent>(this);
-		GetOwner()->AddInstanceComponent(WheelMeshComponent);
-		WheelMeshComponent->RegisterComponent();
+		WheelMeshComponent = Cast<UStaticMeshComponent>
+			(GetOwner()->AddComponentByClass(UStaticMeshComponent::StaticClass(), false, FTransform(), false));
 	}
 	WheelMeshComponent->AttachToComponent(WheelHubComponent, FAttachmentTransformRules::KeepRelativeTransform);
 
 	if (!IsValid(BrakeMeshComponent) && WheelHubComponent)
 	{
-		BrakeMeshComponent = NewObject<UStaticMeshComponent>(this);
-		GetOwner()->AddInstanceComponent(BrakeMeshComponent);
-		BrakeMeshComponent->RegisterComponent();
+		BrakeMeshComponent = Cast<UStaticMeshComponent>
+			(GetOwner()->AddComponentByClass(UStaticMeshComponent::StaticClass(), false, FTransform(), false));
 	}
 	BrakeMeshComponent->AttachToComponent(WheelHubComponent, FAttachmentTransformRules::KeepRelativeTransform);
 
@@ -267,7 +259,7 @@ Chaos::FRigidBodyHandle_Internal* UVehicleWheelComponent::GetInternalHandle(UPri
 	return nullptr;
 }
 
-void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target)
+void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target, bool bReInitialize)
 {
 	Target->WheelConfig = Source->WheelConfig;
 	Target->TireConfig = Source->TireConfig;
@@ -280,6 +272,11 @@ void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Sourc
 	Target->WheelMeshTransform = Source->WheelMeshTransform;
 	Target->BrakeMesh = Source->BrakeMesh;
 	Target->BrakeMeshTransform = Source->BrakeMeshTransform;
+
+	if (bReInitialize)
+	{
+		Target->InitializeWheel();
+	}
 }
 
 void UVehicleWheelComponent::InitializeWheel()
@@ -474,12 +471,12 @@ bool UVehicleWheelComponent::RefreshWheelMesh()
 
 void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngularVelocity)
 {
-	TimeSinceLastPhysicsTick += DeltaTime;
-
 	if (!IsValid(WheelHubComponent) || !IsValid(WheelMeshComponent))return;
 
 	if (DeltaTime > 0)
 	{
+		TimeSinceLastPhysicsTick += DeltaTime;
+
 		// blend between physics frames
 		float Alpha = FMath::Clamp(TimeSinceLastPhysicsTick / Wheel.SimData.PhysicsDeltaTime, 0.0f, 1.0f);
 		FVector2D TargetAnimBallJointPos2D = FMath::Lerp(PrevBallJointPos2D, Suspension.SimData.BallJointPos2D, Alpha);
@@ -491,6 +488,7 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 	}
 	else
 	{
+		TimeSinceLastPhysicsTick = 0.f;
 		AnimBallJointPos2D = Suspension.SimData.BallJointPos2D;
 		AnimWheelRelativeRot = Suspension.SimData.WheelRelativeTransform.GetRotation();
 	}

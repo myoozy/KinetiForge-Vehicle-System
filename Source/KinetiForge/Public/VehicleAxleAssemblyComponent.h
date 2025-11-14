@@ -20,11 +20,21 @@ public:
 	// Sets default values for this component's properties
 	UVehicleAxleAssemblyComponent();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ToolTip = "Select whether to use existing instances. If not, dynamically created wheels can still be correctly identified and have their animations recorded by the level sequence."))
+	bool bUseExistingWheelInstance = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingWheelInstance", EditConditionHides))
+	FName LeftWheelInstanceName = FName();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingWheelInstance", EditConditionHides))
+	FName RightWheelInstanceName = FName();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelInstance", EditConditionHides))
 	TSubclassOf<UVehicleWheelComponent> WheelConfig;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelInstance", EditConditionHides))
 	FRotator VehicleWheelComponentSetupRotation;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	bool bUseExistingDifferentialInstance = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingDifferentialInstance", EditConditionHides))
+	FName DifferentialInstanceName = FName();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingDifferentialInstance", EditConditionHides))
 	TSubclassOf<UVehicleDifferentialComponent> DifferentialConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	EVehicleAxleLayout AxleLayout = EVehicleAxleLayout::TwoWheels;
@@ -69,6 +79,8 @@ public:
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	static void CopyAxleConfig(const UVehicleAxleAssemblyComponent* Source, UVehicleAxleAssemblyComponent* Target, bool bReInitializeWheel = false);
+
 	void InitializeWheels();
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
@@ -107,6 +119,6 @@ public:
 
 private:
 	bool GenerateWheels();
+	bool SearchExistingWheels();
 	bool GenerateDifferential();
-	bool GenerateComponents();
 };

@@ -637,7 +637,7 @@ void FVehicleSuspensionSolver::ComputeHitDistance(float EquivalentSphereTraceRad
 		TargetHitDistance = SimData.HitStruct.Distance + EquivalentSphereTraceRadius;
 	}
 
-	if (TargetHitDistance <= WheelRadius)
+	if (TargetHitDistance <= WheelRadius || SimData.HitDistance <= WheelRadius)
 	{
 		// if the suspension is completely compressed
 		// we can smoothen the hit distance

@@ -73,6 +73,7 @@ void UVehicleDriveAssemblyComponent::BeginPlay()
 	VehicleAsyncTickComponent = UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(GetOwner());
 	if (IsValid(VehicleAsyncTickComponent))VehicleAsyncTickComponent->Register(this);
 
+	SearchExistingAxles();
 	GeneratePowerUnit();
 
 	//initialize autogearbox timer
@@ -843,66 +844,146 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 {
 	if (!IsValid(Engine))
 	{
-		if (EngineConfig)
+		bool bExistingEngineFound = false;
+		if (bUseExistingEngineInstance)
 		{
-			Engine = Cast<UVehicleEngineComponent>
-				(GetOwner()->AddComponentByClass(
-					EngineConfig, false, FTransform(), false));
+			// search for differential
+			for (UActorComponent* Comp : GetOwner()->GetComponents())
+			{
+				UVehicleEngineComponent* Eng;
+				Eng = Cast<UVehicleEngineComponent>(Comp);
+				if (IsValid(Eng) && Comp->GetFName() == EngineInstanceName)
+				{
+					Engine = Eng;
+					bExistingEngineFound = true;
+					break;
+				}
+			}
 		}
-		else
+
+		if (!bExistingEngineFound)
 		{
-			Engine = Cast<UVehicleEngineComponent>
-				(GetOwner()->AddComponentByClass(
-					UVehicleEngineComponent::StaticClass(), false, FTransform(), false));
+			if (EngineConfig)
+			{
+				Engine = Cast<UVehicleEngineComponent>
+					(GetOwner()->AddComponentByClass(
+						EngineConfig, false, FTransform(), false));
+			}
+			else
+			{
+				Engine = Cast<UVehicleEngineComponent>
+					(GetOwner()->AddComponentByClass(
+						UVehicleEngineComponent::StaticClass(), false, FTransform(), false));
+			}
 		}
 	}
 
 	if (!IsValid(Clutch))
 	{
-		if (ClutchConfig)
+		bool bExistingClutchFound = false;
+		if (bUseExistingClutchInstance)
 		{
-			Clutch = Cast<UVehicleClutchComponent>
-				(GetOwner()->AddComponentByClass(
-					ClutchConfig, false, FTransform(), false));
+			// search for differential
+			for (UActorComponent* Comp : GetOwner()->GetComponents())
+			{
+				UVehicleClutchComponent* Clu;
+				Clu = Cast<UVehicleClutchComponent>(Comp);
+				if (IsValid(Clu) && Comp->GetFName() == ClutchInstanceName)
+				{
+					Clutch = Clu;
+					bExistingClutchFound = true;
+					break;
+				}
+			}
 		}
-		else
+
+		if (!bExistingClutchFound)
 		{
-			Clutch = Cast<UVehicleClutchComponent>
-				(GetOwner()->AddComponentByClass(
-					UVehicleClutchComponent::StaticClass(), false, FTransform(), false));
+			if (ClutchConfig)
+			{
+				Clutch = Cast<UVehicleClutchComponent>
+					(GetOwner()->AddComponentByClass(
+						ClutchConfig, false, FTransform(), false));
+			}
+			else
+			{
+				Clutch = Cast<UVehicleClutchComponent>
+					(GetOwner()->AddComponentByClass(
+						UVehicleClutchComponent::StaticClass(), false, FTransform(), false));
+			}
 		}
 	}
 
 	if (!IsValid(Gearbox))
 	{
-		if (GearboxConfig)
+		bool bExistingGearboxFound = false;
+		if (bUseExistingGearboxInstance)
 		{
-			Gearbox = Cast<UVehicleGearboxComponent>
-				(GetOwner()->AddComponentByClass(
-					GearboxConfig, false, FTransform(), false));
+			// search for differential
+			for (UActorComponent* Comp : GetOwner()->GetComponents())
+			{
+				UVehicleGearboxComponent* Gea;
+				Gea = Cast<UVehicleGearboxComponent>(Comp);
+				if (IsValid(Gea) && Comp->GetFName() == GearboxInstanceName)
+				{
+					Gearbox = Gea;
+					bExistingGearboxFound = true;
+					break;
+				}
+			}
 		}
-		else
+
+		if (!bExistingGearboxFound)
 		{
-			Gearbox = Cast<UVehicleGearboxComponent>
-				(GetOwner()->AddComponentByClass(
-					UVehicleGearboxComponent::StaticClass(), false, FTransform(), false));
+			if (GearboxConfig)
+			{
+				Gearbox = Cast<UVehicleGearboxComponent>
+					(GetOwner()->AddComponentByClass(
+						GearboxConfig, false, FTransform(), false));
+			}
+			else
+			{
+				Gearbox = Cast<UVehicleGearboxComponent>
+					(GetOwner()->AddComponentByClass(
+						UVehicleGearboxComponent::StaticClass(), false, FTransform(), false));
+			}
 		}
 	}
 
 	if (!IsValid(TransferCase))
 	{
-		if (TransferCaseConfig)
+		bool bExistingTransferCaseFound = false;
+		if (bUseExistingTransferCaseInstance)
 		{
-			TransferCase = Cast<UVehicleDifferentialComponent>
-				(GetOwner()->AddComponentByClass(
-					TransferCaseConfig, false, FTransform(), false));
+			// search for differential
+			for (UActorComponent* Comp : GetOwner()->GetComponents())
+			{
+				UVehicleDifferentialComponent* Tra;
+				Tra = Cast<UVehicleDifferentialComponent>(Comp);
+				if (IsValid(Tra) && Comp->GetFName() == TransferCaseInstanceName)
+				{
+					TransferCase = Tra;
+					bExistingTransferCaseFound = true;
+					break;
+				}
+			}
 		}
-		else
+
+		if (!bExistingTransferCaseFound)
 		{
-			TransferCase = Cast<UVehicleDifferentialComponent>
-				(GetOwner()->AddComponentByClass(
-					UVehicleDifferentialComponent::StaticClass(), false, FTransform(), false));
-			TransferCase->Config.GearRatio = 1.f;
+			if (TransferCaseConfig)
+			{
+				TransferCase = Cast<UVehicleDifferentialComponent>
+					(GetOwner()->AddComponentByClass(
+						TransferCaseConfig, false, FTransform(), false));
+			}
+			else
+			{
+				TransferCase = Cast<UVehicleDifferentialComponent>
+					(GetOwner()->AddComponentByClass(
+						UVehicleDifferentialComponent::StaticClass(), false, FTransform(), false));
+				TransferCase->Config.GearRatio = 1.f;
+			}
 		}
 	}
 
@@ -933,38 +1014,66 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 	int32 n = 0;
 	for (FAxleAssemblyConfig AxleConfig : AxleConfigs)
 	{
-		TSubclassOf<UVehicleAxleAssemblyComponent> AxleClass = AxleConfig.AxleConfig;
-		UVehicleAxleAssemblyComponent* Axle;
-		if (AxleClass)
+		if (!AxleConfig.bUseExistingInstance && GetOwner())
 		{
-			Axle = Cast<UVehicleAxleAssemblyComponent>
-				(GetOwner()->AddComponentByClass(AxleClass, true, FTransform(), true));
-		}
-		else
+			// generate new axle
+			UVehicleAxleAssemblyComponent* Axle = Cast<UVehicleAxleAssemblyComponent>
+				(GetOwner()->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), false, FTransform(), false));
+			Axle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+			Axle->SetRelativeLocation(AxleConfig.AxlePosition);
+
+			if (IsValid(AxleConfig.AxleConfig))
+			{
+				const UVehicleAxleAssemblyComponent* TemplateAxle = Cast<UVehicleAxleAssemblyComponent>(AxleConfig.AxleConfig->GetDefaultObject());
+				if (IsValid(Axle))
+				{
+					UVehicleAxleAssemblyComponent::CopyAxleConfig(TemplateAxle, Axle);
+				}
+			}
+			
+			if (IsValid(Axle))
+			{
+				//override these
+				if (AxleConfig.WheelOverride)Axle->WheelConfig = AxleConfig.WheelOverride;
+				if (AxleConfig.DifferentialOverride)Axle->DifferentialConfig = AxleConfig.DifferentialOverride;
+				if (AxleConfig.TrackWidthOverride >= 0)Axle->AxleConfig.TrackWidth = AxleConfig.TrackWidthOverride;
+				if (AxleConfig.bDiasbleSteering)Axle->AxleSteeringConfig.bAffectedBySteering = false;
+				if (AxleConfig.bDisableHandbrake)Axle->AxleConfig.bAffectedByHandbrake = false;
+				if (AxleConfig.bDisableTractionControl)Axle->TCSConfig.bTractionControlSystemEnabled = false;
+				if (AxleConfig.TorqueWeightOverride >= 0)Axle->AxleConfig.TorqueWeight = AxleConfig.TorqueWeightOverride;
+
+				// initialize
+				Axle->InitializeWheels();
+
+				Axles.Add(Axle);
+				n++;
+			}
+		}		
+	}
+	return n;
+}
+
+int UVehicleDriveAssemblyComponent::SearchExistingAxles()
+{
+	int32 n = 0;
+	for (FAxleAssemblyConfig AxleConfig : AxleConfigs)
+	{
+		if (AxleConfig.bUseExistingInstance && GetOwner())
 		{
-			Axle = Cast<UVehicleAxleAssemblyComponent>
-				(GetOwner()->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), true, FTransform(), true));
+			// search for the axle with the exact name
+			for (UActorComponent* Comp : GetOwner()->GetComponents())
+			{
+				UVehicleAxleAssemblyComponent* Axle;
+				Axle = Cast<UVehicleAxleAssemblyComponent>(Comp);
+				if (IsValid(Axle) && Comp->GetFName() == AxleConfig.AxleInstanceName)
+				{
+					Axles.Add(Axle);
+					n++;
+					// stop for loop
+					break;
+				}
+			}
 		}
-
-		Axle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-		Axle->SetRelativeLocation(AxleConfig.AxlePosition);
-
-		if (IsValid(Axle))
-		{
-			//override these before registering the axle component
-			if (AxleConfig.WheelOverride)Axle->WheelConfig = AxleConfig.WheelOverride;
-			if (AxleConfig.DifferentialOverride)Axle->DifferentialConfig = AxleConfig.DifferentialOverride;
-			if (AxleConfig.TrackWidthOverride >= 0)Axle->AxleConfig.TrackWidth = AxleConfig.TrackWidthOverride;
-			if (AxleConfig.bDiasbleSteering)Axle->AxleSteeringConfig.bAffectedBySteering = false;
-			if (AxleConfig.bDisableHandbrake)Axle->AxleConfig.bAffectedByHandbrake = false;
-			if (AxleConfig.bDisableTractionControl)Axle->TCSConfig.bTractionControlSystemEnabled = false;
-			if (AxleConfig.TorqueWeightOverride >= 0)Axle->AxleConfig.TorqueWeight = AxleConfig.TorqueWeightOverride;
-
-			Axles.Add(Axle);
-			n++;
-		}
-
-		GetOwner()->FinishAddComponent(Axle, true, FTransform(FQuat(), AxleConfig.AxlePosition, FVector(1)));
 	}
 	return n;
 }

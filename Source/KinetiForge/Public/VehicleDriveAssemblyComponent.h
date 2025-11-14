@@ -23,31 +23,37 @@ struct FAxleAssemblyConfig
 {
     GENERATED_USTRUCT_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Only by using existing manually created instances can the level sequence correctly recognize and record its animations."))
+    bool bUseExistingInstance = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bUseExistingInstance", EditConditionHides))
+    FName AxleInstanceName = FName();
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
     TSubclassOf<UVehicleAxleAssemblyComponent> AxleConfig;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
     FVector AxlePosition = FVector(0.f);
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
     bool bDiasbleSteering = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
     bool bDisableHandbrake = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
     bool bDisableTractionControl = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "if < 0, won't override"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "if < 0, won't override", EditCondition = "!bUseExistingInstance", EditConditionHides))
     float TorqueWeightOverride = -1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "if < 0, won't override"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "if < 0, won't override", EditCondition = "!bUseExistingInstance", EditConditionHides))
     float TrackWidthOverride = -1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
     TSubclassOf<UVehicleWheelComponent> WheelOverride = nullptr;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
     TSubclassOf<UVehicleDifferentialComponent> DifferentialOverride = nullptr;
 };
 
@@ -61,13 +67,33 @@ public:
     UVehicleDriveAssemblyComponent();
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+    bool bUseExistingEngineInstance = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingEngineInstance", EditConditionHides))
+    FName EngineInstanceName = FName();
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingEngineInstance", EditConditionHides))
     TSubclassOf<UVehicleEngineComponent> EngineConfig;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+    bool bUseExistingClutchInstance = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingClutchInstance", EditConditionHides))
+    FName ClutchInstanceName = FName();
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingClutchInstance", EditConditionHides))
     TSubclassOf<UVehicleClutchComponent> ClutchConfig;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+    bool bUseExistingGearboxInstance = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingClutchInstance", EditConditionHides))
+    FName GearboxInstanceName = FName();
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingClutchInstance", EditConditionHides))
     TSubclassOf<UVehicleGearboxComponent> GearboxConfig;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+    bool bUseExistingTransferCaseInstance = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingTransferCaseInstance", EditConditionHides))
+    FName TransferCaseInstanceName = FName();
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingTransferCaseInstance", EditConditionHides))
     TSubclassOf<UVehicleDifferentialComponent> TransferCaseConfig;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     TArray<FAxleAssemblyConfig> AxleConfigs;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -252,6 +278,7 @@ public:
 private:
     bool GeneratePowerUnit();
     int GenerateAxles();    //-1: no owner actor; -2: no valid Carbody; -3: there're already axles
+    int SearchExistingAxles();
     float SafeDivide(float a, float b);
     FVector SafeDivide(FVector a, float b);
     float ClampToZero(float a, float Tolerance);

@@ -267,10 +267,9 @@ UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelC
 
 	//if not found
 	//create one
-	UVehicleWheelCoordinatorComponent* WheelCoord = NewObject<UVehicleWheelCoordinatorComponent>(Carbody);
-	WheelCoord->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-	Carbody->GetOwner()->AddInstanceComponent(WheelCoord);
-	WheelCoord->RegisterComponent();
+	UVehicleWheelCoordinatorComponent* WheelCoord = Cast<UVehicleWheelCoordinatorComponent>
+		(Carbody->GetOwner()->AddComponentByClass(UVehicleWheelCoordinatorComponent::StaticClass(), false, FTransform(), false));
+		NewObject<UVehicleWheelCoordinatorComponent>(Carbody);
 	return WheelCoord;
 }
 

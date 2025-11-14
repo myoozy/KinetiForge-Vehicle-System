@@ -14,10 +14,6 @@ UVehicleAxleAssemblyComponent::UVehicleAxleAssemblyComponent()
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = false;
 	// ...
-
-	// Create default wheels so that they can be recognized by Sequencer
-	LeftWheel = CreateDefaultSubobject<UVehicleWheelComponent>(FName("LeftWheel"));
-	RightWheel = CreateDefaultSubobject<UVehicleWheelComponent>(FName("RightWheel"));
 }
 
 
@@ -27,6 +23,7 @@ void UVehicleAxleAssemblyComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
+	SearchExistingWheels();
 	GenerateDifferential();
 	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody);
 	if (IsValid(WheelCoordinator))WheelCoordinator->RegisterAxle(this);
@@ -39,13 +36,12 @@ void UVehicleAxleAssemblyComponent::OnRegister()
 	//...
 	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
 	//PreviewWheelMesh();
-	GenerateWheels();
 	InitializeWheels();
 }
 
 void UVehicleAxleAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
-	if (Differential && !Differential->IsBeingDestroyed())
+	if (IsValid(Differential) && !Differential->IsBeingDestroyed())
 	{
 		Differential->DestroyComponent();
 		Differential = nullptr;
@@ -321,8 +317,45 @@ void UVehicleAxleAssemblyComponent::TickComponent(float DeltaTime, ELevelTick Ti
 	//make sure the wheel preview is destoryed
 }
 
+void UVehicleAxleAssemblyComponent::CopyAxleConfig(const UVehicleAxleAssemblyComponent* Source, UVehicleAxleAssemblyComponent* Target, bool bReInitializeWheel)
+{
+	Target->bUseExistingWheelInstance = Source->bUseExistingWheelInstance;
+	Target->LeftWheelInstanceName = Source->LeftWheelInstanceName;
+	Target->RightWheelInstanceName = Source->RightWheelInstanceName;
+	Target->WheelConfig = Source->WheelConfig;
+	Target->VehicleWheelComponentSetupRotation = Source->VehicleWheelComponentSetupRotation;
+	Target->bUseExistingDifferentialInstance = Source->bUseExistingDifferentialInstance;
+	Target->DifferentialInstanceName = Source->DifferentialInstanceName;
+	Target->DifferentialConfig = Source->DifferentialConfig;
+	Target->AxleLayout = Source->AxleLayout;
+	Target->AxleConfig = Source->AxleConfig;
+	Target->AxleSteeringConfig = Source->AxleSteeringConfig;
+	Target->SteeringAssistConfig = Source->SteeringAssistConfig;
+	Target->TCSConfig = Source->TCSConfig;
+
+	if (bReInitializeWheel)
+	{
+		Target->InitializeWheels();
+	}
+}
+
 void UVehicleAxleAssemblyComponent::InitializeWheels()
 {
+	GenerateWheels();
+
+	if (IsValid(WheelConfig))
+	{
+		const UVehicleWheelComponent* TemplateWheel = Cast<UVehicleWheelComponent>(WheelConfig->GetDefaultObject());
+		if (IsValid(LeftWheel))
+		{
+			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, LeftWheel);
+		}
+		if (IsValid(RightWheel))
+		{
+			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, RightWheel);
+		}
+	}
+
 	UpdateTrackWidth();
 
 	if (IsValid(LeftWheel))
@@ -390,9 +423,17 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 	{
 		UpdateTwoWheelAxle(InDriveTorque, InReflectedInertia);
 	}
-	else
+	else if (SimData.NumOfWheels == 1)
 	{
 		UpdateSingleWheelAxle(InDriveTorque, InReflectedInertia);
+	}
+	else
+	{
+		// if no wheels
+		SimData.AxleTotalInertia = AxleConfig.DriveShaftInertia;
+		SimData.AxleDriveTorque = InDriveTorque;
+		float AngAcc = (SimData.AxleTotalInertia > SMALL_NUMBER) ? SimData.AxleDriveTorque / SimData.AxleTotalInertia : 0.f;
+		SimData.AxleAngularVelocity += AngAcc * SimData.PhysicsDeltaTime;
 	}
 
 	OutAxleTotalInertia = SimData.AxleTotalInertia;
@@ -461,6 +502,20 @@ FVector UVehicleAxleAssemblyComponent::GetAxleCenter()
 
 bool UVehicleAxleAssemblyComponent::GenerateWheels()
 {
+	// if use instance
+	if (bUseExistingWheelInstance)
+	{
+		if (IsValid(LeftWheel))
+		{
+			LeftWheel->DestroyComponent();
+		}
+		if (IsValid(RightWheel))
+		{
+			RightWheel->DestroyComponent();
+		}
+		return false;
+	}
+
 	//Destroy unused wheels
 	if (IsValid(LeftWheel) && AxleLayout == EVehicleAxleLayout::SingleRight)
 	{
@@ -485,19 +540,6 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 			(GetOwner()->AddComponentByClass(UVehicleWheelComponent::StaticClass(), false, FTransform(), false));
 	}
 
-	if (IsValid(WheelConfig))
-	{
-		const UVehicleWheelComponent* TemplateWheel = Cast<UVehicleWheelComponent>(WheelConfig->GetDefaultObject());
-		if (IsValid(LeftWheel))
-		{
-			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, LeftWheel);
-		}
-		if (IsValid(RightWheel))
-		{
-			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, RightWheel);
-		}
-	}
-
 	switch (AxleLayout)
 	{
 	case EVehicleAxleLayout::TwoWheels:
@@ -515,28 +557,83 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 	}
 }
 
+bool UVehicleAxleAssemblyComponent::SearchExistingWheels()
+{
+	if (bUseExistingWheelInstance && GetOwner())
+	{
+		// search for wheels
+		for (UActorComponent* Comp : GetOwner()->GetComponents())
+		{
+			UVehicleWheelComponent* Wheel;
+			Wheel = Cast<UVehicleWheelComponent>(Comp);
+			if (IsValid(Wheel))
+			{
+				if (!IsValid(LeftWheel))
+				{
+					if (Wheel->GetName() == LeftWheelInstanceName)
+					{
+						LeftWheel = Wheel;
+						LeftWheel->InitializeWheel();
+					}
+				}
+				if (!IsValid(RightWheel))
+				{
+					if (Wheel->GetName() == RightWheelInstanceName)
+					{
+						RightWheel = Wheel;
+						RightWheel->InitializeWheel();
+					}
+				}
+				if (IsValid(LeftWheel) && IsValid(RightWheel)) return true;
+			}
+		}
+		return false;
+	}
+	else
+	{
+		return IsValid(LeftWheel) && IsValid(RightWheel);
+	}
+}
+
 bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 {
 	//set differential
-	if (!IsValid(Differential))
+	if (!IsValid(Differential) && GetOwner())
 	{
-		//UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: GeneratingDifferential"));
-		if (DifferentialConfig)
+		bool bExistingDiffFound = false;
+		if (bUseExistingDifferentialInstance)
 		{
-			Differential = Cast<UVehicleDifferentialComponent>
-				(GetOwner()->AddComponentByClass(DifferentialConfig, false, FTransform(), false));
+			// search for differential
+			for (UActorComponent* Comp : GetOwner()->GetComponents())
+			{
+				UVehicleDifferentialComponent* Diff;
+				Diff = Cast<UVehicleDifferentialComponent>(Comp);
+				if (IsValid(Diff) && Comp->GetFName() == DifferentialInstanceName)
+				{
+					Differential = Diff;
+					bExistingDiffFound = true;
+					break;
+				}
+			}
 		}
-		else
+
+		// if not found, generate one
+		if (!bExistingDiffFound)
 		{
-			Differential = Cast<UVehicleDifferentialComponent>
-				(GetOwner()->AddComponentByClass(UVehicleDifferentialComponent::StaticClass(), false, FTransform(), false));
+			//UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: GeneratingDifferential"));
+			if (DifferentialConfig)
+			{
+				Differential = Cast<UVehicleDifferentialComponent>
+					(GetOwner()->AddComponentByClass(DifferentialConfig, false, FTransform(), false));
+			}
+			else
+			{
+				Differential = Cast<UVehicleDifferentialComponent>
+					(GetOwner()->AddComponentByClass(UVehicleDifferentialComponent::StaticClass(), false, FTransform(), false));
+			}
 		}
 	}
 
 	return IsValid(Differential);
 }
 
-bool UVehicleAxleAssemblyComponent::GenerateComponents()
-{
-	return GenerateWheels() && GenerateDifferential();
-}

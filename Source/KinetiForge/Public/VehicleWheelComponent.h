@@ -97,7 +97,7 @@ public:
 		UPrimitiveComponent* Component,
 		FName BoneName = NAME_None);
 
-	static void CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target);
+	static void CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target, bool bReInitialize = false);
 
 	void InitializeWheel();
 
@@ -218,7 +218,7 @@ public:
 	bool RefreshWheelMesh();
 
 	UFUNCTION(BlueprintCallable, Category = "Animation")
-	void UpdateWheelAnim(float DeltaTime, float MaxAnimAngularVelocity = 60);
+	void UpdateWheelAnim(float DeltaTime = 0.f, float MaxAnimAngularVelocity = 60.f);
 
 	UFUNCTION(BlueprintCallable, Category = "Animation")
 	void GetWheelHubComponent(USceneComponent*& OutHub) { OutHub = WheelHubComponent; }
