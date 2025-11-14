@@ -23,37 +23,37 @@ struct FAxleAssemblyConfig
 {
     GENERATED_USTRUCT_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Only by using existing manually created instances can the level sequence correctly recognize and record its animations."))
-    bool bUseExistingInstance = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Only by using existing manually created Components can the level sequence correctly recognize and record its animations."))
+    bool bUseExistingComponent = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bUseExistingInstance", EditConditionHides))
-    FName AxleInstanceName = FName();
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bUseExistingComponent", EditConditionHides))
+    FName AxleComponentName = FName();
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
     TSubclassOf<UVehicleAxleAssemblyComponent> AxleConfig;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
     FVector AxlePosition = FVector(0.f);
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
     bool bDiasbleSteering = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
     bool bDisableHandbrake = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
     bool bDisableTractionControl = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "if < 0, won't override", EditCondition = "!bUseExistingInstance", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "if < 0, won't override", EditCondition = "!bUseExistingComponent", EditConditionHides))
     float TorqueWeightOverride = -1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "if < 0, won't override", EditCondition = "!bUseExistingInstance", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "if < 0, won't override", EditCondition = "!bUseExistingComponent", EditConditionHides))
     float TrackWidthOverride = -1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
     TSubclassOf<UVehicleWheelComponent> WheelOverride = nullptr;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingInstance", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
     TSubclassOf<UVehicleDifferentialComponent> DifferentialOverride = nullptr;
 };
 
@@ -67,31 +67,31 @@ public:
     UVehicleDriveAssemblyComponent();
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
-    bool bUseExistingEngineInstance = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingEngineInstance", EditConditionHides))
-    FName EngineInstanceName = FName();
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingEngineInstance", EditConditionHides))
+    bool bUseExistingEngineComponent = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingEngineComponent", EditConditionHides))
+    FName EngineComponentName = FName();
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingEngineComponent", EditConditionHides))
     TSubclassOf<UVehicleEngineComponent> EngineConfig;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
-    bool bUseExistingClutchInstance = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingClutchInstance", EditConditionHides))
-    FName ClutchInstanceName = FName();
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingClutchInstance", EditConditionHides))
+    bool bUseExistingClutchComponent = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingClutchComponent", EditConditionHides))
+    FName ClutchComponentName = FName();
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingClutchComponent", EditConditionHides))
     TSubclassOf<UVehicleClutchComponent> ClutchConfig;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
-    bool bUseExistingGearboxInstance = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingClutchInstance", EditConditionHides))
-    FName GearboxInstanceName = FName();
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingClutchInstance", EditConditionHides))
+    bool bUseExistingGearboxComponent = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingClutchComponent", EditConditionHides))
+    FName GearboxComponentName = FName();
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingClutchComponent", EditConditionHides))
     TSubclassOf<UVehicleGearboxComponent> GearboxConfig;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
-    bool bUseExistingTransferCaseInstance = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingTransferCaseInstance", EditConditionHides))
-    FName TransferCaseInstanceName = FName();
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingTransferCaseInstance", EditConditionHides))
+    bool bUseExistingTransferCaseComponent = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingTransferCaseComponent", EditConditionHides))
+    FName TransferCaseComponentName = FName();
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingTransferCaseComponent", EditConditionHides))
     TSubclassOf<UVehicleDifferentialComponent> TransferCaseConfig;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")

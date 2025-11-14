@@ -845,14 +845,14 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	if (!IsValid(Engine))
 	{
 		bool bExistingEngineFound = false;
-		if (bUseExistingEngineInstance)
+		if (bUseExistingEngineComponent)
 		{
 			// search for differential
 			for (UActorComponent* Comp : GetOwner()->GetComponents())
 			{
 				UVehicleEngineComponent* Eng;
 				Eng = Cast<UVehicleEngineComponent>(Comp);
-				if (IsValid(Eng) && Comp->GetFName() == EngineInstanceName)
+				if (IsValid(Eng) && Comp->GetFName() == EngineComponentName)
 				{
 					Engine = Eng;
 					bExistingEngineFound = true;
@@ -881,14 +881,14 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	if (!IsValid(Clutch))
 	{
 		bool bExistingClutchFound = false;
-		if (bUseExistingClutchInstance)
+		if (bUseExistingClutchComponent)
 		{
 			// search for differential
 			for (UActorComponent* Comp : GetOwner()->GetComponents())
 			{
 				UVehicleClutchComponent* Clu;
 				Clu = Cast<UVehicleClutchComponent>(Comp);
-				if (IsValid(Clu) && Comp->GetFName() == ClutchInstanceName)
+				if (IsValid(Clu) && Comp->GetFName() == ClutchComponentName)
 				{
 					Clutch = Clu;
 					bExistingClutchFound = true;
@@ -917,14 +917,14 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	if (!IsValid(Gearbox))
 	{
 		bool bExistingGearboxFound = false;
-		if (bUseExistingGearboxInstance)
+		if (bUseExistingGearboxComponent)
 		{
 			// search for differential
 			for (UActorComponent* Comp : GetOwner()->GetComponents())
 			{
 				UVehicleGearboxComponent* Gea;
 				Gea = Cast<UVehicleGearboxComponent>(Comp);
-				if (IsValid(Gea) && Comp->GetFName() == GearboxInstanceName)
+				if (IsValid(Gea) && Comp->GetFName() == GearboxComponentName)
 				{
 					Gearbox = Gea;
 					bExistingGearboxFound = true;
@@ -953,14 +953,14 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	if (!IsValid(TransferCase))
 	{
 		bool bExistingTransferCaseFound = false;
-		if (bUseExistingTransferCaseInstance)
+		if (bUseExistingTransferCaseComponent)
 		{
 			// search for differential
 			for (UActorComponent* Comp : GetOwner()->GetComponents())
 			{
 				UVehicleDifferentialComponent* Tra;
 				Tra = Cast<UVehicleDifferentialComponent>(Comp);
-				if (IsValid(Tra) && Comp->GetFName() == TransferCaseInstanceName)
+				if (IsValid(Tra) && Comp->GetFName() == TransferCaseComponentName)
 				{
 					TransferCase = Tra;
 					bExistingTransferCaseFound = true;
@@ -1014,7 +1014,7 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 	int32 n = 0;
 	for (FAxleAssemblyConfig AxleConfig : AxleConfigs)
 	{
-		if (!AxleConfig.bUseExistingInstance && GetOwner())
+		if (!AxleConfig.bUseExistingComponent && GetOwner())
 		{
 			// generate new axle
 			UVehicleAxleAssemblyComponent* Axle = Cast<UVehicleAxleAssemblyComponent>
@@ -1058,14 +1058,14 @@ int UVehicleDriveAssemblyComponent::SearchExistingAxles()
 	int32 n = 0;
 	for (FAxleAssemblyConfig AxleConfig : AxleConfigs)
 	{
-		if (AxleConfig.bUseExistingInstance && GetOwner())
+		if (AxleConfig.bUseExistingComponent && GetOwner())
 		{
 			// search for the axle with the exact name
 			for (UActorComponent* Comp : GetOwner()->GetComponents())
 			{
 				UVehicleAxleAssemblyComponent* Axle;
 				Axle = Cast<UVehicleAxleAssemblyComponent>(Comp);
-				if (IsValid(Axle) && Comp->GetFName() == AxleConfig.AxleInstanceName)
+				if (IsValid(Axle) && Comp->GetFName() == AxleConfig.AxleComponentName)
 				{
 					Axles.Add(Axle);
 					n++;

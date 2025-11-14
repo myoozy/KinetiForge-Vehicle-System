@@ -319,13 +319,13 @@ void UVehicleAxleAssemblyComponent::TickComponent(float DeltaTime, ELevelTick Ti
 
 void UVehicleAxleAssemblyComponent::CopyAxleConfig(const UVehicleAxleAssemblyComponent* Source, UVehicleAxleAssemblyComponent* Target, bool bReInitializeWheel)
 {
-	Target->bUseExistingWheelInstance = Source->bUseExistingWheelInstance;
-	Target->LeftWheelInstanceName = Source->LeftWheelInstanceName;
-	Target->RightWheelInstanceName = Source->RightWheelInstanceName;
+	Target->bUseExistingWheelComponent = Source->bUseExistingWheelComponent;
+	Target->LeftWheelComponentName = Source->LeftWheelComponentName;
+	Target->RightWheelComponentName = Source->RightWheelComponentName;
 	Target->WheelConfig = Source->WheelConfig;
 	Target->VehicleWheelComponentSetupRotation = Source->VehicleWheelComponentSetupRotation;
-	Target->bUseExistingDifferentialInstance = Source->bUseExistingDifferentialInstance;
-	Target->DifferentialInstanceName = Source->DifferentialInstanceName;
+	Target->bUseExistingDifferentialComponent = Source->bUseExistingDifferentialComponent;
+	Target->DifferentialComponentName = Source->DifferentialComponentName;
 	Target->DifferentialConfig = Source->DifferentialConfig;
 	Target->AxleLayout = Source->AxleLayout;
 	Target->AxleConfig = Source->AxleConfig;
@@ -502,8 +502,8 @@ FVector UVehicleAxleAssemblyComponent::GetAxleCenter()
 
 bool UVehicleAxleAssemblyComponent::GenerateWheels()
 {
-	// if use instance
-	if (bUseExistingWheelInstance)
+	// if use Component
+	if (bUseExistingWheelComponent)
 	{
 		if (IsValid(LeftWheel))
 		{
@@ -559,7 +559,7 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 
 bool UVehicleAxleAssemblyComponent::SearchExistingWheels()
 {
-	if (bUseExistingWheelInstance && GetOwner())
+	if (bUseExistingWheelComponent && GetOwner())
 	{
 		// search for wheels
 		for (UActorComponent* Comp : GetOwner()->GetComponents())
@@ -570,7 +570,7 @@ bool UVehicleAxleAssemblyComponent::SearchExistingWheels()
 			{
 				if (!IsValid(LeftWheel))
 				{
-					if (Wheel->GetName() == LeftWheelInstanceName)
+					if (Wheel->GetName() == LeftWheelComponentName)
 					{
 						LeftWheel = Wheel;
 						LeftWheel->InitializeWheel();
@@ -578,7 +578,7 @@ bool UVehicleAxleAssemblyComponent::SearchExistingWheels()
 				}
 				if (!IsValid(RightWheel))
 				{
-					if (Wheel->GetName() == RightWheelInstanceName)
+					if (Wheel->GetName() == RightWheelComponentName)
 					{
 						RightWheel = Wheel;
 						RightWheel->InitializeWheel();
@@ -601,14 +601,14 @@ bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 	if (!IsValid(Differential) && GetOwner())
 	{
 		bool bExistingDiffFound = false;
-		if (bUseExistingDifferentialInstance)
+		if (bUseExistingDifferentialComponent)
 		{
 			// search for differential
 			for (UActorComponent* Comp : GetOwner()->GetComponents())
 			{
 				UVehicleDifferentialComponent* Diff;
 				Diff = Cast<UVehicleDifferentialComponent>(Comp);
-				if (IsValid(Diff) && Comp->GetFName() == DifferentialInstanceName)
+				if (IsValid(Diff) && Comp->GetFName() == DifferentialComponentName)
 				{
 					Differential = Diff;
 					bExistingDiffFound = true;

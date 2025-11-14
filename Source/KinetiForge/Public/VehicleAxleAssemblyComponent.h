@@ -20,21 +20,21 @@ public:
 	// Sets default values for this component's properties
 	UVehicleAxleAssemblyComponent();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ToolTip = "Select whether to use existing instances. If not, dynamically created wheels can still be correctly identified and have their animations recorded by the level sequence."))
-	bool bUseExistingWheelInstance = false;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingWheelInstance", EditConditionHides))
-	FName LeftWheelInstanceName = FName();
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingWheelInstance", EditConditionHides))
-	FName RightWheelInstanceName = FName();
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelInstance", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ToolTip = "Select whether to use existing Components. If not, dynamically created wheels can still be correctly identified and have their animations recorded by the level sequence."))
+	bool bUseExistingWheelComponent = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingWheelComponent", EditConditionHides))
+	FName LeftWheelComponentName = FName();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingWheelComponent", EditConditionHides))
+	FName RightWheelComponentName = FName();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelComponent", EditConditionHides))
 	TSubclassOf<UVehicleWheelComponent> WheelConfig;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelInstance", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelComponent", EditConditionHides))
 	FRotator VehicleWheelComponentSetupRotation;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
-	bool bUseExistingDifferentialInstance = false;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingDifferentialInstance", EditConditionHides))
-	FName DifferentialInstanceName = FName();
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingDifferentialInstance", EditConditionHides))
+	bool bUseExistingDifferentialComponent = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingDifferentialComponent", EditConditionHides))
+	FName DifferentialComponentName = FName();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingDifferentialComponent", EditConditionHides))
 	TSubclassOf<UVehicleDifferentialComponent> DifferentialConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	EVehicleAxleLayout AxleLayout = EVehicleAxleLayout::TwoWheels;
