@@ -84,7 +84,7 @@ struct FVehicleSuspensionSpringConfig
 	float BottomOutStiffness = 0.f;
 };
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (ToolTip = "suspension state in simulation"))
 struct FVehicleSuspensionSimData
 {
 	GENERATED_BODY()

@@ -73,7 +73,7 @@ struct FVehicleABSConfig
 	float InterpSpeed = 500.f;
 };
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (ToolTip = "wheel state in simulation"))
 struct FVehicleWheelSimData
 {
 	GENERATED_BODY()

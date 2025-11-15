@@ -162,7 +162,7 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 		InputValues.Smoothened.Throttle *= !(InputAssistConfig.bEVClutchLogic && Gearbox->GetCurrentGearRatio() == 0.f);
 	}
 	//if not in gear and should rev-match
-	else if(Gearbox->GetShouldRevMatch() && FMath::Abs(LocalLinearVelocity.X) > 0.5 && AutoGearboxConfig.bSportMode)
+	else if(Gearbox->GetShouldRevMatch() && FMath::Abs(LocalLinearVelocity.X) > 0.5 && InputAssistConfig.bRevMatching)
 	{
 		InputValues.Smoothened.Throttle += SafeDivide(InDeltaTime, Gearbox->Config.ShiftDelay);
 		InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);

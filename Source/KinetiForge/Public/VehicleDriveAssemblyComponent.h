@@ -82,9 +82,9 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bUseExistingGearboxComponent = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingClutchComponent", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingGearboxComponent", EditConditionHides))
     FName GearboxComponentName = FName();
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingClutchComponent", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingGearboxComponent", EditConditionHides))
     TSubclassOf<UVehicleGearboxComponent> GearboxConfig;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
