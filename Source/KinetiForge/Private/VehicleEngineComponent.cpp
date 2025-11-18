@@ -39,15 +39,14 @@ void UVehicleEngineComponent::BeginPlay()
 void UVehicleEngineComponent::EngineAcceleration()
 {
 	float FrictionTorque = NAConfig.StartFriction + NAConfig.FrictionCoefficient * FMath::Abs(SimData.EngineRPM);
-	float NAInitialTorque;
 	float InitialTorque;
 	if (NAConfig.EngineTorqueCurve)
 	{
-		NAInitialTorque = SimData.bSpark * SimData.RealThrottle* (FrictionTorque + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(FMath::Abs(SimData.EngineRPM)));
+		InitialTorque = SimData.bSpark * SimData.RealThrottle* (FrictionTorque + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(FMath::Abs(SimData.EngineRPM)));
 	}
 	else
 	{
-		NAInitialTorque = SimData.bSpark * SimData.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque);
+		InitialTorque = SimData.bSpark * SimData.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque);
 	}
 
 	//turbo charged and na have different behavior
@@ -58,6 +57,9 @@ void UVehicleEngineComponent::EngineAcceleration()
 		//if throttle is hit
 		if (SimData.RawThrottleInput > SMALL_NUMBER)
 		{
+			// mark turbo not blowing off
+			SimData.bIsTurboBlowingOff = false;
+
 			//get target turbo boost
 			float TargetBoost = FMath::GetMappedRangeValueUnclamped(
 				FVector2D(TurboConfig.TurboStartRPM, TurboConfig.TurboFinishRPM), 
@@ -70,26 +72,46 @@ void UVehicleEngineComponent::EngineAcceleration()
 		}
 		else
 		{
-			float WasteInterpSpeed = SafeDivide(PressureRange, TurboConfig.TurboWasteGateLag);
-			float AntiLagInterpSpeed = FMath::GetMappedRangeValueClamped(
-				FVector2D(TurboConfig.TurboStartRPM, TurboConfig.TurboFinishRPM),
-				FVector2D(WasteInterpSpeed * 0.05, 0.001),
-				SimData.EngineRPM);
-			float InterpSpeed = WasteInterpSpeed;
-			if (TurboConfig.bAntiLag)InterpSpeed = AntiLagInterpSpeed;
-			SimData.TurboPressure = FMath::FInterpConstantTo(SimData.TurboPressure, 0.f, SimData.PhysicsDeltaTime, InterpSpeed);
+			// if anti-lag not triggered
+			if (!TurboConfig.bAntiLag || SimData.EngineRPM < TurboConfig.TurboFinishRPM)
+			{
+				// if anti-lag not triggered, release pressure
+				float WasteInterpSpeed = SafeDivide(PressureRange, TurboConfig.TurboWasteGateLag);
+
+				SimData.TurboPressure = FMath::FInterpConstantTo(
+					SimData.TurboPressure, 
+					0.f, 
+					SimData.PhysicsDeltaTime, 
+					WasteInterpSpeed);
+			}
+
+			// if turbo pressure is positive, then means the turbo is blowing off
+			if (SimData.TurboPressure > SMALL_NUMBER)
+			{
+				// mark turbo blowing off and trigger callback in game thread
+				if (!SimData.bIsTurboBlowingOff)
+				{
+					SimData.bIsTurboBlowingOff = true;
+					bShouldTriggerTurboBlowOffCallback = true;
+				}
+			}
+			else
+			{
+				SimData.bIsTurboBlowingOff = false;
+			}
 		}
+
 		//get initial torque
 		float TurboBoost = SafeDivide(SimData.TurboPressure, TurboConfig.TurboMaxPressure);
 		TurboBoost = FMath::Max(0.f, TurboBoost);
-		InitialTorque = NAInitialTorque + SimData.bSpark * SimData.RealThrottle * TurboBoost * TurboConfig.TurboBoostTorque;
+		InitialTorque += SimData.bSpark * SimData.RealThrottle * TurboBoost * TurboConfig.TurboBoostTorque;
 	}
 	else
 	{
-		InitialTorque = NAInitialTorque;
 		SimData.TurboPressure = 0.f;
 	}
 
+	// consider P1 motor
 	InitialTorque += SimData.P1MotorTorque;
 
 	//accelerate engine
@@ -122,6 +144,22 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		CachedMaxEngineTorque != NAConfig.MaxEngineTorque)
 	{
 		Initialize();
+	}
+
+	if (bShouldTriggerTurboBlowOffCallback)
+	{
+		bShouldTriggerTurboBlowOffCallback = false;
+		for (FOnTurboBlowOffDelegate BlowOffCallbacks : TurboBlowOffCallbacks)
+		{
+			if (BlowOffCallbacks.IsBound())
+			{
+				BlowOffCallbacks.Execute();
+			}
+			else
+			{
+				TurboBlowOffCallbacks.Remove(BlowOffCallbacks);
+			}
+		}
 	}
 }
 
@@ -284,4 +322,12 @@ EVehicleEngineState UVehicleEngineComponent::ShutVehicleEngine()
 	}
 
 	return SimData.State;
+}
+
+void UVehicleEngineComponent::BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate InOnTurboBlowOff)
+{
+	if (TurboBlowOffCallbacks.Find(InOnTurboBlowOff) == INDEX_NONE)
+	{
+		TurboBlowOffCallbacks.Add(InOnTurboBlowOff);
+	}
 }

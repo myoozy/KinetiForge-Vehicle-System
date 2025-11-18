@@ -2,11 +2,6 @@
 
 
 #include "VehicleWheelCoordinatorComponent.h"
-#include "Templates/SharedPointer.h"
-#include "Chaos/Convex.h"
-#include "Chaos/GeometryParticles.h"
-#include "Chaos/ImplicitObject.h"
-#include "Chaos/ImplicitObjectUnion.h"
 #include "VehicleWheelComponent.h"
 #include "VehicleAxleAssemblyComponent.h"
 #include "VehicleDriveAssemblyComponent.h"
@@ -147,8 +142,7 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 	TArray<FVector> Positions;
 	for (TWeakObjectPtr<UVehicleWheelComponent> Wheel : RegisteredWheels)
 	{
-		FVector RelativePos = Wheel->GetRelativeLocation();
-		RelativePos += Wheel->GetRelativeTransform().GetRotation().GetRightVector() * Wheel->SuspensionKinematicsConfig.SteeringAxleOffset;
+		FVector RelativePos = Wheel->GetTopMountRelativeLocation();
 		Positions.Add(RelativePos);
 	}
 
@@ -171,7 +165,7 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 	}
 }
 
-void UVehicleWheelCoordinatorComponent::CalculateWheelBase()
+void UVehicleWheelCoordinatorComponent::UpdateWheelBase()
 {
 	//remove unvalid axles
 	RegisteredAxles.RemoveAll([](const TWeakObjectPtr<UVehicleAxleAssemblyComponent>& A) {return !A.IsValid() || A->IsBeingDestroyed();});
@@ -214,7 +208,7 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 	if (bWheelBaseDataDirty)
 	{
 		bWheelBaseDataDirty = false;
-		CalculateWheelBase();
+		UpdateWheelBase();
 	}
 }
 
@@ -225,7 +219,7 @@ UPrimitiveComponent* UVehicleWheelCoordinatorComponent::FindPhysicalParent(UScen
 	TArray<USceneComponent*> AllParentComponents;
 	ChildSceneComponent->GetParentComponents(AllParentComponents);
 
-	//向上查找所有可能作为车身的组件。而车轮、车轴、车轮协调器只向上查找一级
+	// search for all possible components
 	for (USceneComponent* SceneComp : AllParentComponents)
 	{
 		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(SceneComp))
@@ -234,7 +228,7 @@ UPrimitiveComponent* UVehicleWheelCoordinatorComponent::FindPhysicalParent(UScen
 		}
 	}
 
-	// Fallback: 尝试找 Owner 的 RootComponent（通常是 mesh）
+	// Fallback: try to find root component (usually primitive)
 	if (AActor* CompOwner = ChildSceneComponent->GetOwner())
 	{
 		if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(CompOwner->GetRootComponent()))
@@ -301,254 +295,180 @@ void UVehicleWheelCoordinatorComponent::RegisterDriveAssembly(UVehicleDriveAssem
 	RegisteredDriveAssemblies.Add(NewVehicleDriveAssemblyComponent);
 }
 
-const Chaos::FConvex* UVehicleWheelCoordinatorComponent::GetCylinderConvex()
-{
-	if (!SharedConvex.IsValid())
-	{
-		TArray<Chaos::FConvex::FVec3Type> Vertices;
-		const float Radius = 1.0f;
-		const float HalfHeight = 0.5f;
-
-		for (int32 i = 0; i < NumSegments; ++i)
-		{
-			float Angle = 2 * PI * i / NumSegments;
-			float X = Radius * FMath::Cos(Angle);
-			float Z = Radius * FMath::Sin(Angle);
-
-			Vertices.Add(Chaos::FConvex::FVec3Type(X, -HalfHeight, Z));
-			Vertices.Add(Chaos::FConvex::FVec3Type(X, +HalfHeight, Z));
-		}
-
-		SharedConvex = TSharedPtr<Chaos::FConvex>(new Chaos::FConvex(MoveTemp(Vertices), 0.0f)); // 第二个参数是容差
-	}
-
-	return SharedConvex.Get();
-}
-
 bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector>& MassSpringPositions, const float TotalMass, TArray<float>& OutSprungMasses)
 {
-	
+	// 1. Validation & Initialization
+	const int32 NumSprings = MassSpringPositions.Num();
+	OutSprungMasses.Init(0.f, NumSprings);
 
-	//For a body which is supported by a collection of parallel springs,
-	//this method will compute a distribution of masses among the springs
-	//which minimizes the variance between them.
-	//
-	//This method assumes that spring positions are given relative to the
-	//center of mass of the body, and that gravity occurs in the local -Z
-	//direction.
-	//
-	//Different methods are used for 1, 2, and >= 3 numbers of springs.
-
-	
-
-	// Make sure we have enough space in the spring mass results array
-	const uint32 Count = MassSpringPositions.Num();
-	OutSprungMasses.Init(0, Count);
-
-	// Check essential values
-	if (!ensureMsgf(Count > 0, TEXT("Must have at least one spring to compute sprung masses.")))
+	if (NumSprings <= 0)
 	{
+		// Log warning: No springs defined.
 		return false;
 	}
 
-	if (!ensureMsgf(TotalMass > SMALL_NUMBER, TEXT("Total mass must be greater than zero to compute sprung masses.")))
+	if (TotalMass <= SMALL_NUMBER)
 	{
+		// Log warning: Invalid total mass.
 		return false;
 	}
 
-	// The cases of one or two springs are special snowflakes
-	if (Count == 1)
+	// -------------------------------------------------------------------------
+	// Case I: Single Support Point
+	// -------------------------------------------------------------------------
+	if (NumSprings == 1)
 	{
 		OutSprungMasses[0] = TotalMass;
 		return true;
 	}
-	else if (Count == 2)
+
+	// -------------------------------------------------------------------------
+	// Case II: Two Support Points (Line Segment Projection)
+	// -------------------------------------------------------------------------
+	else if (NumSprings == 2)
 	{
 		/*
+		 * Logic:
+		 * We project the Center of Mass (which is at local origin 0,0) onto the
+		 * line segment defined by the two springs. The mass is then distributed
+		 * based on the inverse distance ratio (Lever Rule).
+		 */
 
-		For two springs, we project the CM (which is 0,0 since we're
-		in the mass frame of the object) onto the line between the
-		springs, and compute the ratio of the distances.
+		const FVector& PointA = MassSpringPositions[0];
+		const FVector& PointB = MassSpringPositions[1];
 
-		For example in the graph below, if the springs are at points
-		A and B, then the distances d0 and d1 will be computed.
+		const float DiffX = PointB.X - PointA.X;
+		const float DiffY = PointB.Y - PointA.Y;
 
-			 d0      d1
-		A---------p------B
-				  |
-				  c
+		// Calculate distance between springs
+		const float DistanceSq = (DiffX * DiffX) + (DiffY * DiffY);
+		const float Distance = FMath::Sqrt(DistanceSq);
 
-		Then the masses m0 and m1 at A and B will be distributed according
-		to the magnitudes of d0 and d1.
-
-		m0 = m * d0 / (d0 + d1);
-		m1 = m - m0;
-
-		*/
-
-		const float AX = MassSpringPositions[0].X;
-		const float AY = MassSpringPositions[0].Y;
-		const float DiffX = MassSpringPositions[1].X - AX;
-		const float DiffY = MassSpringPositions[1].Y - AY;
-
-		// If the springs are close together, just divide the mass in 2.
-		const float DistSquared = (DiffX * DiffX) + (DiffY * DiffY);
-		const float Dist = FMath::Sqrt(DistSquared);
-		if (Dist <= SMALL_NUMBER)
+		// Handle case where springs are overlapping
+		if (Distance <= SMALL_NUMBER)
 		{
-			OutSprungMasses[0] = OutSprungMasses[1] = TotalMass * .5f;
+			OutSprungMasses[0] = TotalMass * 0.5f;
+			OutSprungMasses[1] = TotalMass * 0.5f;
 			return true;
 		}
 
-		// The springs are far enough apart, compute the distribution
-		const float DistInv = 1.f / Dist;
-		const float DirX = DiffX * DistInv;
-		const float DirY = DiffY * DistInv;
-		const float DirDotA = (DirX * AX) + (DirY * AY);
-		OutSprungMasses[0] = -TotalMass * DirDotA * DistInv;
+		// Project CoM onto the vector AB
+		const float InvDistance = 1.f / Distance;
+		const float UnitDirX = DiffX * InvDistance;
+		const float UnitDirY = DiffY * InvDistance;
+
+		// Calculate projection scalar (Dot Product)
+		// Note: PointA is relative to CoM.
+		const float Projection = (PointA.X * UnitDirX) + (PointA.Y * UnitDirY);
+
+		// Calculate mass for the first point based on the lever arm
+		OutSprungMasses[0] = -TotalMass * Projection * InvDistance;
 		OutSprungMasses[1] = TotalMass - OutSprungMasses[0];
-		if (ensureMsgf(OutSprungMasses[0] >= 0.f, TEXT("Spring configuration is invalid! Please make sure the center of mass is located between the springs.")) &&
-			ensureMsgf(OutSprungMasses[1] >= 0.f, TEXT("Spring configuration is invalid! Please make sure the center of mass is located between the springs.")))
+
+		// Validation: Masses must be non-negative (CoM must be between springs)
+		if (OutSprungMasses[0] >= 0.f && OutSprungMasses[1] >= 0.f)
 		{
 			return true;
 		}
+
+		// Fallback for invalid CoM placement
 		return false;
 	}
 
+	// -------------------------------------------------------------------------
+	// Case III: Multiple Support Points (N >= 3)
+	// -------------------------------------------------------------------------
 	/*
+	 * Logic:
+	 * Solve a constrained optimization problem using Lagrange Multipliers.
+	 * Objective: Minimize mass variance across springs.
+	 * Constraints:
+	 * 1. Sum of masses = TotalMass
+	 * 2. Sum of moments (Torque) = 0
+	 *
+	 * This results in a linear system A*x = B, solved via matrix inversion.
+	 */
 
-	In the case that we have N >= 3 springs, we solve a constrained minimization
-	problem using Lagrange multipliers (https://en.wikipedia.org/wiki/Lagrange_multiplier).
+	const float CountN = (float)NumSprings;
+	const float MeanMass = TotalMass / CountN;
 
-	Our constraints express the following: the mass-weighted sum of the spring
-	positions must equal the center of mass, and the sum of the sprung masses must equal
-	the total mass of the body. Thus, we have three constraint equations:
-
-	g0 = sum(x_i * m_i) = x_c * m
-	g1 = sum(y_i * m_i) = y_c * m
-	g2 = sum(m_i) = m
-
-	When there are many springs, there are many ways in which we could distribute the
-	masses among them. In order to get an even distribution, we want to minimize the
-	function whose value is the total mass variance.
-
-	f = sum((m_i - m_u)^2)
-
-	where m_u is the average mass per spring, m / N.
-
-	The equation which constrains the minimization of f will be the gradient of the sum
-	of f and the constraints multiplied by scalars, set to zero.
-
-	grad(f) + lambda0 grad(g0) + lambda1 grad(g1) + lambda2 grad(g2) = 0
-
-	That is,
-
-	2 m_i + lambda0 * x_i + lambda1 * y_i + lambda2 = 2m_u
-
-	where 0 < i <= N. In combination with the constraint equations, we now have a system of
-	N+3 equations and N+3 unknowns.
-
-	[  0   0   0   x0  x1  x2  ... ] [ lambda0 ] = [ m x_c ]
-	[  0   0   0   y0  y1  y2  ... ] [ lambda1 ]   [ m z_c ]
-	[  0   0   0   1   1   1   ... ] [ lambda2 ]   [ m     ]
-	[  x0  y0  1   2   0   0   ... ] [ m0      ]   [ 2 m_u ]
-	[  x1  y1  1   0   2   0       ] [ m1      ]   [ 2 m_u ]
-	[  x2  y2  1   0   0   2       ] [ m2      ]   [ 2 m_u ]
-	[  .   .   .             .     ] [ .       ]   [ .     ]
-	[  .   .   .               .   ] [ .       ]   [ .     ]
-	[  .   .   .                 . ] [ .       ]   [ .     ]
-
-
-	The linear (N+3)x(N+3) system which results takes a form which can be simplified
-	using the Schur complement (https://en.wikipedia.org/wiki/Schur_complement) of the
-	system matrix.
-
-	[  0   Lt  ] [ lambda_vec ] = [ u ]
-	[  L   2 I ] [ m_vec      ]   [ v ]
-
-	where Lt = Transpose(L), lambda_vec = { lambda0, lambda1, lambda2 },
-	m_vec = { m0, m1, m2, ... }, u = m { x_c, z_c, 1 }, and v = 2 m_u { 1, 1, 1, ...}.
-
-	This system can be solved for lambda_vec and subsequently m_vec, which is our solution vector.
-
-	lambda_vec = (Lt L)^-1 (Lt v - 2 u)
-	m_vec = (v - L lambda_vec) / 2
-
-	The matrix (Lt L) is a 3x3 matrix, and its inverse is the only one which must be found
-	in order to finally solve for the masses.
-
-	*/
-
-	// Cache values we'll need later, and clear out the results array
-	const float CountN = (float)Count;
-	const float CountInverse = 1.f / CountN;
-	const float AverageMass = TotalMass * CountInverse;
+	// Step A: Calculate Statistical Moments (Covariance terms)
 	float SumX = 0.f;
 	float SumY = 0.f;
-	float XDotX = 0.f;
-	float YDotY = 0.f;
-	float XDotY = 0.f;
-	float B0 = 0.f;
-	float B1 = 0.f;
-	float B2 = 0.f;
-	for (uint32 Index = 0; Index < Count; ++Index)
+	float SumSqX = 0.f; // Sum of X^2
+	float SumSqY = 0.f; // Sum of Y^2
+	float SumXY = 0.f;  // Sum of X*Y
+
+	for (const FVector& Pos : MassSpringPositions)
 	{
-		const float X = MassSpringPositions[Index].X;
-		const float Y = MassSpringPositions[Index].Y;
-		SumX += X;
-		SumY += Y;
-		XDotX += X * X;
-		YDotY += Y * Y;
-		XDotY += X * Y;
+		SumX += Pos.X;
+		SumY += Pos.Y;
+		SumSqX += Pos.X * Pos.X;
+		SumSqY += Pos.Y * Pos.Y;
+		SumXY += Pos.X * Pos.Y;
 	}
 
-	// Compute determinant of system matrix, in prep for inversion
-	const float DetLL
-		= (XDotX * YDotY * Count)
-		+ (2.f * XDotY * SumX * SumY)
-		- (YDotY * SumX * SumX)
-		- (XDotX * SumY * SumY)
-		- (XDotY * Count);
+	// Step B: Compute Determinant of the Coefficient Matrix
+	// Matrix Form:
+	// | SumSqX  SumXY   SumX |
+	// | SumXY   SumSqY  SumY |
+	// | SumX    SumY    N    |
 
-	// Make sure the matrix is invertible!
-	if (!(DetLL > SMALL_NUMBER || DetLL < -SMALL_NUMBER))
+	const float Term1 = SumSqX * SumSqY * CountN;
+	const float Term2 = 2.f * SumXY * SumX * SumY;
+	const float Term3 = SumSqY * SumX * SumX;
+	const float Term4 = SumSqX * SumY * SumY;
+	const float Term5 = SumXY * SumXY * CountN;
+
+	const float Determinant = Term1 + Term2 - Term3 - Term4 - Term5;
+
+	// Check for singularity (e.g., collinear points)
+	if (FMath::Abs(Determinant) < SMALL_NUMBER)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: Spring configuration is invalid! Please make sure no two springs are at the same location."));
+		UE_LOG(LogTemp, Warning, TEXT("ComputeSprungMasses: Solver failed. Springs may be collinear or overlapping."));
 		return false;
 	}
 
-	// Compute the elements of the inverse matrix
-	const float DetLLInv = 1.f / DetLL;
-	const float InvLL00 = ((Count * YDotY) - (SumY * SumY)) * DetLLInv;
-	const float InvLL01 = ((SumX * SumY) - (Count * XDotY)) * DetLLInv;
-	const float InvLL02 = ((SumY * XDotY) - (SumX * YDotY)) * DetLLInv;
-	const float InvLL10 = InvLL01; // Symmetry!
-	const float InvLL11 = ((Count * XDotX) - (SumX * SumX)) * DetLLInv;
-	const float InvLL12 = ((SumX * XDotY) - (SumY * XDotX)) * DetLLInv; // = InvLL21. Symmetry!
-	const float InvLL20 = InvLL02; // Symmetry!
-	const float InvLL21 = InvLL12; // Symmetry!
-	const float InvLL22 = ((XDotX * YDotY) - (XDotY * XDotY)) * DetLLInv;
+	// Step C: Calculate Inverse Matrix Elements (Symmetric 3x3)
+	// We only need the upper triangle values due to symmetry.
+	const float InvDet = 1.f / Determinant;
 
-	// Compute the Lagrange multipliers
-	const float LambdaB0 = 2.f * AverageMass * SumX;
-	const float LambdaB1 = 2.f * AverageMass * SumY;
-	const float LambdaB2 = (2.f * AverageMass * CountN) - (2.f * TotalMass);
-	const float Lambda0 = (InvLL00 * LambdaB0) + (InvLL01 * LambdaB1) + (InvLL02 * LambdaB2);
-	const float Lambda1 = (InvLL10 * LambdaB0) + (InvLL11 * LambdaB1) + (InvLL12 * LambdaB2);
-	const float Lambda2 = (InvLL20 * LambdaB0) + (InvLL21 * LambdaB1) + (InvLL22 * LambdaB2);
+	const float InvM00 = (CountN * SumSqY - SumY * SumY) * InvDet;
+	const float InvM01 = (SumX * SumY - CountN * SumXY) * InvDet;
+	const float InvM02 = (SumY * SumXY - SumX * SumSqY) * InvDet;
 
-	// Compute the masses
-	for (uint32 Index = 0; Index < Count; ++Index)
+	// const float InvM10 = InvM01;
+	const float InvM11 = (CountN * SumSqX - SumX * SumX) * InvDet;
+	const float InvM12 = (SumX * SumXY - SumY * SumSqX) * InvDet;
+
+	// const float InvM20 = InvM02;
+	// const float InvM21 = InvM12;
+	const float InvM22 = (SumSqX * SumSqY - SumXY * SumXY) * InvDet;
+
+	// Step D: Solve for Lagrange Multipliers
+	// Right-Hand Side (RHS) vector based on constraints
+	const float RHS_X = 2.f * MeanMass * SumX;
+	const float RHS_Y = 2.f * MeanMass * SumY;
+	const float RHS_C = (2.f * MeanMass * CountN) - (2.f * TotalMass);
+
+	const float Lambda0 = (InvM00 * RHS_X) + (InvM01 * RHS_Y) + (InvM02 * RHS_C);
+	const float Lambda1 = (InvM01 * RHS_X) + (InvM11 * RHS_Y) + (InvM12 * RHS_C);
+	const float Lambda2 = (InvM02 * RHS_X) + (InvM12 * RHS_Y) + (InvM22 * RHS_C);
+
+	// Step E: Compute Final Mass Distribution
+	for (int32 i = 0; i < NumSprings; ++i)
 	{
-		const float X = MassSpringPositions[Index].X;
-		const float Y = MassSpringPositions[Index].Y;
-		const float LLambda = (X * Lambda0) + (Y * Lambda1) + Lambda2;
-		OutSprungMasses[Index] = AverageMass - (0.5f * LLambda);
-		if (OutSprungMasses[Index] < 0.f)
+		const float PosX = MassSpringPositions[i].X;
+		const float PosY = MassSpringPositions[i].Y;
+
+		// Formula: m_i = Mean - 0.5 * (Lambda dot Position)
+		const float CorrectionTerm = (PosX * Lambda0) + (PosY * Lambda1) + Lambda2;
+		OutSprungMasses[i] = MeanMass - (0.5f * CorrectionTerm);
+
+		// Physical Sanity Check: Mass cannot be negative.
+		if (OutSprungMasses[i] < 0.f)
 		{
-			// #TODO: it is technically possible for say a trailer to have all of its wheels at the rear and none at the front 
-			// hence violating this condition, need to think about handling this.
-			UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: Spring configuration is invalid! Please make sure the center of mass is located inside the area covered by the springs."));
+			UE_LOG(LogTemp, Warning, TEXT("ComputeSprungMasses: Center of Mass is outside the support polygon. Negative mass calculated."));
 			return false;
 		}
 	}
@@ -558,17 +478,18 @@ bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector
 
 bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector>& LocalSpringPositions, const FVector& LocalCenterOfMass, const float TotalMass, TArray<float>& OutSprungMasses)
 {
-	// Compute support origin's in center of mass space
-	const int32 SpringCount = LocalSpringPositions.Num();
-	TArray<FVector> MassSpringPositions;
-	MassSpringPositions.SetNum(SpringCount);
-	for (int32 Index = 0; Index < SpringCount; ++Index)
+	// Transform spring positions to be relative to the Center of Mass
+	const int32 Count = LocalSpringPositions.Num();
+	TArray<FVector> RelativePositions;
+	RelativePositions.SetNumUninitialized(Count);
+
+	for (int32 i = 0; i < Count; ++i)
 	{
-		MassSpringPositions[Index] = LocalSpringPositions[Index] - LocalCenterOfMass;
+		RelativePositions[i] = LocalSpringPositions[i] - LocalCenterOfMass;
 	}
 
-	// Do the calculation
-	return ComputeSprungMasses(MassSpringPositions, TotalMass, OutSprungMasses);
+	// Delegate to the core solver
+	return ComputeSprungMasses(RelativePositions, TotalMass, OutSprungMasses);
 }
 
 

@@ -359,8 +359,9 @@ void UVehicleWheelComponent::GetWheelCoordinator(UVehicleWheelCoordinatorCompone
 
 float UVehicleWheelComponent::ComputeFeedBackTorque()
 {
-	FVector LeverArm = Suspension.SimData.HitStruct.ImpactPoint - Suspension.SimData.HitStruct.Location;
-	FVector Torque = FVector::CrossProduct(LeverArm, Wheel.SimData.TyreForce);
+	// get machanism trail
+	FVector Arm = WheelConfig.Radius * Suspension.SimData.StrutDirection.ProjectOnToNormal(Suspension.SimData.HitStruct.ImpactNormal);
+	FVector Torque = FVector::CrossProduct(Arm, Wheel.SimData.TyreForce);
 	return FVector::DotProduct(Suspension.SimData.StrutDirection, Torque);
 }
 

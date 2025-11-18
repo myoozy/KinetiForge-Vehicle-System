@@ -34,8 +34,6 @@ protected:
 	UPrimitiveComponent* Carbody;
 	FVector CarbodyCOM;		//local position
 
-	//abandoned, I tried to use convex instead of sphere trace
-	TSharedPtr<Chaos::FConvex> SharedConvex; // ¹²ÏíÍ¹°üÖ¸Õë
 
 	UPROPERTY()
 	TArray<TWeakObjectPtr<UVehicleWheelComponent>> RegisteredWheels;
@@ -57,7 +55,7 @@ protected:
 	int FindAllAxles(TArray <UVehicleAxleAssemblyComponent*>& OutAxles);
 	int FindAllDriveAssemblies(TArray<UVehicleDriveAssemblyComponent*>& OutDriveAssemblies);
 	bool UpdateWheelSprungMass();
-	void CalculateWheelBase();
+	void UpdateWheelBase();
 
 public:	
 	// Called every frame
@@ -70,25 +68,7 @@ public:
 	void RegisterWheel(UVehicleWheelComponent* NewWheel);
 	void RegisterAxle(UVehicleAxleAssemblyComponent* NewAxle);
 	void RegisterDriveAssembly(UVehicleDriveAssemblyComponent* NewDriveAssembly);
-	const Chaos::FConvex* GetCylinderConvex();
-
-	
-
-	/** Compute the distribution of the mass of a body among springs.
-		This method assumes that spring positions are given relative
-		to the center of mass of the body, and that gravity occurs
-		in the local -Z direction.
-
-		Returns true if it was able to find a valid mass configuration.
-		If only one or two springs are included, then a valid
-		configuration may not result in a stable suspension system -
-		a bicycle or pogostick, for example, which is not perfectly centered
-		may have a valid sprung mass configuration without being stable. */
 	static bool ComputeSprungMasses(const TArray<FVector>& MassSpringPositions, const float TotalMass, TArray<float>& OutSprungMasses);
-
-	/** Same as above, but allows the caller to specify spring locations
-		in a local space which is not necessarily originated at the center
-		of mass. */
 	static bool ComputeSprungMasses(const TArray<FVector>& LocalSpringPositions, const FVector& LocalCenterOfMass, const float TotalMass, TArray<float>& OutSprungMasses);
 
 		

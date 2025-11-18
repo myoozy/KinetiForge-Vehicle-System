@@ -58,9 +58,9 @@ struct FVehicleEngineTurboConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "-1.0", ClampMax = "0.0"))
 	float TurboNegPressure = -0.2f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0"))
-	float TurboLag = 0.5;
+	float TurboLag = 0.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0"))
-	float TurboWasteGateLag = 0.1;
+	float TurboWasteGateLag = 0.2f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup")
 	bool bAntiLag = false;
 };
@@ -101,7 +101,9 @@ struct FVehicleEngineSimData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Force")
 	float P1MotorTorque = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	bool bSpark = 0.f;
+	bool bSpark = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
+	bool bIsTurboBlowingOff = false;
 };
 
 /*******************************CLUTCH********************************/

@@ -104,6 +104,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
 	void SetSprungMass(float NewSprungMass);
 
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	FVector GetTopMountRelativeLocation() { return Suspension.SimData.TopMountRelativePos; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Suspension")
+	FTransform GetWheelRelativeTransform() { return Suspension.SimData.WheelRelativeTransform; }
+
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Suspension")
 	float GetSuspensionLength() { return Suspension.SimData.SuspensionCurrentLength; }
 

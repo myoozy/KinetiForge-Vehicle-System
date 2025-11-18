@@ -42,8 +42,16 @@ void FVehicleWheelSolver::UpdateWheel(
 	SimData.ReflectedInertia = InReflectedInertia;
 	SimData.TotalInertia = Config.Inertia + SimData.ReflectedInertia;
 	SimData.TotalInertiaInv = SafeDivide(1, SimData.TotalInertia);
+	
+	// get target brake torque
+	// brake torque from esp can be negative (which means to reduce brake torque)
+	// but the target total brake torque should not be negative (the brake should not accelerate the wheel)
+	float TargetBrakeTorque = FMath::Max(0.f, FMath::Abs(InBrakeTorque) + SimData.BrakeTorqueFromESP);	
+	
+	// update abs
+	UpdateABS(TargetBrakeTorque, SuspensionSimData.bHitGround);
 
-	UpdateABS(FMath::Abs(InBrakeTorque + SimData.BrakeTorqueFromESP), SuspensionSimData.bHitGround);
+	// get total brake torque
 	SimData.BrakeTorqueFromHandbrake = FMath::Abs(InHandbrakeTorque);
 	SimData.BrakeTorque = SimData.BrakeTorqueFromBrake + Config.RollingRisistance + SimData.BrakeTorqueFromHandbrake;
 
@@ -72,7 +80,15 @@ void FVehicleWheelSolver::UpdateWheel(
 		GravProj);
 }
 
-void FVehicleWheelSolver::DrawWheelForce(UWorld* InCurrentWorld, const FVehicleSuspensionSimData& InSuspensionSimData, float Duration, float Thickness, float Length, bool bDrawVelocity, bool bDrawSlip, bool bDrawInertia)
+void FVehicleWheelSolver::DrawWheelForce(
+	UWorld* InCurrentWorld, 
+	const FVehicleSuspensionSimData& InSuspensionSimData, 
+	float Duration, 
+	float Thickness, 
+	float Length, 
+	bool bDrawVelocity, 
+	bool bDrawSlip, 
+	bool bDrawInertia)
 {
 	if (!InCurrentWorld || !IsValid(TargetWheelComponent))return;
 
@@ -201,7 +217,10 @@ void FVehicleWheelSolver::ComputeDynamicFrictionMultiplier(const FHitResult& Hit
 	}
 }
 
-void FVehicleWheelSolver::ComputeLinearVelocity(FVector LongForceDir, FVector LatForceDir, const FHitResult& HitStruct)
+void FVehicleWheelSolver::ComputeLinearVelocity(
+	const FVector& LongForceDir, 
+	const FVector& LatForceDir, 
+	const FHitResult& HitStruct)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelLinearVelocity);
 
@@ -325,7 +344,10 @@ float FVehicleWheelSolver::ComputeRigidLatForce(float SprungMass)
 	return ForceRequiredToBringToStop * Scale;
 }
 
-FVector2D FVehicleWheelSolver::ComputeGravityProjectionOnSlope(float WheelLoad, FVector LongForceDir, FVector LatForceDir)
+FVector2D FVehicleWheelSolver::ComputeGravityProjectionOnSlope(
+	float WheelLoad, 
+	const FVector& LongForceDir, 
+	const FVector& LatForceDir)
 {
 	FVector2D GravityProj = FVector2D(0.f, 0.f);
 
@@ -383,7 +405,13 @@ float FVehicleWheelSolver::CalculateScaledWheelLoad(float SprungMass, float Whee
 	return LoadScale * NormWheelLoad;
 }
 
-void FVehicleWheelSolver::ComputeTireForce(float SprungMass, float WheelLoad,	bool bHitGround, FVector LongForceDirUnNorm, FVector LatForceDirUnNorm, FVector2D GravityProjOnSlope)
+void FVehicleWheelSolver::ComputeTireForce(
+	float SprungMass, 
+	float WheelLoad,	
+	bool bHitGround, 
+	const FVector& LongForceDirUnNorm, 
+	const FVector& LatForceDirUnNorm, 
+	const FVector2D& GravityProjOnSlope)
 {
 	if (!bHitGround)
 	{

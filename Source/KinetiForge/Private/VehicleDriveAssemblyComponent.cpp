@@ -164,7 +164,8 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 	//if not in gear and should rev-match
 	else if(Gearbox->GetShouldRevMatch() && FMath::Abs(LocalLinearVelocity.X) > 0.5 && InputAssistConfig.bRevMatching)
 	{
-		InputValues.Smoothened.Throttle += SafeDivide(InDeltaTime, Gearbox->Config.ShiftDelay);
+		float Rate = 5.f;
+		InputValues.Smoothened.Throttle += SafeDivide(InDeltaTime * Rate, Gearbox->Config.ShiftDelay);
 		InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
 	}
 	//if not in gear and no rev-matching
@@ -237,8 +238,9 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 
 		//get interp speed, when changing gear, clutch should engage faster than gear changes
 		FVector2D FinalInterpSpeed;
+		float Rate = 10.f;
 		FinalInterpSpeed.Y = InputConfig.Clutch.InterpSpeed.Y;
-		FinalInterpSpeed.X = bNotInGearAndNotSequential ? SafeDivide(2.f, Gearbox->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
+		FinalInterpSpeed.X = bNotInGearAndNotSequential ? SafeDivide(Rate, Gearbox->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
 
 		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, TargetClutchValue, InDeltaTime, FinalInterpSpeed);
 	}
@@ -368,6 +370,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 		}
 	}
 
+	// should shift down if rpm is too low
 	float MinShiftUpFactor = SafeDivide(Engine->NAConfig.EngineIdleRPM, Engine->NAConfig.EngineMaxRPM);
 	ShiftFactor = FMath::Max(MinShiftUpFactor, ShiftFactor);
 
@@ -380,11 +383,11 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	float UnsignedSpeed = FMath::Abs(LocalLinearVelocity.X);
 
 	//search for target gear
-	for (int i = -EndGear; i < -StartGear; i++)
+	for (int i = EndGear; i > StartGear; i--)
 	{
-		if (UnsignedSpeed > ShiftFactor * SpeedRangeOfEachGear[-i-1].Y)
+		if (UnsignedSpeed > ShiftFactor * SpeedRangeOfEachGear[i - 1].Y)
 		{
-			TargetGear = -i;
+			TargetGear = i;
 			break;
 		}
 	}
@@ -394,13 +397,12 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	//check sign
 	if (LocalLinearVelocity.X < 0)TargetGear = -TargetGear;
 
-	if (Gearbox->GetCurrentGear() != TargetGear && !(GearingUp && InputValues.Final.Brake > SMALL_NUMBER))
+	if (Gearbox->GetCurrentGear() != TargetGear
+		&& TargetGear * Gearbox->GetCurrentGear() > 0
+		&& !(GearingUp && InputValues.Final.Brake > SMALL_NUMBER))
 	{
-		if (TargetGear * Gearbox->GetCurrentGear() > 0)
-		{
-			ShiftToTargetGear(TargetGear, 0.f);
-			AutoGearboxCount -= AutoGearboxConfig.AutoShiftCoolDown;
-		}
+		ShiftToTargetGear(TargetGear, 0.f);
+		AutoGearboxCount -= AutoGearboxConfig.AutoShiftCoolDown;
 	}
 }
 
