@@ -119,6 +119,9 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tire")
 	float GetSlipAngle() { return Wheel.SimData.SlipAngle; }
 
+	UFUNCTION(BlueprintCallable, Category = "Tire", meta = (ToolTip = "Obtain a normalized tire combination slip value. This function can be used for tire skid particles or tire sound effects."))
+	float GetNormalizedSlip(float LongitudinalScale = 1.f, float LateralScale = 1.f);
+
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Wheel")
 	float GetAngularVelocity() { return Wheel.SimData.AngularVelocity; }
 

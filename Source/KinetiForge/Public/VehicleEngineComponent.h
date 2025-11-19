@@ -66,11 +66,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	EVehicleEngineState ShutVehicleEngine();
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetRPM() { return SimData.EngineRPM; }
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetAngularVelocity() { return SimData.EngineAngularVelocity; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	float GetTurboSpool() { return SimData.TurboSpool; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	float GetTurboPressure() { return SimData.TurboPressure; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	float GetRealThrottleValue() { return SimData.RealThrottle; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate InOnTurboBlowOff);

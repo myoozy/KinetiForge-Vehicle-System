@@ -304,6 +304,21 @@ void UVehicleWheelComponent::SetSprungMass(float NewSprungMass)
 	Suspension.SetSprungMass(NewSprungMass);
 }
 
+float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float LateralScale)
+{
+	// if the slip velocity is too low, should scale the affection of slip ratio, 0.5 is just magic number
+	float SpeedScaleX = FMath::Clamp(0.5f * Wheel.SimData.LongSlipVelocity, -1.f, 1.f);
+	float NormalizedSx = Wheel.SimData.SlipRatio * LongitudinalScale * SpeedScaleX;
+
+	// also if the lateral velocity is too low, should scale the affection of slip angle
+	float SpeedScaleY = FMath::Clamp(0.5f * Wheel.SimData.LocalLinearVelocity.Y, -1.f, 1.f);
+	float NormalizedSy = 0.011111f * Wheel.SimData.SlipAngle * LateralScale * SpeedScaleY;
+
+	// combined slip
+	float NormalizedSc = FMath::Sqrt(NormalizedSx * NormalizedSx + NormalizedSy * NormalizedSy);
+	return FMath::Min(1.f, NormalizedSc);
+}
+
 void UVehicleWheelComponent::UpdatePhysics(
 	float InPhysicsDeltaTime,
 	float InDriveTorque,
