@@ -47,22 +47,26 @@ struct FVehicleEngineTurboConfig
 {
 	GENERATED_USTRUCT_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0", ToolTip = "if boost torque > 0, will be considered as turbo charged"))
-	float TurboBoostTorque = 0.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0"))
-	float TurboStartRPM = 1200;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0"))
-	float TurboFinishRPM = 2000;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0"))
-	float TurboMaxPressure = 1.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "-1.0", ClampMax = "0.0"))
-	float TurboNegPressure = -0.2f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0"))
-	float TurboLag = 0.5f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0"))
-	float TurboWasteGateLag = 0.2f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup")
-	bool bAntiLag = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0", ToolTip = "if max boost pressure > 0, will be considered as turbo charged"))
+	float MaxBoostPressure = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "-1.0", ClampMax = "0.0", ToolTip = "Minimum pressure (vacuum, restriction from the intake) when throttle input is really small(but above 0)."))
+	float StaticIntakeRestriction = -0.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0", ToolTip = "The engine RPM at which the turbo starts to generate positive pressure (spool up)."))
+	float SpoolStartRPM = 1200.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0", ToolTip = "The engine RPM at which the turbo reaches maximum pressure."))
+	float FullBoostRPM = 3500.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0", ToolTip = "Time in seconds to reach ~95% max boost."))
+	float SpoolUpDuration = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0", ToolTip = "Time in seconds to loose pressure when throttle is closed(BOV open)."))
+	float PressureDecayDuration = 0.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0", ClampMax = "1.0", ToolTip = "Determines how effectively boost pressure converts to torque."))
+	float BoostEfficiency = 0.7f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ToolTip = "Enables Anti-Lag System (bang-bang) to keep turbo spooled off-throttle."))
+	bool bEnableAntiLag = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0", ToolTip = "minimum rpm to trigger anti-lag system"))
+	float AntiLagMinRPM = 2000.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0", ToolTip = "When antilag is activated, attempt to maintain a proportion of the maximum boost value. e.g. MaxBoostPressure = 1.0bar, AntiLagTargetPressureRatio = 0.8, then anti-lag system will keep the target pressure at 0.8bar."))
+	float AntiLagTargetPressureRatio = 0.9f;
 };
 
 USTRUCT(BlueprintType, Blueprintable)
@@ -95,6 +99,10 @@ struct FVehicleEngineSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float EngineOffRPM = 0.f;	//under this rpm, the engine will be considered as off
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float TurboSpool = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float ManifoldVacuum = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
 	float TurboPressure = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float RevLimiterTimer = 0.f;
@@ -104,6 +112,8 @@ struct FVehicleEngineSimData
 	bool bSpark = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
 	bool bIsTurboBlowingOff = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
+	bool bIsAntiLagTriggered = false;
 };
 
 /*******************************CLUTCH********************************/

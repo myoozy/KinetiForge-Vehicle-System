@@ -88,14 +88,14 @@ void UVehicleClutchComponent::UpdatePhysics(float InDeltaTime, float InClutchVal
 	if (!IsValid(TargetEngine))return;
 	SimData.EngineAngularVelocity = TargetEngine->GetAngularVelocity();
 	SimData.EngineInertia = TargetEngine->NAConfig.EngineInertia;
-	if (TargetEngine->TurboConfig.TurboBoostTorque > SMALL_NUMBER && TargetEngine->TurboConfig.TurboMaxPressure > SMALL_NUMBER)
+
+	float EngineMaxTorque = TargetEngine->NAConfig.MaxEngineTorque;
+	if (TargetEngine->TurboConfig.MaxBoostPressure > SMALL_NUMBER)
 	{
-		SimData.MaxClutchTorque = (TargetEngine->NAConfig.MaxEngineTorque + TargetEngine->TurboConfig.TurboBoostTorque) * Config.Capacity;
+		// if turbo charged
+		EngineMaxTorque *= (1.f + TargetEngine->TurboConfig.MaxBoostPressure * TargetEngine->TurboConfig.BoostEfficiency);
 	}
-	else
-	{
-		SimData.MaxClutchTorque = TargetEngine->NAConfig.MaxEngineTorque * Config.Capacity;
-	}
+	SimData.MaxClutchTorque = EngineMaxTorque * Config.Capacity;
 	
 	SimData.ClutchLock = FMath::Clamp((float)(InCurrentGearRatio != 0) - InClutchValue, 0.f, 1.f);
 	SimData.GearboxAngularVelocity = InGearboxInputShaftVelocity;

@@ -9,6 +9,7 @@
 #include "VehicleEngineComponent.generated.h"
 
 DECLARE_DYNAMIC_DELEGATE(FOnTurboBlowOffDelegate);
+DECLARE_DYNAMIC_DELEGATE(FOnAntiLagTriggeredDelegate);
 
 class UVehicleClutchComponent;
 
@@ -32,7 +33,9 @@ protected:
 	virtual void BeginPlay() override;
 
 	bool bShouldTriggerTurboBlowOffCallback = false;
+	bool bShouldTriggerAntiLagCallback = false;
 	TArray<FOnTurboBlowOffDelegate> TurboBlowOffCallbacks;
+	TArray<FOnAntiLagTriggeredDelegate> AntiLagCallbacks;
 	FVehicleEngineSimData SimData;
 
 	void EngineAcceleration();
@@ -71,6 +74,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate InOnTurboBlowOff);
+
+	UFUNCTION(BlueprintCallable, Category = "Physics")
+	void BindEventToOnAntiLagTriggered(FOnAntiLagTriggeredDelegate InOnAntiLagTriggered);
 
 private:
 	float RPMToRad = PI / 30;
