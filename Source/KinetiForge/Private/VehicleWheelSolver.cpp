@@ -321,6 +321,7 @@ void FVehicleWheelSolver::ComputeSlipRatio(bool bHitGround)
 float FVehicleWheelSolver::ComputeRigidLongForce(float SprungMass)
 {
 	float ForceRequiredToBringToStop = FMath::Abs(SimData.LocalLinearVelocity.X * SimData.PhysicsDeltaTimeInv * SprungMass);
+	ForceRequiredToBringToStop += FMath::Abs(SimData.DriveTorque * SimData.RInv);
 
 	//get linear brake force
 	float SignedBrakeTorque = SimData.BrakeTorque * (-FMath::Sign(SimData.LocalLinearVelocity.X));
