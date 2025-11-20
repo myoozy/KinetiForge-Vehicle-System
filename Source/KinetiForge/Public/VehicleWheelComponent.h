@@ -113,6 +113,9 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Suspension")
 	float GetSuspensionLength() { return Suspension.SimData.SuspensionCurrentLength; }
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Suspension")
+	float GetSteeringAngle() { return Suspension.SimData.SteeringAngle; }
+
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tire")
 	float GetSlipRatio() { return Wheel.SimData.SlipRatio; }
 
