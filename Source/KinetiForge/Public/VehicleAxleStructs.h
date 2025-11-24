@@ -13,6 +13,13 @@ enum class EVehicleAxleLayout : uint8
 	SingleRight
 };
 
+UENUM(BlueprintType)
+enum class EVehicleAxleSuspensionType : uint8
+{
+	Independent,
+	Solid
+};
+
 USTRUCT(BlueprintType, Blueprintable)
 struct FVehicleAxleConfig
 {

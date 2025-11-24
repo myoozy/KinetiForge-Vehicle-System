@@ -97,8 +97,10 @@ public:
 		UPrimitiveComponent* Component,
 		FName BoneName = NAME_None);
 
+	UFUNCTION(BlueprintCallable, Category = "Initialization")
 	static void CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target, bool bReInitialize = false);
 
+	UFUNCTION(BlueprintCallable, Category = "Initialization")
 	void InitializeWheel();
 
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
@@ -134,7 +136,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Wheel")
 	FVector GetWorldLinaerVelocity() { return Wheel.SimData.WorldLinearVelocity; }
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "Update the independent suspension and wheel physics"))
 	void UpdatePhysics(
 		float InPhysicsDeltaTime,
 		float InDriveTorque,
@@ -143,6 +145,21 @@ public:
 		float InSteeringAngle, 
 		float InSwaybarForce, 
 		float InReflectedInertia);
+
+	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "Start updating the solid axle physics, this function will only prepare and do raycast"))
+	void StartUpdateSolidAxlePhysics(float InSteeringAngle);
+
+	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "Finalize updating the solid axle physics, this function will only apply the wheel transform"))
+	void FinalizeUpdateSolidAxlePhysics(
+		float InPhysicsDeltaTime, 
+		float InDriveTorque,
+		float InBrakeTorque,
+		float InHandbrakeTorque,
+		float InSwaybarForce,
+		float InReflectedInertia,
+		const FVector& InBallJointWorldPos,
+		const FVector& InAxleWorldDirection);
+
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
 	void ApplySuspensionStateDirect(float InExtensionRatio = 1.f, float InSteeringAngle = 0.f)
 	{ Suspension.ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle); }
@@ -180,6 +197,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
 	bool GetRayCastResult(FHitResult& OutHitResult, bool& OutRefinement);
 	bool GetRayCastResult() { return Suspension.SimData.bHitGround; }
+
+	UFUNCTION(BlueprintCallable, Category = "Suspension", meta = (ToolTip = "This is not the real location of the wheel center, but the approximated wheel location according to the raycast result"))
+	FVector GetRayCastWheelCenterWorldLocation();
 
 	//debug draw
 	UFUNCTION(BlueprintCallable, Category = "Debug")

@@ -367,6 +367,39 @@ void UVehicleWheelComponent::UpdatePhysics(
 	ApplyWheelForce();
 }
 
+void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(float InSteeringAngle)
+{
+	Suspension.StartUpdateSolidAxle(InSteeringAngle);
+}
+
+void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
+	float InPhysicsDeltaTime,
+	float InDriveTorque,
+	float InBrakeTorque,
+	float InHandbrakeTorque,
+	float InSwaybarForce,
+	float InReflectedInertia,
+	const FVector& InBallJointWorldPos,
+	const FVector& InAxleWorldDirection
+)
+{
+	Suspension.FinalizeUpdateSolidAxle(
+		InPhysicsDeltaTime, 
+		InSwaybarForce,
+		InBallJointWorldPos,
+		InAxleWorldDirection);
+
+	Wheel.UpdateWheel(
+		InPhysicsDeltaTime,
+		InDriveTorque,
+		InBrakeTorque,
+		InHandbrakeTorque,
+		InReflectedInertia,
+		Suspension.SimData);
+
+	ApplyWheelForce();
+}
+
 void UVehicleWheelComponent::GetWheelCoordinator(UVehicleWheelCoordinatorComponent*& OutWheelCoordinator)
 {
 	OutWheelCoordinator = WheelCoordinator;
@@ -417,6 +450,13 @@ bool UVehicleWheelComponent::GetRayCastResult(FHitResult& OutHitResult, bool& Ou
 	OutHitResult = Suspension.SimData.HitStruct;
 	OutRefinement = Suspension.SimData.bRayCastRefined;
 	return Suspension.SimData.bHitGround;
+}
+
+FVector UVehicleWheelComponent::GetRayCastWheelCenterWorldLocation()
+{
+	float DistanceToRayCastStart = FMath::Max(0.f, Suspension.SimData.HitDistance - WheelConfig.Radius);
+	FVector OffsetToRayCastStart = Suspension.SimData.ComponentUpVector * DistanceToRayCastStart;
+	return Suspension.SimData.RayCastStartPos - OffsetToRayCastStart;
 }
 
 void UVehicleWheelComponent::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)

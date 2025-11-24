@@ -44,15 +44,18 @@ void UVehicleEngineComponent::EngineAcceleration()
 	// internal friction of the engine
 	float FrictionTorque = NAConfig.StartFriction + NAConfig.FrictionCoefficient * AbsolutRPM;
 
+	// check if there is combustion
+	bool bCombustion = SimData.bFuelInjection && SimData.bSpark;
+
 	// torque generated inside of the engine
 	float IndicatedTorque = 0.f;
 	if (NAConfig.EngineTorqueCurve)
 	{
-		IndicatedTorque = SimData.bSpark * SimData.RealThrottle* (FrictionTorque + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(AbsolutRPM));
+		IndicatedTorque = bCombustion * SimData.RealThrottle* (FrictionTorque + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(AbsolutRPM));
 	}
 	else
 	{
-		IndicatedTorque = SimData.bSpark * SimData.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque);
+		IndicatedTorque = bCombustion * SimData.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque);
 	}
 
 	//turbo charged and na have different behavior
@@ -257,16 +260,21 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 		// get real throttle value
 		SimData.RealThrottle = FMath::Lerp(SimData.IdleThrottle, 1.f, SimData.RawThrottleInput);
 
+		// enable fuel injection and spark if there's throttle input
+		// the fuel injection and spark might be disabled in certain conditions
+		SimData.bFuelInjection = SimData.RawThrottleInput > SMALL_NUMBER;
+		SimData.bSpark = true;
+
 		if (SimData.EngineRPM > NAConfig.EngineMaxRPM)
 		{
 			//cut power(disable spark) at max rpm
-			SimData.bSpark = false;
+			SimData.bSpark = SimData.bFuelInjection = false;
 			SimData.RevLimiterTimer = 0.f;
 		}
 		else
 		{
-			// only enable spark when there's throttle input
-			SimData.bSpark = SimData.RawThrottleInput > SMALL_NUMBER && SimData.RevLimiterTimer >= NAConfig.RevLimiterTime;
+			// if rpm is smaller than max rpm and the timer fullfills the timer limit
+			SimData.bSpark = SimData.RevLimiterTimer >= NAConfig.RevLimiterTime;
 		}
 
 		//check if throttle is released and if idle is valid
@@ -276,32 +284,39 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 			if (SimData.EngineRPM < NAConfig.EngineIdleRPM)
 			{
 				SimData.RealThrottle = FMath::FInterpTo(SimData.RealThrottle, 1.f, SimData.PhysicsDeltaTime, NAConfig.IdleThrottleInterpSpeed);
-				SimData.bSpark = true;
+				SimData.bFuelInjection = SimData.bSpark = true;
 			}
 			else
 			{
 				SimData.RealThrottle = FMath::FInterpTo(SimData.RealThrottle, 0.f, SimData.PhysicsDeltaTime, NAConfig.IdleThrottleInterpSpeed);
-				SimData.bSpark = false;
+				SimData.bFuelInjection = false;
 			}
 		}
 
+		// check if back fireing
+		if (SimData.bFuelInjection && !SimData.bSpark)
+		{
+			// back fireing, do something...
+		}
+
+		// check if engine is off
 		if (SimData.EngineRPM <= SimData.EngineOffRPM)
 		{
 			SimData.State = EVehicleEngineState::Off;
-			SimData.bSpark = false;
+			SimData.bFuelInjection = SimData.bSpark = false;
 		}
 		break;
 	case EVehicleEngineState::Off:
-		SimData.bSpark = false;
+		SimData.bFuelInjection = SimData.bSpark = false;
 		if (SimData.EngineRPM > SimData.EngineOffRPM)
 		{
 			SimData.State = EVehicleEngineState::On;
-			SimData.bSpark = true;
+			SimData.bFuelInjection = SimData.bSpark = true;
 		}
 		break;
 	case EVehicleEngineState::Starting:
 		SimData.RealThrottle = FMath::Lerp(SimData.IdleThrottle, 1.f, SimData.RawThrottleInput);
-		SimData.bSpark = true;
+		SimData.bFuelInjection = SimData.bSpark = true;
 		//check if engine is started
 		if (SimData.EngineRPM > FMath::Min(1.5 * NAConfig.EngineIdleRPM, 0.9 * NAConfig.EngineMaxRPM))
 		{
@@ -315,7 +330,7 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 		break;
 	case EVehicleEngineState::Shutting:
 		SimData.StarterMotorTorque = 0.f;
-		SimData.bSpark = false;
+		SimData.bFuelInjection = false;
 		if (SimData.EngineRPM <= SimData.EngineOffRPM)
 		{
 			SimData.State = EVehicleEngineState::Off;

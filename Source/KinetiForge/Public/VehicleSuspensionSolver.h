@@ -24,6 +24,15 @@ public:
 		float InSteeringAngle,
 		float InSwaybarForce
 	);
+	void StartUpdateSolidAxle(
+		float InSteeringAngle
+	);
+	void FinalizeUpdateSolidAxle(
+		float InDeltaTime,
+		float InSwaybarForce,
+		const FVector& InBallJointWorldPos,
+		const FVector& InAxleWorldDirection
+	);
 	void ApplySuspensionStateDirect(
 		float InExtensionRatio = 1.f,
 		float InSteeringAngle = 0.f
@@ -70,7 +79,7 @@ private:
 	void SuspensionSphereTraceNoRefinement();
 	void SuspensionMultiSphereTrace();
 	void ComputeHitDistance(float EquivalentSphereTraceRadius = 0.f);
-	void IterateBallJointPos();	// only for macpherson or wishbone suspension
+	void IterateBallJointPos();	// only for macpherson or wishbone suspension, this funciton is not finished
 	void ComputeStraightSuspension();
 	void ComputeMacpherson();
 	void ComputeDoubleWishbone();

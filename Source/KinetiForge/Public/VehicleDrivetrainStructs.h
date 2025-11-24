@@ -108,8 +108,10 @@ struct FVehicleEngineSimData
 	float RevLimiterTimer = 0.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Force")
 	float P1MotorTorque = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fuel")
 	bool bSpark = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fuel")
+	bool bFuelInjection = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
 	bool bIsTurboBlowingOff = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")

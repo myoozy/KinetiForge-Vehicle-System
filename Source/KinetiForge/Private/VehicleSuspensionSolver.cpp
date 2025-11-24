@@ -100,6 +100,57 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	ComputeSuspensionForce();
 }
 
+void FVehicleSuspensionSolver::StartUpdateSolidAxle(float InSteeringAngle)
+{
+	SimData.SteeringAngle = InSteeringAngle;
+	PrepareSimulation();
+	ComputeRayCastLocation();
+	SuspensionRayCast();
+}
+
+void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
+	float InDeltaTime, 
+	float InSwaybarForce,
+	const FVector& InBallJointWorldPos,
+	const FVector& InAxleWorldDirection)
+{
+	SimData.PhysicsDelatTime = InDeltaTime;
+	SimData.SwaybarForce = InSwaybarForce;
+
+	// get relative position of the ball joint
+	SimData.BallJointRelativePos = SimData.CarbodyWorldTransform.InverseTransformPositionNoScale(InBallJointWorldPos);
+	
+	// the relative direction of the axle, which is also the right vector of the wheel
+	// because solid axle usually does not have camber/toe
+	FVector AxleDirection = SimData.CarbodyWorldTransform.InverseTransformVectorNoScale(InAxleWorldDirection);
+	SimData.WheelOffsetToBallJoint = TargetWheelComponent->SuspensionKinematicsConfig.SteeringAxleOffset * SimData.WheelPos * AxleDirection;
+	
+	// get relative position of the wheel
+	FVector WheelRelativePos = SimData.BallJointRelativePos + SimData.WheelOffsetToBallJoint;
+	
+	// get the relative rotation of the wheel
+	FVector DefaultRight = FVector(0.f, 1.f, 0.f);
+	FQuat AxleRotation = FQuat::FindBetweenNormals(DefaultRight, AxleDirection);
+	FVector SteeringAxle = FVector::CrossProduct(SimData.ComponentRelativeForwardVector, AxleDirection);
+	FQuat SteeringBiasRotation = FQuat(SteeringAxle, FMath::DegreesToRadians(SimData.SteeringAngle));
+
+	SimData.WheelRelativeTransform = FTransform(SteeringBiasRotation * AxleRotation, WheelRelativePos);
+	FVector WheelRelativeRightVec = SimData.WheelRelativeTransform.GetRotation().GetRightVector();
+	SimData.WheelRightVector = SimData.CarbodyWorldTransform.TransformVectorNoScale(WheelRelativeRightVec);
+
+	SimData.WheelWorldPos = SimData.CarbodyWorldTransform.TransformPositionNoScale(SimData.WheelRelativeTransform.GetLocation());
+
+	// the relative direction of the strut
+	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.BallJointRelativePos).GetSafeNormal();
+
+	// have to calculate the 2d position of the ball joint, to decide the raycast start for next frame
+	FVector BallJointLocalPos = SimData.RelativeTransform.InverseTransformPositionNoScale(SimData.BallJointRelativePos);
+	SimData.BallJointPos2D = ZYPlaneToSuspensionPlane(BallJointLocalPos);
+
+	// get suspension force
+	ComputeSuspensionForce();
+}
+
 void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
 {
 	SimData.SuspensionExtensionRatio = InExtensionRatio;

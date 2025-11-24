@@ -39,6 +39,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	EVehicleAxleLayout AxleLayout = EVehicleAxleLayout::TwoWheels;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	EVehicleAxleSuspensionType SuspensionType = EVehicleAxleSuspensionType::Independent;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleAxleConfig AxleConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleAxleSteeringConfig AxleSteeringConfig;
@@ -74,6 +76,8 @@ protected:
 	void CalculateLinearVelocity();
 	void UpdateSwaybarForce();
 	void UpdateTCS(float TargetDriveTorque);
+	void UpdateIndependentSuspensionPhysics();
+	void UpdateSolidAxlePhysics();
 
 public:	
 	// Called every frame

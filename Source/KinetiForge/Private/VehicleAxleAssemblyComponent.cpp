@@ -89,22 +89,18 @@ void UVehicleAxleAssemblyComponent::UpdateTwoWheelAxle(float InDriveTorque, floa
 		);
 	}
 
-	RightWheel->UpdatePhysics(
-		SimData.PhysicsDeltaTime,
-		SimData.RightDriveTorque,
-		SimData.BrakeTorque,
-		SimData.HandbrakeTorque,
-		SimData.RightWheelSteeringAngle,
-		-SimData.SwaybarForce,
-		SimData.ReflectedInertiaOnWheel);
-	LeftWheel->UpdatePhysics(
-		SimData.PhysicsDeltaTime,
-		SimData.LeftDriveTorque,
-		SimData.BrakeTorque,
-		SimData.HandbrakeTorque,
-		SimData.LeftWheelSteeringAngle,
-		SimData.SwaybarForce,
-		SimData.ReflectedInertiaOnWheel);
+	switch (SuspensionType)
+	{
+	case EVehicleAxleSuspensionType::Independent:
+		UpdateIndependentSuspensionPhysics();
+		break;
+	case EVehicleAxleSuspensionType::Solid:
+		UpdateSolidAxlePhysics();
+		break;
+	default:
+		UpdateIndependentSuspensionPhysics();
+		break;	
+	}
 
 	SimData.NumOfWheelOnGround = LeftWheel->GetRayCastResult() + RightWheel->GetRayCastResult();
 
@@ -306,6 +302,67 @@ void UVehicleAxleAssemblyComponent::UpdateTCS(float TargetDriveTorque)
 				SimData.PhysicsDeltaTime,
 				TCSConfig.InterpSpeed);
 	}
+}
+
+void UVehicleAxleAssemblyComponent::UpdateIndependentSuspensionPhysics()
+{
+	RightWheel->UpdatePhysics(
+		SimData.PhysicsDeltaTime,
+		SimData.RightDriveTorque,
+		SimData.BrakeTorque,
+		SimData.HandbrakeTorque,
+		SimData.RightWheelSteeringAngle,
+		-SimData.SwaybarForce,
+		SimData.ReflectedInertiaOnWheel);
+	LeftWheel->UpdatePhysics(
+		SimData.PhysicsDeltaTime,
+		SimData.LeftDriveTorque,
+		SimData.BrakeTorque,
+		SimData.HandbrakeTorque,
+		SimData.LeftWheelSteeringAngle,
+		SimData.SwaybarForce,
+		SimData.ReflectedInertiaOnWheel);
+}
+
+void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics()
+{
+	RightWheel->StartUpdateSolidAxlePhysics(SimData.RightWheelSteeringAngle);
+	LeftWheel->StartUpdateSolidAxlePhysics(SimData.LeftWheelSteeringAngle);
+
+	FVector LeftWorldPos = LeftWheel->GetRayCastWheelCenterWorldLocation();
+	FVector RightWorldPos = RightWheel->GetRayCastWheelCenterWorldLocation();
+
+	// get the world direction of the axle
+	FVector AxleDirection = (RightWorldPos - LeftWorldPos).GetSafeNormal();
+
+	// the center of axle under world coordinate
+	FVector AxleWorldCenter = (RightWorldPos + LeftWorldPos) * 0.5f;
+
+	// the track width
+	float DynTrackWidth = FMath::Abs(LeftWheel->GetRelativeLocation().Y - RightWheel->GetRelativeLocation().Y);
+
+	// get the position of the ball joint(connecting the wheel and the suspension) of each wheel
+	FVector LeftBallJointWorldPos = AxleWorldCenter - AxleDirection * DynTrackWidth * 0.5f;
+	FVector RightBallJointWorldPos = AxleWorldCenter + AxleDirection * DynTrackWidth * 0.5f;
+
+	LeftWheel->FinalizeUpdateSolidAxlePhysics(
+		SimData.PhysicsDeltaTime,
+		SimData.LeftDriveTorque,
+		SimData.BrakeTorque,
+		SimData.HandbrakeTorque,
+		SimData.SwaybarForce,
+		SimData.ReflectedInertiaOnWheel,
+		LeftBallJointWorldPos,
+		AxleDirection);
+	RightWheel->FinalizeUpdateSolidAxlePhysics(
+		SimData.PhysicsDeltaTime,
+		SimData.RightDriveTorque,
+		SimData.BrakeTorque,
+		SimData.HandbrakeTorque,
+		-SimData.SwaybarForce,
+		SimData.ReflectedInertiaOnWheel,
+		RightBallJointWorldPos,
+		AxleDirection);
 }
 
 // Called every frame
