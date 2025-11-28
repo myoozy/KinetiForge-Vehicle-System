@@ -424,7 +424,7 @@ FVector2D FVehicleSuspensionSolver::ZYPlaneToSuspensionPlane(FVector V3D)
 	return FVector2D(V3D.Z, V3D.Y * SimData.WheelPos);
 }
 
-FVector FVehicleSuspensionSolver::GetCamberCasterToeFromCurve()
+FVector FVehicleSuspensionSolver::GetCamberToeCasterFromCurve()
 {
 	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
 
@@ -437,7 +437,11 @@ FVector FVehicleSuspensionSolver::GetCamberCasterToeFromCurve()
 	if (Config.ToeCurve)v.Y += Config.ToeCurve->GetFloatValue(Compression);
 	if (Config.CamberCurve)v.Z += Config.CamberCurve->GetFloatValue(Compression);
 	
+	// flip the caster and toe if necessary
 	v *= SimData.WheelPos;
+
+	if (Config.CasterCurve) v.X = Config.CasterCurve->GetFloatValue(Compression);
+
 	return v;
 }
 
@@ -777,7 +781,8 @@ void FVehicleSuspensionSolver::ComputeStraightSuspension()
 	SimData.KnuckleRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.KnucklePos2D));
 
 	SimData.StrutRelativeDirection = SimData.RelativeTransform.GetRotation().GetUpVector();
-	// the kingpin(steering axis) is the strut, for simplification
+	
+	// the kingpin(steering axis) is the up vector
 	FQuat SteeringBiasRotation = FQuat(SimData.StrutRelativeDirection, FMath::DegreesToRadians(SimData.SteeringAngle));
 
 	FQuat InitialWheelRelativeRotation = FQuat(FRotator(0.f, Config.BaseToe * SimData.WheelPos, Config.BaseCamber * SimData.WheelPos));
@@ -838,12 +843,15 @@ void FVehicleSuspensionSolver::ComputeDoubleWishbone()
 	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
 
 	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.KnuckleRelativePos).GetSafeNormal();
-	// the kingpin(steering axis) is the strut, for simplification
-	FQuat SteeringBiasRotation = FQuat(SimData.RelativeTransform.GetRotation().GetUpVector(), FMath::DegreesToRadians(SimData.SteeringAngle));
 
-	FVector WheelAlignmentEuler = GetCamberCasterToeFromCurve();
-	FQuat InitialWheelRelativeRotation = FQuat(FRotator(WheelAlignmentEuler.X, WheelAlignmentEuler.Y, WheelAlignmentEuler.Z));
-	SimData.WheelRelativeTransform.SetRotation(SteeringBiasRotation * InitialWheelRelativeRotation);
+	FVector WheelAlignmentEuler = GetCamberToeCasterFromCurve();
+	FQuat BaseWheelRelativeRotation = FQuat(FRotator(WheelAlignmentEuler.X, WheelAlignmentEuler.Y, WheelAlignmentEuler.Z));
+	
+	// the kingpin(steering axis) is the upvector of BaseWheelRelativeRotation
+	FQuat SteeringBiasRotation = FQuat(BaseWheelRelativeRotation.GetUpVector(), FMath::DegreesToRadians(SimData.SteeringAngle));
+
+	
+	SimData.WheelRelativeTransform.SetRotation(SteeringBiasRotation * BaseWheelRelativeRotation);
 	FVector WheelRelativeRightVec = SimData.WheelRelativeTransform.GetRotation().GetRightVector();
 
 	SimData.WheelOffsetToKnuckle = Config.AxialHubOffset * SimData.WheelPos * WheelRelativeRightVec;

@@ -8,9 +8,9 @@
 UENUM(BlueprintType)
 enum class ESuspensionType : uint8
 {
-	StraightLine,
-	Macpherson,
-	DoubleWishbone
+	StraightLine		UMETA(ToolTip = "Only moves up and down. This can simulate fork suspension like the front suspension of a motorbike, but with camber and toe setup."),
+	Macpherson			UMETA(ToolTip = "Simplified macpherson suspension. It has one control arm and one strut. The rotation of the wheel knuckle or the wheel hub will be automatically calculated."),
+	DoubleWishbone		UMETA(ToolTip = "Simplified wishbone suspension. It only has one control arm and one strut. The changes of the camber/toe/caster are defined by user's float curves.")
 };
 
 UENUM(BlueprintType)
@@ -27,8 +27,8 @@ UENUM(BlueprintType)
 enum class EPositionToApplyForce : uint8
 {
 	ImpactPoint			UMETA(ToolTip = "Apply suspension and tire force at the impact point of the ray-casting"),
-	ImpactPointWithBias UMETA(ToolTip = "Apply force at ImpactPoint + WheelRightVector * HalfWheelWidth"),
-	WheelCenter			UMETA(ToolTip = "Apply suspension and tire force at the center of wheel")
+	ImpactPointWithBias UMETA(ToolTip = "Apply force at ImpactPoint + WheelRightVector * HalfWheelWidth, which causes less roll"),
+	WheelCenter			UMETA(ToolTip = "Apply suspension and tire force at the center of wheel, which causes less pitch and roll")
 };
 
 USTRUCT(BlueprintType)
@@ -45,24 +45,26 @@ struct FVehicleSuspensionKinematicsConfig
 	TEnumAsByte<ECollisionChannel> TraceChannel = ECollisionChannel::ECC_WorldDynamic;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "The location of the top mount relative to the pivot of the arm. It is under the coordinate of the wheel component, not car body."))
 	FVector TopMountPosition = FVector(0.f, 40.f, 45.f);
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The traveling distance of the strut as well as the kingpin"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The traveling distance of the strut"))
 	float Stroke = 20.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The length of the strut as well as the kingpin when the suspension is fully compressed"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The length of the strut when the suspension is fully compressed."))
 	float MinStrutLength = 30.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType != ESuspensionType::StraightLine", EditConditionHides, ClampMin = "0.0", ToolTip = "Unit: cm"))
 	float ArmLength = 50.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "The distance of the wheel hub(where the wheel is mounted) to the wheel knuckle(where the arm and wheel-hub/strut is connected)."))
 	float AxialHubOffset = 5.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "For StraightLine: the camber under all the conditions; For Macpherson: the camber when the control arm is horizontal; For DoubleWishbone: the camber when the suspension is not compressed."))
 	float BaseCamber = -1.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "For StraightLine: the toe under all the conditions; For Macpherson: the toe when the control arm is horizontal; For DoubleWishbone: the toe when the suspension is not compressed."))
 	float BaseToe = 0.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "X: SuspensionCompressionRatio; Y:CamberGain"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone", EditConditionHides, ToolTip = "X: SuspensionCompressionRatio; Y:CamberGain; Only enabled when the suspension type is double-wishbone"))
 	UCurveFloat* CamberCurve = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "X: SuspensionCompressionRatio; Y:ToeGain"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone", EditConditionHides, ToolTip = "X: SuspensionCompressionRatio; Y:ToeGain; Only enabled when the suspension type is double-wishbone"))
 	UCurveFloat* ToeCurve = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone", EditConditionHides, ToolTip = "X: SuspensionCompressionRatio; Y:Caster; Only enabled when the suspension type is double-wishbone"))
+	UCurveFloat* CasterCurve = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	EPositionToApplyForce PositionToApplyForce = EPositionToApplyForce::ImpactPointWithBias;
+	EPositionToApplyForce PositionToApplyForce = EPositionToApplyForce::ImpactPoint;
 };
 
 USTRUCT(BlueprintType)
@@ -127,8 +129,8 @@ struct FVehicleSuspensionSimData
 	FVector2D KnucklePos2D = FVector2D(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector2D RayCastStart2D = FVector2D(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin"))
-	FVector2D StrutDirection2D = FVector2D(0.f);	// the strut also represents the kingpin
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
+	FVector2D StrutDirection2D = FVector2D(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector ComponentUpVector = FVector(0.f);			//world
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
@@ -145,10 +147,10 @@ struct FVehicleSuspensionSimData
 	FVector RayCastStartPos = FVector(0.f);	//for sphere trace
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector RayCastEndPos = FVector(0.f);		//for sphere trace
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin"))
-	FVector StrutRelativeDirection = FVector(0.f);	// the strut also represents the kingpin
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin"))
-	FVector StrutDirection = FVector(0.f);	// strut direction in world space, the strut also represents the kingpin
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
+	FVector StrutRelativeDirection = FVector(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
+	FVector StrutDirection = FVector(0.f);	// strut direction in world space
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	FVector SuspensionForceVector = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")

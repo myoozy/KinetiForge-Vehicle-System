@@ -59,7 +59,7 @@ public:
 	bool SingleSphereTrace(FVector Start, FVector End, float Radius, FHitResult& OutHit);
 	FVector SuspensionPlaneToZYPlane(FVector2D V2D);
 	FVector2D ZYPlaneToSuspensionPlane(FVector V3D);
-	FVector GetCamberCasterToeFromCurve();
+	FVector GetCamberToeCasterFromCurve();
 
 	FVehicleSuspensionSimData SimData;
 

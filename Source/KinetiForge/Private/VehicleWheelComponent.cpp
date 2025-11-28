@@ -137,7 +137,8 @@ void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 	if (TireConfig.Gy)TireConfig.Gy = nullptr;
 	if (SuspensionKinematicsConfig.CamberCurve)SuspensionKinematicsConfig.CamberCurve = nullptr;
 	if (SuspensionKinematicsConfig.ToeCurve)SuspensionKinematicsConfig.ToeCurve = nullptr;
-	
+	if (SuspensionKinematicsConfig.CasterCurve)SuspensionKinematicsConfig.CasterCurve = nullptr;
+
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
 
