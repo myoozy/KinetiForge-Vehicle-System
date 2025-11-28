@@ -44,12 +44,12 @@ struct FVehicleSuspensionKinematicsConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TEnumAsByte<ECollisionChannel> TraceChannel = ECollisionChannel::ECC_WorldDynamic;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "The location of the top mount relative to the pivot of the arm. It is under the coordinate of the wheel component, not car body."))
-	FVector TopMountPosition = FVector(0.f, 48.5f, 15.f);
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "cm"))
+	FVector TopMountPosition = FVector(0.f, 40.f, 45.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The traveling distance of the strut as well as the kingpin"))
 	float Stroke = 20.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "cm"))
-	float MinStrutLength = 5.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The length of the strut as well as the kingpin when the suspension is fully compressed"))
+	float MinStrutLength = 30.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm"))
 	float ArmLength = 50.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float AxialHubOffset = 5.f;
@@ -127,8 +127,8 @@ struct FVehicleSuspensionSimData
 	FVector2D KnucklePos2D = FVector2D(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector2D RayCastStart2D = FVector2D(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector2D StrutDirection2D = FVector2D(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin"))
+	FVector2D StrutDirection2D = FVector2D(0.f);	// the strut also represents the kingpin
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector ComponentUpVector = FVector(0.f);			//world
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
@@ -145,10 +145,10 @@ struct FVehicleSuspensionSimData
 	FVector RayCastStartPos = FVector(0.f);	//for sphere trace
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector RayCastEndPos = FVector(0.f);		//for sphere trace
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector StrutRelativeDirection = FVector(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector StrutDirection = FVector(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin"))
+	FVector StrutRelativeDirection = FVector(0.f);	// the strut also represents the kingpin
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin"))
+	FVector StrutDirection = FVector(0.f);	// strut direction in world space, the strut also represents the kingpin
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	FVector SuspensionForceVector = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")

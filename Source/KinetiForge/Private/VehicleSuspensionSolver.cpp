@@ -777,6 +777,7 @@ void FVehicleSuspensionSolver::ComputeStraightSuspension()
 	SimData.KnuckleRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.KnucklePos2D));
 
 	SimData.StrutRelativeDirection = SimData.RelativeTransform.GetRotation().GetUpVector();
+	// the kingpin(steering axis) is the strut, for simplification
 	FQuat SteeringBiasRotation = FQuat(SimData.StrutRelativeDirection, FMath::DegreesToRadians(SimData.SteeringAngle));
 
 	FQuat InitialWheelRelativeRotation = FQuat(FRotator(0.f, Config.BaseToe * SimData.WheelPos, Config.BaseCamber * SimData.WheelPos));
@@ -808,6 +809,7 @@ void FVehicleSuspensionSolver::ComputeMacpherson()
 	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.KnuckleRelativePos).GetSafeNormal();
 	FQuat StrutBiasRotation = FQuat::FindBetweenNormals(InitialStrutDirection, SimData.StrutRelativeDirection);
 
+	// the kingpin(steering axis) is the strut, for simplification
 	FQuat SteeringBiasRotation = FQuat(SimData.StrutRelativeDirection, FMath::DegreesToRadians(SimData.SteeringAngle));
 
 	FQuat InitialWheelRelativeRotation = FQuat(FRotator(0, Config.BaseToe * SimData.WheelPos, Config.BaseCamber * SimData.WheelPos));
@@ -836,6 +838,7 @@ void FVehicleSuspensionSolver::ComputeDoubleWishbone()
 	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
 
 	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.KnuckleRelativePos).GetSafeNormal();
+	// the kingpin(steering axis) is the strut, for simplification
 	FQuat SteeringBiasRotation = FQuat(SimData.RelativeTransform.GetRotation().GetUpVector(), FMath::DegreesToRadians(SimData.SteeringAngle));
 
 	FVector WheelAlignmentEuler = GetCamberCasterToeFromCurve();

@@ -173,30 +173,39 @@ void UVehicleWheelComponent::ApplyWheelForce()
 
 	if (!Suspension.SimData.HitStruct.bBlockingHit)return;
 
+	const FHitResult& HitStruct = Suspension.SimData.HitStruct;
+
 	FVector WidthBias = FVector(0.f);
 	FVector PosToApplyImpulse = FVector(0.f);
 
 	switch (SuspensionKinematicsConfig.PositionToApplyForce)
 	{
 	case EPositionToApplyForce::ImpactPoint:
-		PosToApplyImpulse = Suspension.SimData.HitStruct.ImpactPoint;
+		PosToApplyImpulse = HitStruct.ImpactPoint;
 		break;
 	case EPositionToApplyForce::ImpactPointWithBias:
 		WidthBias = Suspension.SimData.WheelRightVector * (Suspension.SimData.WheelPos * WheelConfig.Width * 0.5);
-		WidthBias = FVector::VectorPlaneProject(WidthBias, Suspension.SimData.HitStruct.ImpactNormal);
-		PosToApplyImpulse = Suspension.SimData.HitStruct.ImpactPoint + WidthBias;
+		WidthBias = FVector::VectorPlaneProject(WidthBias, HitStruct.ImpactNormal);
+		PosToApplyImpulse = HitStruct.ImpactPoint + WidthBias;
 		break;
 	case EPositionToApplyForce::WheelCenter:
 		PosToApplyImpulse = Suspension.SimData.WheelWorldPos;
 		break;
 	default:
-		PosToApplyImpulse = Suspension.SimData.HitStruct.ImpactPoint;
+		PosToApplyImpulse = HitStruct.ImpactPoint;
 		break;
 	}
 
+	/**** Anti-Pitch ****/
+	const FVector& ArmRelativeAxis = Suspension.SimData.ComponentRelativeForwardVector;
+	FVector ArmAxis = Suspension.SimData.CarbodyWorldTransform.TransformVectorNoScale(ArmRelativeAxis);
+	FVector ArmAxisProjOnGround = FVector::VectorPlaneProject(ArmAxis, HitStruct.ImpactNormal);
+	float TireForceCausingAntiPitch = FVector::DotProduct(Wheel.SimData.TyreForce, ArmAxisProjOnGround.GetSafeNormal());
+	FVector AntiPitchForce = (ArmAxis - ArmAxisProjOnGround) * TireForceCausingAntiPitch;
+
 	float dt = Wheel.SimData.PhysicsDeltaTime;
-	FVector SuspensionForceProj = Suspension.SimData.SuspensionForceVector.ProjectOnTo(Suspension.SimData.HitStruct.ImpactNormal);
-	FVector LinearImpulse = (Wheel.SimData.TyreForce + SuspensionForceProj) * dt;
+	FVector SuspensionForceProj = Suspension.SimData.SuspensionForceVector.ProjectOnTo(HitStruct.ImpactNormal);
+	FVector LinearImpulse = (Wheel.SimData.TyreForce + SuspensionForceProj + AntiPitchForce) * dt;
 
 	if (Chaos::FRigidBodyHandle_Internal* RigidHandle = GetInternalHandle(Carbody, NAME_None))
 	{
@@ -210,14 +219,14 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	}
 
 	// also add force to the contacted component
-	if (IsValid(Suspension.SimData.HitStruct.GetComponent()) &&
-		Suspension.SimData.HitStruct.GetComponent()->IsSimulatingPhysics())
+	if (IsValid(HitStruct.GetComponent()) &&
+		HitStruct.GetComponent()->IsSimulatingPhysics())
 	{
 		UAsyncTickFunctions::ATP_AddImpulseAtPosition(
-			Suspension.SimData.HitStruct.GetComponent(),
-			Suspension.SimData.HitStruct.ImpactPoint, 
+			HitStruct.GetComponent(),
+			HitStruct.ImpactPoint, 
 			LinearImpulse * -100,
-			Suspension.SimData.HitStruct.BoneName);
+			HitStruct.BoneName);
 	}
 }
 
