@@ -66,11 +66,11 @@ struct FVehicleABSConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bAntiBrakeSystemEnabled = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
-	float MaxSlipRatio = 0.1;
+	float OptimalSlip = 0.1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Meter per second, m/s"))
-	float ActivationSpeed = 5.f;
+	float ActivationSpeed = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
-	float InterpSpeed = 500.f;
+	float Sensitivity = 5.f;
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "wheel state in simulation"))

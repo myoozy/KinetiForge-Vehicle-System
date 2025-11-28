@@ -21,6 +21,8 @@ bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* InTargetWheelC
 	{
 		QueryParams.AddIgnoredActor(TargetWheelComponent->GetOwner());
 		QueryParams.bReturnPhysicalMaterial = true;
+		QueryParams.bReturnFaceIndex = false;
+		QueryParams.bTraceComplex = false;
 		
 		SimData.WheelPos = FMath::Sign(TargetWheelComponent->GetRelativeTransform().GetLocation().Y);
 		
@@ -492,6 +494,17 @@ void FVehicleSuspensionSolver::SuspensionRayCast()
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleSuspensionRayCast);
 
+	// savety check
+	if (SimData.RayCastStartPos.ContainsNaN() 
+		|| SimData.RayCastEndPos.ContainsNaN()
+		|| !IsValid(TargetWheelComponent->GetWorld()))
+	{
+		// reset the suspension
+		SimData.bHitGround = false;
+		ComputeHitDistance();
+		return;
+	}
+
 	//switch to line trace if the suspension is completly compressed
 	//or if the raycastlength is too small
 	if (SimData.RayCastLength < 1.f || SimData.HitDistance <= TargetWheelComponent->WheelConfig.Radius)
@@ -681,12 +694,8 @@ void FVehicleSuspensionSolver::SuspensionMultiSphereTrace()
 void FVehicleSuspensionSolver::ComputeHitDistance(float EquivalentSphereTraceRadius)
 {
 	float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	float TargetHitDistance = SimData.RayCastLength + WheelRadius;
-
-	if (SimData.bHitGround)
-	{
-		TargetHitDistance = SimData.HitStruct.Distance + EquivalentSphereTraceRadius;
-	}
+	float TargetHitDistance = SimData.bHitGround ? 
+		SimData.HitStruct.Distance + EquivalentSphereTraceRadius : SimData.RayCastLength + WheelRadius;
 
 	if (TargetHitDistance <= WheelRadius || SimData.HitDistance <= WheelRadius)
 	{

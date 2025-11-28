@@ -32,7 +32,6 @@ void UVehicleEngineComponent::BeginPlay()
 
 	// ...
 	Initialize();
-	SimData.RevLimiterTimer = NAConfig.RevLimiterTime;
 }
 
 
@@ -40,6 +39,9 @@ void UVehicleEngineComponent::EngineAcceleration()
 {
 	// absolut engine rpm
 	float AbsolutRPM = FMath::Abs(SimData.EngineRPM);
+
+	// normalized rpm
+	float NormalizedRPM = SafeDivide(AbsolutRPM, NAConfig.EngineMaxRPM);
 
 	// internal friction of the engine
 	float FrictionTorque = NAConfig.StartFriction + NAConfig.FrictionCoefficient * AbsolutRPM;
@@ -51,12 +53,17 @@ void UVehicleEngineComponent::EngineAcceleration()
 	float IndicatedTorque = 0.f;
 	if (NAConfig.EngineTorqueCurve)
 	{
-		IndicatedTorque = bCombustion * SimData.RealThrottle* (FrictionTorque + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(AbsolutRPM));
+		IndicatedTorque = SimData.RealThrottle* (FrictionTorque + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(AbsolutRPM));
 	}
 	else
 	{
-		IndicatedTorque = bCombustion * SimData.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque);
+		IndicatedTorque = SimData.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque);
 	}
+
+	// no combustion, no torque
+	IndicatedTorque *= bCombustion;
+
+	/********************* Turbo Charging Logic *********************/
 
 	//turbo charged and na have different behavior
 	//check if engine is really turbo charged
@@ -78,16 +85,16 @@ void UVehicleEngineComponent::EngineAcceleration()
 
 		// if throttle is released, blow off valve is open, target vacuum will be 0.0
 		// other wise it will be related to throttle input(smaller imput -> more vacuum)
-		float TargetVacuum = 0.f;
+		float ManifoldVacuum = 0.f;
 
-		bool bAntiLagActive = TurboConfig.bEnableAntiLag
+		SimData.bIsAntiLagTriggered = TurboConfig.bEnableAntiLag
 			&& TargetSpool < SimData.TurboSpool
 			&& AbsolutRPM > TurboConfig.AntiLagMinRPM
 			&& SimData.TurboSpool > MinSpoolForPositiveBoost;
 
 		// if throttle input is too small, blow off valve will be opened
 		// if anti-lag is triggered, the valve should not be open
-		bool bIsBlowOffValveOpen = SimData.RawThrottleInput <= SMALL_NUMBER && !bAntiLagActive;
+		bool bIsBlowOffValveOpen = SimData.RawThrottleInput <= SMALL_NUMBER && !SimData.bIsAntiLagTriggered;
 
 		if (bIsBlowOffValveOpen)
 		{
@@ -108,21 +115,16 @@ void UVehicleEngineComponent::EngineAcceleration()
 			// if throttle is hit, blow off valve close
 			SpoolInterpSpeed = (TurboConfig.SpoolUpDuration > SMALL_NUMBER) ? 3.f / TurboConfig.SpoolUpDuration : 0.f;
 
-			if (bAntiLagActive)
+			if (SimData.bIsAntiLagTriggered)
 			{
+				// inject fuel during exhaust stroke
+				SimData.bFuelInjection = true;
+
 				float ALS_TargetSpool = FMath::Sqrt(TurboConfig.AntiLagTargetPressureRatio);
 				TargetSpool = FMath::Min(SimData.TurboSpool, ALS_TargetSpool);
-
-				if (!SimData.bIsAntiLagTriggered)
-				{
-					SimData.bIsAntiLagTriggered = true;
-					bShouldTriggerAntiLagCallback = true;
-				}
 			}
 			else
 			{
-				SimData.bIsAntiLagTriggered = false;
-
 				// if the turbo rpm is too low, the intake will have restriction
 				// we estimate the max restriction as vacuum pressure
 				float CurrentIntakeRestriction = FMath::GetMappedRangeValueClamped(
@@ -131,7 +133,7 @@ void UVehicleEngineComponent::EngineAcceleration()
 					SimData.TurboSpool
 				);
 
-				TargetVacuum = FMath::Lerp(TurboConfig.StaticIntakeRestriction, CurrentIntakeRestriction, SimData.RawThrottleInput);
+				ManifoldVacuum = FMath::Lerp(TurboConfig.StaticIntakeRestriction, CurrentIntakeRestriction, SimData.RawThrottleInput);
 			}
 		}
 
@@ -143,15 +145,7 @@ void UVehicleEngineComponent::EngineAcceleration()
 			SpoolInterpSpeed
 		);
 
-		// get manifold vacuum
-		SimData.ManifoldVacuum = FMath::FInterpTo(
-			SimData.ManifoldVacuum,
-			TargetVacuum,
-			SimData.PhysicsDeltaTime,
-			50.f
-		);
-
-		// get turbo pressure
+		// get turbo boost
 		SimData.TurboSpool = FMath::Clamp(SimData.TurboSpool, 0.f, 1.f);
 		float SpoolSqr = SimData.TurboSpool * SimData.TurboSpool;
 		float CurrentBoost = FMath::GetMappedRangeValueClamped(
@@ -159,7 +153,16 @@ void UVehicleEngineComponent::EngineAcceleration()
 			FVector2D(0.0f, TurboConfig.MaxBoostPressure),
 			SpoolSqr
 		);
-		SimData.TurboPressure = CurrentBoost + SimData.ManifoldVacuum;
+
+		// get target pressure and get current pressure
+		float TargetPressure = CurrentBoost + ManifoldVacuum;
+		float PressureBuildSpeed = 3.f / 0.1f; // 3 / PressureBuildTime
+		SimData.TurboPressure = FMath::FInterpTo(
+			SimData.TurboPressure,
+			TargetPressure,
+			SimData.PhysicsDeltaTime,
+			PressureBuildSpeed
+		);
 
 		//get indicated torque
 		float TorqueMultiplier = 1.f + SimData.TurboPressure * TurboConfig.BoostEfficiency;
@@ -167,27 +170,74 @@ void UVehicleEngineComponent::EngineAcceleration()
 	}
 	else
 	{
+		// clear all cache if not turbo charged
 		SimData.bIsTurboBlowingOff = false;
 		SimData.bIsAntiLagTriggered = false;
-		SimData.TurboPressure *= 0.5f;
-		SimData.TurboSpool *= 0.5f;
-		SimData.ManifoldVacuum *= 0.5f;
+		SimData.TurboPressure *= 0.9f;
+		SimData.TurboSpool *= 0.9f;
 	}
+
+	/*************** Calculation of Angular Velocity ***************/
 
 	// consider P1 motor
 	IndicatedTorque += SimData.P1MotorTorque;
 
-	//accelerate engine
+	// accelerate engine
 	SimData.EngineAngularVelocity += SafeDivide(SimData.PhysicsDeltaTime, NAConfig.EngineInertia) * (IndicatedTorque - SimData.LoadTorque + SimData.StarterMotorTorque);
-	//get the direction of friction torque
+	
+	// get the direction of friction torque
 	float AngVelSignWithoutFriction = FMath::Sign(SimData.EngineAngularVelocity);
 	FrictionTorque = FrictionTorque * AngVelSignWithoutFriction;
 	SimData.EngineAngularVelocity -= SafeDivide(SimData.PhysicsDeltaTime, NAConfig.EngineInertia) * FrictionTorque;
-	//zero cross check
-	if (FMath::Sign(SimData.EngineAngularVelocity) != AngVelSignWithoutFriction)SimData.EngineAngularVelocity = 0;
-	//get engine rpm
+	
+	// zero cross check
+	bool bCrossZero = FMath::Sign(SimData.EngineAngularVelocity) != AngVelSignWithoutFriction;
+	if (bCrossZero)SimData.EngineAngularVelocity = 0.f;
+	
+	// get engine rpm
 	SimData.EngineRPM = RadToRPM * SimData.EngineAngularVelocity;
+	
+	// get the effective engine torque (the power)
 	SimData.EffectiveTorque = IndicatedTorque - FrictionTorque;
+
+	/********************* Unburnt Fuel Logic **********************/
+
+	// check if engine is slowing down (and not idling)
+	bool bIsDecelerating = 
+		IndicatedTorque < FrictionTorque
+		&& AbsolutRPM > (NAConfig.EngineIdleRPM * 1.5f)
+		&& AbsolutRPM < NAConfig.EngineMaxRPM;
+
+	// get the AFR or lambda
+	float TargetLamda = bIsDecelerating ?
+		NAConfig.DeceleratingLambda :
+		FMath::GetMappedRangeValueClamped(
+			FVector2D(0.8f, 0.9f),
+			FVector2D(1.f, NAConfig.MaxPowerLambda),
+			SimData.RawThrottleInput
+		);
+
+	// if there is fuel injection, do the backfiring logic
+	if (SimData.bFuelInjection)
+	{
+		// approximate fuel flow
+		float BaseFuelFlow = NormalizedRPM * SimData.RealThrottle;
+
+		// if spark is off, or if anti-lag is on
+		// all the fuel will be sent to the exhaust
+		bool bAllInExhaust = !SimData.bSpark || SimData.bIsAntiLagTriggered;
+
+		float UnburntFuel = bAllInExhaust ?
+			BaseFuelFlow : BaseFuelFlow * FMath::Max(0.f, 1.f - TargetLamda);
+
+		SimData.UnburntFuelBuffer += NAConfig.BackfireAccumulationRate * UnburntFuel * SimData.PhysicsDeltaTime;
+	}
+
+	// higher lambda or higher rpm causes the unburnt fuel decay faster
+	float UnBurntFuelDecayAmount = NAConfig.ExhaustScavengingStrength * SimData.UnburntFuelBuffer * TargetLamda * NormalizedRPM;
+	
+	SimData.UnburntFuelBuffer -= UnBurntFuelDecayAmount * SimData.PhysicsDeltaTime;
+	SimData.UnburntFuelBuffer = FMath::Max(0.f, SimData.UnburntFuelBuffer);
 }
 
 float UVehicleEngineComponent::SafeDivide(float a, float b)
@@ -228,7 +278,7 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	if (bShouldTriggerAntiLagCallback)
 	{
 		bShouldTriggerAntiLagCallback = false;
-		for (FOnAntiLagTriggeredDelegate AntiLagCallback : AntiLagCallbacks)
+		for (FOnBackFiringDelegate AntiLagCallback : AntiLagCallbacks)
 		{
 			if (AntiLagCallback.IsBound())
 			{
@@ -268,7 +318,8 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 		if (SimData.EngineRPM > NAConfig.EngineMaxRPM)
 		{
 			//cut power(disable spark) at max rpm
-			SimData.bSpark = SimData.bFuelInjection = false;
+			// but keep fuel injection, because we want back fireing
+			SimData.bSpark = false;
 			SimData.RevLimiterTimer = 0.f;
 		}
 		else
@@ -283,20 +334,32 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 			//check if engine is idling
 			if (SimData.EngineRPM < NAConfig.EngineIdleRPM)
 			{
-				SimData.RealThrottle = FMath::FInterpTo(SimData.RealThrottle, 1.f, SimData.PhysicsDeltaTime, NAConfig.IdleThrottleInterpSpeed);
+				// if rpm is too low
+				// interp the throttle to 1
+				// and enable spark and fuel injection
+				// to maintain the rpm
+				SimData.RealThrottle = FMath::FInterpTo(
+					SimData.RealThrottle, 
+					1.f, 
+					SimData.PhysicsDeltaTime, 
+					NAConfig.IdleThrottleInterpSpeed);
+
 				SimData.bFuelInjection = SimData.bSpark = true;
 			}
 			else
 			{
-				SimData.RealThrottle = FMath::FInterpTo(SimData.RealThrottle, 0.f, SimData.PhysicsDeltaTime, NAConfig.IdleThrottleInterpSpeed);
+				// if rpm is higher than idle rpm
+				// interp the trottle to 0
+				// because sometimes the idle throttle is slighly too large
+				// (Due to floating-point precision)
+				SimData.RealThrottle = FMath::FInterpTo(
+					SimData.RealThrottle, 
+					0.f, 
+					SimData.PhysicsDeltaTime, 
+					NAConfig.IdleThrottleInterpSpeed);
+
 				SimData.bFuelInjection = false;
 			}
-		}
-
-		// check if back fireing
-		if (SimData.bFuelInjection && !SimData.bSpark)
-		{
-			// back fireing, do something...
 		}
 
 		// check if engine is off
@@ -375,6 +438,9 @@ void UVehicleEngineComponent::Initialize()
 		SimData.IdleThrottle = 0;
 		SimData.EngineOffRPM = -BIG_NUMBER;
 	}
+
+	// reset rev-limiter
+	SimData.RevLimiterTimer = NAConfig.RevLimiterTime;
 }
 
 EVehicleEngineState UVehicleEngineComponent::StartVehicleEngine()
@@ -423,10 +489,10 @@ void UVehicleEngineComponent::BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate 
 	}
 }
 
-void UVehicleEngineComponent::BindEventToOnAntiLagTriggered(FOnAntiLagTriggeredDelegate InOnAntiLagTriggered)
+void UVehicleEngineComponent::BindEventToOnBackFiring(FOnBackFiringDelegate InOnBackFiring)
 {
-	if (AntiLagCallbacks.Find(InOnAntiLagTriggered) == INDEX_NONE)
+	if (AntiLagCallbacks.Find(InOnBackFiring) == INDEX_NONE)
 	{
-		AntiLagCallbacks.Add(InOnAntiLagTriggered);
+		AntiLagCallbacks.Add(InOnBackFiring);
 	}
 }

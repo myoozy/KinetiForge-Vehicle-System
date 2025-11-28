@@ -22,24 +22,31 @@ struct FVehicleNaturallyAspiratedEngineConfig
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
-	float MaxEngineTorque = 400;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
+	float MaxEngineTorque = 400.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", ToolTip = "normalized engine torque curve"))
 	UCurveFloat* EngineTorqueCurve;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
-	float EngineIdleRPM = 900;
+	float EngineIdleRPM = 900.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
-	float EngineMaxRPM = 6000;
+	float EngineMaxRPM = 6000.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
-	float EngineInertia = 0.2;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
-	float StartFriction = 50;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
-	float FrictionCoefficient = 0.005;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
-	float IdleThrottleInterpSpeed = 5;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
-	float RevLimiterTime = 0.05;
-
+	float EngineInertia = 0.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", ToolTip = "The internal friction of the engine at 0 rpm"))
+	float StartFriction = 50.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", ToolTip = "The Slope of the internal friction of engine"))
+	float FrictionCoefficient = 0.005f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
+	float IdleThrottleInterpSpeed = 1.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
+	float RevLimiterTime = 0.05f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", AdvancedDisplay, ToolTip = "If Lambda < 1.f, there will be unburnt fuel, which will cause back fireing"))
+	float MaxPowerLambda = 0.85f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", AdvancedDisplay, ToolTip = "If Lambda < 1.f, there will be unburnt fuel, which will cause back fireing"))
+	float DeceleratingLambda = 0.9f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
+	float BackfireAccumulationRate = 2.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
+	float ExhaustScavengingStrength = 2.f;
 };
 
 USTRUCT(BlueprintType, Blueprintable)
@@ -98,10 +105,10 @@ struct FVehicleEngineSimData
 	float EngineRPM = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float EngineOffRPM = 0.f;	//under this rpm, the engine will be considered as off
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fuel")
+	float UnburntFuelBuffer = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
 	float TurboSpool = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
-	float ManifoldVacuum = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
 	float TurboPressure = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")

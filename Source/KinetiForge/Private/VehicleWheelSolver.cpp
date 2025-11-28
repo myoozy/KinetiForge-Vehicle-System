@@ -136,7 +136,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 
 		FString TempString = FString::SanitizeFloat(SimData.AngularVelocity);
 		TempString = FString(TEXT("Omega = ")) + TempString;
-		DrawDebugString(InCurrentWorld, TempWheelLocation + TempOffset, TempString, 0, VelociyColor, 0, true);
+		DrawDebugString(InCurrentWorld, TempWheelLocation + TempOffset, TempString, 0, VelociyColor, Duration, true);
 	}
 
 	if (bDrawSlip)
@@ -146,8 +146,8 @@ void FVehicleWheelSolver::DrawWheelForce(
 		FVector TempDrawOffset = TargetWheelComponent->WheelConfig.Radius * WheelTrans.GetRotation().GetUpVector();
 		FString TextSlipRatio = FString(TEXT("SlipRatio = ")) + FString::SanitizeFloat(SimData.SlipRatio);
 		FString TextSlipAngle = FString(TEXT("SlipAngle = ")) + FString::SanitizeFloat(SimData.SlipAngle);
-		DrawDebugString(InCurrentWorld, TempWheelLocation + TempDrawOffset, TextSlipRatio, 0, SlipColor, 0, true, Length * 100);
-		DrawDebugString(InCurrentWorld, TempWheelLocation - TempDrawOffset, TextSlipAngle, 0, SlipColor, 0, true, Length * 100);
+		DrawDebugString(InCurrentWorld, TempWheelLocation + TempDrawOffset, TextSlipRatio, 0, SlipColor, Duration, true, Length * 100);
+		DrawDebugString(InCurrentWorld, TempWheelLocation - TempDrawOffset, TextSlipAngle, 0, SlipColor, Duration, true, Length * 100);
 	}
 
 	if (bDrawInertia)
@@ -155,7 +155,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 		FColor InertiaColor = FColor(255, 255, 255);
 		FVector TempWheelLocation = WheelTrans.GetLocation();
 		FString TextInertia = FString(TEXT("Inertia = ")) + FString::SanitizeFloat(SimData.TotalInertia);
-		DrawDebugString(InCurrentWorld, TempWheelLocation, TextInertia, 0, InertiaColor, 0, true, Length * 100);
+		DrawDebugString(InCurrentWorld, TempWheelLocation, TextInertia, 0, InertiaColor, Duration, true, Length * 100);
 	}
 }
 
@@ -163,21 +163,25 @@ void FVehicleWheelSolver::UpdateABS(float TargetBrakeTorque, bool bHitGround)
 {
 	FVehicleABSConfig& ABSConfig = TargetWheelComponent->ABSConfig;
 
-	if (!ABSConfig.bAntiBrakeSystemEnabled || !bHitGround)
-	{
-		SimData.BrakeTorqueFromBrake = TargetBrakeTorque;
-		SimData.bABSTriggered = 0;
-	}
-	else
-	{
-		SimData.bABSTriggered = FMath::Abs(SimData.SlipRatio) > ABSConfig.MaxSlipRatio
-			&& FMath::Abs(SimData.LocalLinearVelocity.X) > ABSConfig.ActivationSpeed
-			&& TargetBrakeTorque > 0;
+	float AbsolutSlip = FMath::Abs(SimData.SlipRatio);
 
-		if (SimData.bABSTriggered)TargetBrakeTorque = 0;
+	SimData.bABSTriggered = 
+		ABSConfig.bAntiBrakeSystemEnabled
+		&& bHitGround
+		&& FMath::Abs(SimData.LocalLinearVelocity.X) > ABSConfig.ActivationSpeed
+		&& AbsolutSlip > ABSConfig.OptimalSlip;
 
-		SimData.BrakeTorqueFromBrake = FMath::FInterpTo(SimData.BrakeTorqueFromBrake, TargetBrakeTorque, SimData.PhysicsDeltaTime, ABSConfig.InterpSpeed);
+	if (SimData.bABSTriggered)
+	{
+		float Error = AbsolutSlip - ABSConfig.OptimalSlip;
+		float AbsFactor = 1.0f - (Error * ABSConfig.Sensitivity);
+		AbsFactor = FMath::Clamp(AbsFactor, 0.0f, 1.0f);
+		SimData.BrakeTorqueFromBrake = TargetBrakeTorque * AbsFactor;
+		
+		return;
 	}
+
+	SimData.BrakeTorqueFromBrake = TargetBrakeTorque;
 }
 
 void FVehicleWheelSolver::ComputeDynamicFrictionMultiplier(const FHitResult& HitStruct)
@@ -318,7 +322,7 @@ void FVehicleWheelSolver::ComputeSlipRatio(bool bHitGround)
 	SimData.SlipRatio = SafeDivide(SimData.LongSlipVelocity, FMath::Max(FMath::Abs(SimData.LocalLinearVelocity.X), 1.f));
 }
 
-float FVehicleWheelSolver::ComputeRigidLongForce(float SprungMass)
+float FVehicleWheelSolver::ComputeConstraintLongForce(float SprungMass)
 {
 	float ForceRequiredToBringToStop = FMath::Abs(SimData.LocalLinearVelocity.X * SimData.PhysicsDeltaTimeInv * SprungMass);
 	ForceRequiredToBringToStop += FMath::Abs(SimData.DriveTorque * SimData.RInv);
@@ -335,7 +339,7 @@ float FVehicleWheelSolver::ComputeRigidLongForce(float SprungMass)
 	return (SimData.DriveTorque + SignedBrakeTorque + SimData.TorqueFromGroundInteraction) * SimData.RInv;
 }
 
-float FVehicleWheelSolver::ComputeRigidLatForce(float SprungMass)
+float FVehicleWheelSolver::ComputeConstraintLatForce(float SprungMass)
 {
 	float ForceRequiredToBringToStop = -SimData.LocalLinearVelocity.Y * SimData.PhysicsDeltaTimeInv * SprungMass;
 	
@@ -425,16 +429,16 @@ void FVehicleWheelSolver::ComputeTireForce(
 	ComputeSlipRatio(bHitGround);
 	ComputeSlipAngle(bHitGround);
 
-	//rigid tire force
-	float TargetLongForce = ComputeRigidLongForce(SprungMass);
-	float TargetLatForce = ComputeRigidLatForce(SprungMass);
+	//Constraint tire force
+	float TargetLongForce = ComputeConstraintLongForce(SprungMass);
+	float TargetLatForce = ComputeConstraintLatForce(SprungMass);
 
 	//interp wheel load
 	float ScaledWheelLoad = CalculateScaledWheelLoad(SprungMass, WheelLoad, TireConfig.WheelLoadInfluenceFactor);
 	float AvailableGrip = SimData.DynFrictionMultiplier * ScaledWheelLoad;
 	float SlipInputScale = SafeDivide(TireConfig.FrictionMultiplier, SimData.DynFrictionMultiplier);
 
-	//if the user has only setup one of the Fx or Fy curve, the rigid force on the other direction should be cut, before computing combined slip
+	//if the user has only setup one of the Fx or Fy curve, the Constraint force on the other direction should be cut, before computing combined slip
 	bool bUseFxCurve = (TireConfig.Fx != nullptr);
 	bool bUseFyCurve = (TireConfig.Fy != nullptr);
 

@@ -81,11 +81,11 @@ struct FVehicleTCSConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCSSetup")
 	bool bTractionControlSystemEnabled = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCSSetup", meta = (ClampMin = "0.0"))
-	float MaxSlipRatio = 0.2f;
+	float OptimalSlip = 0.2f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCSSetup", meta = (ClampMin = "0.0", ToolTip = "minimum speed(m / s) to activate assist"))
 	float ActivationSpeed = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCSSetup", meta = (ClampMin = "0.0"))
-	float InterpSpeed = 100.f;
+	float Sensitivity = 1.f;
 };
 
 

@@ -50,8 +50,8 @@ private:
 	void WheelAcceleration(float AccelerationTolerance = 0.1);
 	void ComputeSlipAngle(bool bHitGround);
 	void ComputeSlipRatio(bool bHitGround);
-	float ComputeRigidLongForce(float SprungMass);
-	float ComputeRigidLatForce(float SprungMass);
+	float ComputeConstraintLongForce(float SprungMass);
+	float ComputeConstraintLatForce(float SprungMass);
 	FVector2D ComputeGravityProjectionOnSlope(
 		float PositiveSuspensionForce,
 		const FVector& LongForceDir,

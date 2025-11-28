@@ -276,32 +276,29 @@ void UVehicleAxleAssemblyComponent::UpdateSwaybarForce()
 
 void UVehicleAxleAssemblyComponent::UpdateTCS(float TargetDriveTorque)
 {
-	if (!TCSConfig.bTractionControlSystemEnabled || !SimData.NumOfWheelOnGround)
+	float SumSlipRatio = 0.f;
+	if (IsValid(LeftWheel))SumSlipRatio += FMath::Abs(LeftWheel->GetSlipRatio());
+	if (IsValid(RightWheel))SumSlipRatio += FMath::Abs(RightWheel->GetSlipRatio());
+	float AvrgSlipRatio = SumSlipRatio / SimData.NumOfWheels;
+
+	SimData.bTCSTriggered =
+		TCSConfig.bTractionControlSystemEnabled
+		&& SimData.NumOfWheelOnGround
+		&& !FMath::IsNearlyZero(TargetDriveTorque)
+		&& FMath::Abs(SimData.LocalLinearVelocity.X) > TCSConfig.ActivationSpeed
+		&& AvrgSlipRatio > TCSConfig.OptimalSlip;
+
+	if (SimData.bTCSTriggered)
 	{
-		SimData.AxleDriveTorque = TargetDriveTorque;
-		SimData.bTCSTriggered = false;
+		float Error = AvrgSlipRatio - TCSConfig.OptimalSlip;
+		float TcsFactor = 1.0f - (Error * TCSConfig.Sensitivity);
+		TcsFactor = FMath::Clamp(TcsFactor, 0.0f, 1.0f);
+		SimData.AxleDriveTorque = TargetDriveTorque * TcsFactor;
+
+		return;
 	}
-	else
-	{
-		float SumSlipRatio = 0.f;
-		if (IsValid(LeftWheel))SumSlipRatio += FMath::Abs(LeftWheel->GetSlipRatio());
-		if (IsValid(RightWheel))SumSlipRatio += FMath::Abs(RightWheel->GetSlipRatio());
-		float AvrgSlipRatio = SumSlipRatio / SimData.NumOfWheels;
 
-		SimData.bTCSTriggered = 
-			AvrgSlipRatio > TCSConfig.MaxSlipRatio && 
-			FMath::Abs(SimData.LocalLinearVelocity.X) > TCSConfig.ActivationSpeed && 
-			TargetDriveTorque != 0;
-
-		if (SimData.bTCSTriggered)TargetDriveTorque = 0;
-
-		SimData.AxleDriveTorque = 
-			FMath::FInterpTo(
-				SimData.AxleDriveTorque,
-				TargetDriveTorque,
-				SimData.PhysicsDeltaTime,
-				TCSConfig.InterpSpeed);
-	}
+	SimData.AxleDriveTorque = TargetDriveTorque;
 }
 
 void UVehicleAxleAssemblyComponent::UpdateIndependentSuspensionPhysics()
