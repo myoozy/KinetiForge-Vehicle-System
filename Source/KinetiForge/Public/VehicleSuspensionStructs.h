@@ -43,8 +43,8 @@ struct FVehicleSuspensionKinematicsConfig
 	ESuspensionRayCastMode RayCastMode = ESuspensionRayCastMode::LineTrace;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TEnumAsByte<ECollisionChannel> TraceChannel = ECollisionChannel::ECC_WorldDynamic;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "X: Horizontal; Y:Vertical"))
-	FVector2D TopMountPosition = FVector2D(-2.f, 15.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "The location of the top mount relative to the pivot of the arm. It is under the coordinate of the wheel component, not car body."))
+	FVector TopMountPosition = FVector(0.f, 48.5f, 15.f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "cm"))
 	float Stroke = 20.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "cm"))
@@ -52,15 +52,13 @@ struct FVehicleSuspensionKinematicsConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "cm"))
 	float ArmLength = 50.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float SteeringAxleOffset = 5.f;
+	float AxialHubOffset = 5.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float BaseCamber = -1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float BaseToe = 0.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "X: SuspensionCompressionRatio; Y:CamberGain"))
 	UCurveFloat* CamberCurve = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "X: SuspensionCompressionRatio; Y:CasterGain"))
-	UCurveFloat* CasterCurve = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "X: SuspensionCompressionRatio; Y:ToeGain"))
 	UCurveFloat* ToeCurve = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -126,7 +124,7 @@ struct FVehicleSuspensionSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector2D TopMountPos2D = FVector2D(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector2D BallJointPos2D = FVector2D(0.f);
+	FVector2D KnucklePos2D = FVector2D(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector2D RayCastStart2D = FVector2D(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
@@ -138,9 +136,9 @@ struct FVehicleSuspensionSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector WheelRightVector = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector WheelOffsetToBallJoint = FVector(0.f);		//relative
+	FVector WheelOffsetToKnuckle = FVector(0.f);		//relative
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector BallJointRelativePos = FVector(0.f);
+	FVector KnuckleRelativePos = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector TopMountRelativePos = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")

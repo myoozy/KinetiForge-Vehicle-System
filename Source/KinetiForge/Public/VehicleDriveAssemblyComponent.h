@@ -231,7 +231,7 @@ public:
         bool bInvertYAxis = false, 
         float InMaxPitch = 80);
     UFUNCTION(BlueprintCallable, Category = "Input")
-    void UpdateDriftCamera(
+    void CameraLookAtVelocity(
         USceneComponent* InSpringArm, 
         float InPitch, 
         float InDriftCamRate = 1.f,

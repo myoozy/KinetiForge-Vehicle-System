@@ -60,7 +60,7 @@ protected:
 	void ApplyWheelForce();
 
 	UPROPERTY()
-	TObjectPtr<USceneComponent> WheelHubComponent;
+	TObjectPtr<USceneComponent> WheelKnuckleComponent;
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> WheelMeshComponent;
 	UPROPERTY()
@@ -80,9 +80,9 @@ protected:
 	FVehicleWheelSolver Wheel;
 
 	//anim
-	FVector2D PrevBallJointPos2D;
+	FVector2D PrevKnucklePos2D;
 	FQuat PrevWheelRelativeRot;
-	FVector2D AnimBallJointPos2D;
+	FVector2D AnimKnucklePos2D;
 	FQuat AnimWheelRelativeRot;
 	float TimeSinceLastPhysicsTick = 0.0f;
 
@@ -157,7 +157,7 @@ public:
 		float InHandbrakeTorque,
 		float InSwaybarForce,
 		float InReflectedInertia,
-		const FVector& InBallJointWorldPos,
+		const FVector& InKnuckleWorldPos,
 		const FVector& InAxleWorldDirection);
 
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
@@ -228,7 +228,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Mesh")
 	bool SetMesh(
-		float SteeringAxleOffset,
+		float AxialHubOffset,
 		UStaticMesh* NewWheelMesh,
 		FTransform WheelMeshRelatvieTransform,
 		UStaticMesh* NewBrakeMesh, 
@@ -253,26 +253,26 @@ public:
 	void UpdateWheelAnim(float DeltaTime = 0.f, float MaxAnimAngularVelocity = 60.f);
 
 	UFUNCTION(BlueprintCallable, Category = "Animation")
-	void GetWheelHubComponent(USceneComponent*& OutHub) { OutHub = WheelHubComponent; }
+	void GetWheelKnuckleComponent(USceneComponent*& OutHub) { OutHub = WheelKnuckleComponent; }
 
 	UFUNCTION(BlueprintCallable, Category = "Animation", meta = (ToolTip = "Compute and return the world location and world rotation of skid mark, the scale is local linear velocity of the wheel"))
 	FTransform GetSkidMarkWorldTransform(float InSkidMarkBias, float InSkidMarkScale);
 
-	UFUNCTION(BlueprintCallable, Category = "Animation")
+	UFUNCTION(BlueprintCallable, Category = "Animation", meta = (ToolTip = "Rotate the arm mesh around its own origin"))
 	FQuat UpdateSuspensionArmAnim(USceneComponent* InArmMesh,
 		FRotator InRotationOffset = FRotator(0.f, 0.f, 0.f));
 
-	UFUNCTION(BlueprintCallable, Category = "Animation")
+	UFUNCTION(BlueprintCallable, Category = "Animation", meta = (ToolTip = "Rotate and scale the spring mesh around its own origin"))
 	FTransform UpdateSuspensionSpringAnim(USceneComponent* InSpringMesh,
 		FVector InScaleAxis = FVector(0.f, 0.f, 1.f),
 		float InOffsetAlongArm = 0.f,
-		FVector2D InBallJointOffset = FVector2D(0.f, 0.f),
+		FVector2D InKnuckleOffset = FVector2D(0.f, 0.f),
 		FRotator InRotationOffset = FRotator(0.f, 0.f, 0.f),
 		float InLengthBias = 0.f,
 		FVector InInitialScale = FVector(1.f, 1.f, 1.f));
 
 	UFUNCTION(BlueprintCallable, Category = "Animation")
-	void AttachWheelHubMeshToSuspension(USceneComponent* InWheelHub, FTransform InTransform);
+	void AttachComponentToKnuckle(USceneComponent* InComponent, FTransform InTransform);
 
 private:
 	float SafeDivide(auto a, auto b);

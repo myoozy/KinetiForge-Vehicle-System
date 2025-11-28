@@ -786,7 +786,7 @@ EVehicleEngineState UVehicleDriveAssemblyComponent::ShutVehicleEngine()
 	}
 }
 
-void UVehicleDriveAssemblyComponent::UpdateDriftCamera(USceneComponent* InSpringArm, float InPitch, float InDriftCamRate, float InDriftCamInterpSpeed, float InDriftCamStartSpeed_mps)
+void UVehicleDriveAssemblyComponent::CameraLookAtVelocity(USceneComponent* InSpringArm, float InPitch, float InDriftCamRate, float InDriftCamInterpSpeed, float InDriftCamStartSpeed_mps)
 {
 	if (LocalLinearVelocity.SquaredLength() > FMath::Square(InDriftCamStartSpeed_mps))
 	{

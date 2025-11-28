@@ -67,6 +67,15 @@ public:
 	EVehicleEngineState ShutVehicleEngine();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	float GetEngineTorque() { return SimData.EffectiveTorque; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	float GetMaxRPM() { return NAConfig.EngineMaxRPM; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	float GetIdleRPM() { return NAConfig.EngineIdleRPM; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetRPM() { return SimData.EngineRPM; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")

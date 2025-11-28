@@ -113,22 +113,22 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(float InSteeringAngle)
 void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	float InDeltaTime, 
 	float InSwaybarForce,
-	const FVector& InBallJointWorldPos,
+	const FVector& InKnuckleWorldPos,
 	const FVector& InAxleWorldDirection)
 {
 	SimData.PhysicsDelatTime = InDeltaTime;
 	SimData.SwaybarForce = InSwaybarForce;
 
 	// get relative position of the ball joint
-	SimData.BallJointRelativePos = SimData.CarbodyWorldTransform.InverseTransformPositionNoScale(InBallJointWorldPos);
+	SimData.KnuckleRelativePos = SimData.CarbodyWorldTransform.InverseTransformPositionNoScale(InKnuckleWorldPos);
 	
 	// the relative direction of the axle, which is also the right vector of the wheel
 	// because solid axle usually does not have camber/toe
 	FVector AxleDirection = SimData.CarbodyWorldTransform.InverseTransformVectorNoScale(InAxleWorldDirection);
-	SimData.WheelOffsetToBallJoint = TargetWheelComponent->SuspensionKinematicsConfig.SteeringAxleOffset * SimData.WheelPos * AxleDirection;
+	SimData.WheelOffsetToKnuckle = TargetWheelComponent->SuspensionKinematicsConfig.AxialHubOffset * SimData.WheelPos * AxleDirection;
 	
 	// get relative position of the wheel
-	FVector WheelRelativePos = SimData.BallJointRelativePos + SimData.WheelOffsetToBallJoint;
+	FVector WheelRelativePos = SimData.KnuckleRelativePos + SimData.WheelOffsetToKnuckle;
 	
 	// get the relative rotation of the wheel
 	FVector DefaultRight = FVector(0.f, 1.f, 0.f);
@@ -143,11 +143,11 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	SimData.WheelWorldPos = SimData.CarbodyWorldTransform.TransformPositionNoScale(SimData.WheelRelativeTransform.GetLocation());
 
 	// the relative direction of the strut
-	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.BallJointRelativePos).GetSafeNormal();
+	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.KnuckleRelativePos).GetSafeNormal();
 
 	// have to calculate the 2d position of the ball joint, to decide the raycast start for next frame
-	FVector BallJointLocalPos = SimData.RelativeTransform.InverseTransformPositionNoScale(SimData.BallJointRelativePos);
-	SimData.BallJointPos2D = ZYPlaneToSuspensionPlane(BallJointLocalPos);
+	FVector KnuckleLocalPos = SimData.RelativeTransform.InverseTransformPositionNoScale(SimData.KnuckleRelativePos);
+	SimData.KnucklePos2D = ZYPlaneToSuspensionPlane(KnuckleLocalPos);
 
 	// get suspension force
 	ComputeSuspensionForce();
@@ -193,15 +193,15 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 
 	if (bDrawSuspension)
 	{
-		FVector TempBallJointWorldPos = CarbodyWorldTrans.TransformPositionNoScale(SimData.BallJointRelativePos);
+		FVector TempKnuckleWorldPos = CarbodyWorldTrans.TransformPositionNoScale(SimData.KnuckleRelativePos);
 		//draw arm
 		FTransform WorldTrans = SimData.RelativeTransform * CarbodyWorldTrans;
 		FVector PivotPos = WorldTrans.TransformPositionNoScale(SuspensionPlaneToZYPlane(FVector2D(0.f)));
-		DrawDebugLine(TempWorld, PivotPos, TempBallJointWorldPos, FColor(0, 0, 255), false, Duration, 0, Thickness);
+		DrawDebugLine(TempWorld, PivotPos, TempKnuckleWorldPos, FColor(0, 0, 255), false, Duration, 0, Thickness);
 		//draw strut
-		DrawDebugLine(TempWorld, CarbodyWorldTrans.TransformPositionNoScale(SimData.TopMountRelativePos), TempBallJointWorldPos, FColor(255, 255, 0), false, Duration, 0, Thickness);
+		DrawDebugLine(TempWorld, CarbodyWorldTrans.TransformPositionNoScale(SimData.TopMountRelativePos), TempKnuckleWorldPos, FColor(255, 255, 0), false, Duration, 0, Thickness);
 		//draw wheel offset
-		DrawDebugLine(TempWorld, TempBallJointWorldPos, WheelTrans.GetLocation(), FColor(0, 255, 255), false, Duration, 0, Thickness);
+		DrawDebugLine(TempWorld, TempKnuckleWorldPos, WheelTrans.GetLocation(), FColor(0, 255, 255), false, Duration, 0, Thickness);
 	}
 
 	if (bDrawWheel)
@@ -416,14 +416,12 @@ bool FVehicleSuspensionSolver::SingleSphereTrace(FVector Start, FVector End, flo
 
 FVector FVehicleSuspensionSolver::SuspensionPlaneToZYPlane(FVector2D V2D)
 {
-	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
-	return FVector(0, (V2D.Y - Config.ArmLength) * SimData.WheelPos, V2D.X);
+	return FVector(0, V2D.Y * SimData.WheelPos, V2D.X);
 }
 
 FVector2D FVehicleSuspensionSolver::ZYPlaneToSuspensionPlane(FVector V3D)
 {
-	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
-	return FVector2D(V3D.Z, V3D.Y * SimData.WheelPos + Config.ArmLength);
+	return FVector2D(V3D.Z, V3D.Y * SimData.WheelPos);
 }
 
 FVector FVehicleSuspensionSolver::GetCamberCasterToeFromCurve()
@@ -436,7 +434,6 @@ FVector FVehicleSuspensionSolver::GetCamberCasterToeFromCurve()
 	v.Z = Config.BaseCamber;
 
 	float Compression = 1 - SimData.SuspensionExtensionRatio;
-	if (Config.CasterCurve)v.X += Config.CasterCurve->GetFloatValue(Compression);
 	if (Config.ToeCurve)v.Y += Config.ToeCurve->GetFloatValue(Compression);
 	if (Config.CamberCurve)v.Z += Config.CamberCurve->GetFloatValue(Compression);
 	
@@ -452,9 +449,10 @@ void FVehicleSuspensionSolver::PrepareSimulation()
 	//dealing with transforms
 	SimData.WheelPos = FMath::Sign(SimData.RelativeTransform.GetLocation().Y);
 	SimData.WheelPos += SimData.WheelPos == 0.f;	//if(wheelpos == 0) wheelpos = 1;
-	FVector2D TopMountConfig = TargetWheelComponent->SuspensionKinematicsConfig.TopMountPosition;
-	SimData.TopMountPos2D = FVector2D(TopMountConfig.Y, TopMountConfig.X + TargetWheelComponent->SuspensionKinematicsConfig.ArmLength);
-	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
+	FVector TopMountLocalPos = TargetWheelComponent->SuspensionKinematicsConfig.TopMountPosition;
+	TopMountLocalPos.Y *= SimData.WheelPos;
+	SimData.TopMountPos2D = ZYPlaneToSuspensionPlane(TopMountLocalPos);
+	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPositionNoScale(TopMountLocalPos);
 	SimData.ComponentRelativeForwardVector = SimData.RelativeTransform.GetRotation().GetForwardVector();
 }
 
@@ -470,14 +468,14 @@ float FVehicleSuspensionSolver::ComputeValidPreload()
 
 void FVehicleSuspensionSolver::ComputeRayCastLocation()
 {
-	SimData.StrutDirection2D = (SimData.TopMountPos2D - SimData.BallJointPos2D).GetSafeNormal();
+	SimData.StrutDirection2D = (SimData.TopMountPos2D - SimData.KnucklePos2D).GetSafeNormal();
 	SimData.RayCastLength = FMath::Abs(SimData.StrutDirection2D.X * TargetWheelComponent->SuspensionKinematicsConfig.Stroke);
 
 	SimData.RayCastStart2D.X = SimData.TopMountPos2D.X - SimData.StrutDirection2D.X * TargetWheelComponent->SuspensionKinematicsConfig.MinStrutLength;
-	SimData.RayCastStart2D.Y = SimData.BallJointPos2D.Y;
+	SimData.RayCastStart2D.Y = SimData.KnucklePos2D.Y;
 
 	FVector RayCastStartLocal = SuspensionPlaneToZYPlane(SimData.RayCastStart2D);
-	FVector RayCastStartRelative = SimData.RelativeTransform.TransformPositionNoScale(RayCastStartLocal) + SimData.WheelOffsetToBallJoint;
+	FVector RayCastStartRelative = SimData.RelativeTransform.TransformPositionNoScale(RayCastStartLocal) + SimData.WheelOffsetToKnuckle;
 	SimData.RayCastStartPos = SimData.CarbodyWorldTransform.TransformPositionNoScale(RayCastStartRelative);
 
 	FTransform WorldTrans = SimData.RelativeTransform * SimData.CarbodyWorldTransform;
@@ -724,7 +722,7 @@ void FVehicleSuspensionSolver::ComputeHitDistance(float EquivalentSphereTraceRad
 	SimData.SuspensionExtensionRatio = SafeDivide(HitDistanceNoBias, SimData.RayCastLength);
 }
 
-void FVehicleSuspensionSolver::IterateBallJointPos()
+void FVehicleSuspensionSolver::IterateKnucklePos()
 {
 	// this function suppose to simulate the unsprung mass
 	// but I haven't finished it yet
@@ -740,20 +738,20 @@ void FVehicleSuspensionSolver::IterateBallJointPos()
 		float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
 		float GroundPosisitonX = SimData.RayCastStart2D.X - SimData.HitDistance;
 		// the tire displacement and displacement rate is not accurate
-		float TireDisplacement = FMath::Max(0.f, GroundPosisitonX + WheelRadius - SimData.BallJointPos2D.X);
+		float TireDisplacement = FMath::Max(0.f, GroundPosisitonX + WheelRadius - SimData.KnucklePos2D.X);
 		float TireDisplacementRate = SimData.HitDistanceRate;
 		float TireForce = TireDisplacement * TireStiffness - TireDisplacementRate * TireDamping;
 
 		FTransform ComponentWorldTransform = SimData.CarbodyWorldTransform * SimData.RelativeTransform;
-		FVector BallJointWorldPos = SimData.CarbodyWorldTransform.TransformPositionNoScale(SimData.BallJointRelativePos);
-		//FVector BallJointWorldVel = SimData.CarbodyWorldTransform.TransformPositionNoScale(SimData.BallJointRelativeVel);
+		FVector KnuckleWorldPos = SimData.CarbodyWorldTransform.TransformPositionNoScale(SimData.KnuckleRelativePos);
+		//FVector KnuckleWorldVel = SimData.CarbodyWorldTransform.TransformPositionNoScale(SimData.KnuckleRelativeVel);
 		FVector TopMountWorldPos = SimData.CarbodyWorldTransform.TransformPositionNoScale(SimData.TopMountRelativePos);
 		FVector PivotWorldPos = ComponentWorldTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
 
 		// take velocity of carbody into account
 		UPrimitiveComponent* Carbody = TargetWheelComponent->GetCarbody();
-		FVector CarbodyVelocity = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(Carbody, BallJointWorldPos);
-		//BallJointWorldVel += CarbodyVelocity;
+		FVector CarbodyVelocity = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(Carbody, KnuckleWorldPos);
+		//KnuckleWorldVel += CarbodyVelocity;
 		
 		// itteration in world space
 		for (int i = 0; i < SubSteps; i++)
@@ -761,9 +759,9 @@ void FVehicleSuspensionSolver::IterateBallJointPos()
 
 		}
 
-		//BallJointWorldVel -= CarbodyVelocity;
-		SimData.BallJointRelativePos = SimData.CarbodyWorldTransform.InverseTransformPositionNoScale(BallJointWorldPos);
-		//SimData.BallJointRelativeVel = SimData.CarbodyWorldTransform.InverseTransformPositionNoScale(BallJointWorldVel);
+		//KnuckleWorldVel -= CarbodyVelocity;
+		SimData.KnuckleRelativePos = SimData.CarbodyWorldTransform.InverseTransformPositionNoScale(KnuckleWorldPos);
+		//SimData.KnuckleRelativeVel = SimData.CarbodyWorldTransform.InverseTransformPositionNoScale(KnuckleWorldVel);
 	}
 }
 
@@ -771,12 +769,12 @@ void FVehicleSuspensionSolver::ComputeStraightSuspension()
 {
 	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
 
-	//Compute the position of the BallJoint on the suspension plane
+	//Compute the position of the Knuckle on the suspension plane
 	float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	SimData.BallJointPos2D.X = SimData.RayCastStart2D.X - FMath::Max(0.f, SimData.HitDistance - WheelRadius);
-	SimData.BallJointPos2D.Y = Config.ArmLength;
+	SimData.KnucklePos2D.X = SimData.RayCastStart2D.X - FMath::Max(0.f, SimData.HitDistance - WheelRadius);
+	SimData.KnucklePos2D.Y = Config.ArmLength;
 
-	SimData.BallJointRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.BallJointPos2D));
+	SimData.KnuckleRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.KnucklePos2D));
 
 	SimData.StrutRelativeDirection = SimData.RelativeTransform.GetRotation().GetUpVector();
 	FQuat SteeringBiasRotation = FQuat(SimData.StrutRelativeDirection, FMath::DegreesToRadians(SimData.SteeringAngle));
@@ -785,8 +783,8 @@ void FVehicleSuspensionSolver::ComputeStraightSuspension()
 	SimData.WheelRelativeTransform.SetRotation(SteeringBiasRotation * InitialWheelRelativeRotation);
 	FVector WheelRelativeRightVec = SimData.WheelRelativeTransform.GetRotation().GetRightVector();
 
-	SimData.WheelOffsetToBallJoint = Config.SteeringAxleOffset * SimData.WheelPos * WheelRelativeRightVec;
-	SimData.WheelRelativeTransform.SetLocation(SimData.BallJointRelativePos + SimData.WheelOffsetToBallJoint);
+	SimData.WheelOffsetToKnuckle = Config.AxialHubOffset * SimData.WheelPos * WheelRelativeRightVec;
+	SimData.WheelRelativeTransform.SetLocation(SimData.KnuckleRelativePos + SimData.WheelOffsetToKnuckle);
 
 	SimData.WheelRightVector = SimData.CarbodyWorldTransform.TransformVectorNoScale(WheelRelativeRightVec);
 
@@ -797,29 +795,27 @@ void FVehicleSuspensionSolver::ComputeMacpherson()
 {
 	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
 
-	//Compute the position of the BallJoint on the suspension plane
+	//Compute the position of the Knuckle on the suspension plane
 	float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	SimData.BallJointPos2D.X = SimData.RayCastStart2D.X - FMath::Max(0.f, SimData.HitDistance - WheelRadius);
-	SimData.BallJointPos2D.X = FMath::Clamp(SimData.BallJointPos2D.X, -Config.ArmLength, Config.ArmLength);
-	SimData.BallJointPos2D.Y = FMath::Sqrt(FMath::Square(Config.ArmLength) - FMath::Square(SimData.BallJointPos2D.X));
+	SimData.KnucklePos2D.X = SimData.RayCastStart2D.X - FMath::Max(0.f, SimData.HitDistance - WheelRadius);
+	SimData.KnucklePos2D.X = FMath::Clamp(SimData.KnucklePos2D.X, -Config.ArmLength, Config.ArmLength);
+	SimData.KnucklePos2D.Y = FMath::Sqrt(FMath::Square(Config.ArmLength) - FMath::Square(SimData.KnucklePos2D.X));
 
-	SimData.BallJointRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.BallJointPos2D));
+	SimData.KnuckleRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.KnucklePos2D));
 
-	FVector2D InitialStrutDirection = SimData.TopMountPos2D - FVector2D(0, Config.ArmLength);
-	FVector2D CurrentStrutDirection = SimData.TopMountPos2D - SimData.BallJointPos2D;
-	InitialStrutDirection.Y *= -SimData.WheelPos;
-	CurrentStrutDirection.Y *= -SimData.WheelPos;
-	FQuat StrutBiasRotation = MakeQuatFrom2DVectors(InitialStrutDirection, CurrentStrutDirection, SimData.ComponentRelativeForwardVector);
+	FVector InitialKnuckleRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(FVector2D(0, Config.ArmLength)));
+	FVector InitialStrutDirection = (SimData.TopMountRelativePos - InitialKnuckleRelativePos).GetSafeNormal();
+	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.KnuckleRelativePos).GetSafeNormal();
+	FQuat StrutBiasRotation = FQuat::FindBetweenNormals(InitialStrutDirection, SimData.StrutRelativeDirection);
 
-	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.BallJointRelativePos).GetSafeNormal();
 	FQuat SteeringBiasRotation = FQuat(SimData.StrutRelativeDirection, FMath::DegreesToRadians(SimData.SteeringAngle));
 
 	FQuat InitialWheelRelativeRotation = FQuat(FRotator(0, Config.BaseToe * SimData.WheelPos, Config.BaseCamber * SimData.WheelPos));
 	SimData.WheelRelativeTransform.SetRotation(SteeringBiasRotation	* StrutBiasRotation	* InitialWheelRelativeRotation);
 	FVector WheelRelativeRightVec = SimData.WheelRelativeTransform.GetRotation().GetRightVector();
 
-	SimData.WheelOffsetToBallJoint = Config.SteeringAxleOffset * SimData.WheelPos * WheelRelativeRightVec;
-	SimData.WheelRelativeTransform.SetLocation(SimData.BallJointRelativePos + SimData.WheelOffsetToBallJoint);
+	SimData.WheelOffsetToKnuckle = Config.AxialHubOffset * SimData.WheelPos * WheelRelativeRightVec;
+	SimData.WheelRelativeTransform.SetLocation(SimData.KnuckleRelativePos + SimData.WheelOffsetToKnuckle);
 
 	SimData.WheelRightVector = SimData.CarbodyWorldTransform.TransformVectorNoScale(WheelRelativeRightVec);
 
@@ -830,16 +826,16 @@ void FVehicleSuspensionSolver::ComputeDoubleWishbone()
 {
 	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
 
-	//Compute the position of the BallJoint on the suspension plane
+	//Compute the position of the Knuckle on the suspension plane
 	float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	SimData.BallJointPos2D.X = SimData.RayCastStart2D.X - FMath::Max(0.f, SimData.HitDistance - WheelRadius);
-	SimData.BallJointPos2D.X = FMath::Clamp(SimData.BallJointPos2D.X, -Config.ArmLength, Config.ArmLength);
-	SimData.BallJointPos2D.Y = FMath::Sqrt(FMath::Square(Config.ArmLength) - FMath::Square(SimData.BallJointPos2D.X));
+	SimData.KnucklePos2D.X = SimData.RayCastStart2D.X - FMath::Max(0.f, SimData.HitDistance - WheelRadius);
+	SimData.KnucklePos2D.X = FMath::Clamp(SimData.KnucklePos2D.X, -Config.ArmLength, Config.ArmLength);
+	SimData.KnucklePos2D.Y = FMath::Sqrt(FMath::Square(Config.ArmLength) - FMath::Square(SimData.KnucklePos2D.X));
 
-	SimData.BallJointRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.BallJointPos2D));
+	SimData.KnuckleRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.KnucklePos2D));
 	SimData.TopMountRelativePos = SimData.RelativeTransform.TransformPositionNoScale(SuspensionPlaneToZYPlane(SimData.TopMountPos2D));
 
-	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.BallJointRelativePos).GetSafeNormal();
+	SimData.StrutRelativeDirection = (SimData.TopMountRelativePos - SimData.KnuckleRelativePos).GetSafeNormal();
 	FQuat SteeringBiasRotation = FQuat(SimData.RelativeTransform.GetRotation().GetUpVector(), FMath::DegreesToRadians(SimData.SteeringAngle));
 
 	FVector WheelAlignmentEuler = GetCamberCasterToeFromCurve();
@@ -847,8 +843,8 @@ void FVehicleSuspensionSolver::ComputeDoubleWishbone()
 	SimData.WheelRelativeTransform.SetRotation(SteeringBiasRotation * InitialWheelRelativeRotation);
 	FVector WheelRelativeRightVec = SimData.WheelRelativeTransform.GetRotation().GetRightVector();
 
-	SimData.WheelOffsetToBallJoint = Config.SteeringAxleOffset * SimData.WheelPos * WheelRelativeRightVec;
-	SimData.WheelRelativeTransform.SetLocation(SimData.BallJointRelativePos + SimData.WheelOffsetToBallJoint);
+	SimData.WheelOffsetToKnuckle = Config.AxialHubOffset * SimData.WheelPos * WheelRelativeRightVec;
+	SimData.WheelRelativeTransform.SetLocation(SimData.KnuckleRelativePos + SimData.WheelOffsetToKnuckle);
 
 	SimData.WheelRightVector = SimData.CarbodyWorldTransform.TransformVectorNoScale(WheelRelativeRightVec);
 

@@ -30,7 +30,7 @@ public:
 	void FinalizeUpdateSolidAxle(
 		float InDeltaTime,
 		float InSwaybarForce,
-		const FVector& InBallJointWorldPos,
+		const FVector& InKnuckleWorldPos,
 		const FVector& InAxleWorldDirection
 	);
 	void ApplySuspensionStateDirect(
@@ -79,7 +79,7 @@ private:
 	void SuspensionSphereTraceNoRefinement();
 	void SuspensionMultiSphereTrace();
 	void ComputeHitDistance(float EquivalentSphereTraceRadius = 0.f);
-	void IterateBallJointPos();	// only for macpherson or wishbone suspension, this funciton is not finished
+	void IterateKnucklePos();	// only for macpherson or wishbone suspension, this funciton is not finished
 	void ComputeStraightSuspension();
 	void ComputeMacpherson();
 	void ComputeDoubleWishbone();
