@@ -159,6 +159,24 @@ void FVehicleWheelSolver::DrawWheelForce(
 	}
 }
 
+void FVehicleWheelSolver::SmoothenSlip(float InDeltaTime, float InInterpSpeed
+)
+{
+	SmoothenedSlipRatio = FMath::FInterpTo(
+		SmoothenedSlipRatio,
+		SimData.SlipRatio,
+		InDeltaTime,
+		InInterpSpeed
+	);
+
+	SmoothenedSlipAngle = FMath::FInterpTo(
+		SmoothenedSlipAngle,
+		SimData.SlipAngle,
+		InDeltaTime,
+		InInterpSpeed
+	);
+}
+
 void FVehicleWheelSolver::UpdateABS(float TargetBrakeTorque, bool bHitGround)
 {
 	FVehicleABSConfig& ABSConfig = TargetWheelComponent->ABSConfig;
@@ -167,6 +185,7 @@ void FVehicleWheelSolver::UpdateABS(float TargetBrakeTorque, bool bHitGround)
 
 	SimData.bABSTriggered = 
 		ABSConfig.bAntiBrakeSystemEnabled
+		&& TargetBrakeTorque > SMALL_NUMBER
 		&& bHitGround
 		&& FMath::Abs(SimData.LocalLinearVelocity.X) > ABSConfig.ActivationSpeed
 		&& AbsolutSlip > ABSConfig.OptimalSlip;

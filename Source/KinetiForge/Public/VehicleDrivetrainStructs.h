@@ -44,9 +44,7 @@ struct FVehicleNaturallyAspiratedEngineConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", AdvancedDisplay, ToolTip = "If Lambda < 1.f, there will be unburnt fuel, which will cause back fireing"))
 	float DeceleratingLambda = 0.9f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
-	float BackfireAccumulationRate = 2.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
-	float ExhaustScavengingStrength = 2.f;
+	float UnburntFuelAccumulationRate = 2.f;
 };
 
 USTRUCT(BlueprintType, Blueprintable)
@@ -74,6 +72,29 @@ struct FVehicleEngineTurboConfig
 	float AntiLagMinRPM = 2000.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurboSetup", meta = (ClampMin = "0.0", ToolTip = "When antilag is activated, attempt to maintain a proportion of the maximum boost value. e.g. MaxBoostPressure = 1.0bar, AntiLagTargetPressureRatio = 0.8, then anti-lag system will keep the target pressure at 0.8bar."))
 	float AntiLagTargetPressureRatio = 0.9f;
+};
+
+USTRUCT(BlueprintType, Blueprintable)
+struct  FVehicleEngineExhaustConfig
+{
+	GENERATED_USTRUCT_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ExhaustSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
+	float ExhaustScavengingStrength = 2.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ExhaustSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
+	float HeatUpRate = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ExhaustSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
+	float CoolDownRate = 0.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ExhaustSetup", meta = (ClampMin = "0.0", ClampMax = "1.0", AdvancedDisplay))
+	float FlashPoint = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ExhaustSetup", meta = (ClampMin = "0.0", ClampMax = "1.0", AdvancedDisplay))
+	float IgnitionProbability = 0.1f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ExhaustSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
+	float PopFuelThreshold = 0.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ExhaustSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
+	float FlameFuelThreshold = 0.25f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ExhaustSetup", meta = (ClampMin = "0.0", AdvancedDisplay))
+	float BackfireHeatSpike = 0.15f;
 };
 
 USTRUCT(BlueprintType, Blueprintable)
@@ -111,6 +132,10 @@ struct FVehicleEngineSimData
 	float TurboSpool = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
 	float TurboPressure = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Exhaust")
+	float ExhaustHeat = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Exhaust")
+	float BackfireIntensity = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float RevLimiterTimer = 0.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Force")

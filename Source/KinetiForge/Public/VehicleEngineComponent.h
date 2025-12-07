@@ -9,7 +9,7 @@
 #include "VehicleEngineComponent.generated.h"
 
 DECLARE_DYNAMIC_DELEGATE(FOnTurboBlowOffDelegate);
-DECLARE_DYNAMIC_DELEGATE(FOnBackFiringDelegate);
+DECLARE_DYNAMIC_DELEGATE(FOnBackfiringDelegate);
 
 class UVehicleClutchComponent;
 
@@ -27,18 +27,21 @@ public:
 	FVehicleNaturallyAspiratedEngineConfig NAConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleEngineTurboConfig TurboConfig;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	FVehicleEngineExhaustConfig ExhaustConfig;
 
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 
 	bool bShouldTriggerTurboBlowOffCallback = false;
-	bool bShouldTriggerAntiLagCallback = false;
+	bool bShouldTriggerBackfiringCallback = false;
 	TArray<FOnTurboBlowOffDelegate> TurboBlowOffCallbacks;
-	TArray<FOnBackFiringDelegate> AntiLagCallbacks;
+	TArray<FOnBackfiringDelegate> BackfiringCallbacks;
 	FVehicleEngineSimData SimData;
 
 	void EngineAcceleration();
+	void UpdateExhaust();
 	float SafeDivide(float a, float b);
 
 public:	
@@ -88,13 +91,16 @@ public:
 	float GetTurboPressure() { return SimData.TurboPressure; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	float GetBackfireIntensity() { return SimData.BackfireIntensity; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetRealThrottleValue() { return SimData.RealThrottle; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate InOnTurboBlowOff);
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
-	void BindEventToOnBackFiring(FOnBackFiringDelegate InOnBackFiring);
+	void BindEventToOnBackfiring(FOnBackfiringDelegate InOnBackfiring);
 
 private:
 	float RPMToRad = PI / 30;

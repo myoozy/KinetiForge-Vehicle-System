@@ -61,6 +61,7 @@ public:
 	FVector2D ZYPlaneToSuspensionPlane(FVector V3D);
 	FVector GetCamberToeCasterFromCurve();
 
+	// all data during simulation
 	FVehicleSuspensionSimData SimData;
 
 protected:

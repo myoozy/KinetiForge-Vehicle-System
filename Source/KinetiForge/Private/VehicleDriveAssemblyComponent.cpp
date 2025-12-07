@@ -1021,8 +1021,11 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 			// generate new axle
 			UVehicleAxleAssemblyComponent* Axle = Cast<UVehicleAxleAssemblyComponent>
 				(GetOwner()->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), false, FTransform(), false));
-			Axle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
-			Axle->SetRelativeLocation(AxleConfig.AxlePosition);
+			if (IsValid(Axle))
+			{
+				Axle->AttachToComponent(Carbody, FAttachmentTransformRules::KeepRelativeTransform);
+				Axle->SetRelativeLocation(AxleConfig.AxlePosition);
+			}
 
 			if (IsValid(AxleConfig.AxleConfig))
 			{

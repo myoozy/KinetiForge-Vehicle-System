@@ -30,8 +30,13 @@ bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* InTargetWheelC
 
 		//initialize the cache, so that damping will not be Computed twice when game starts
 		CachedSpringStiffness  = TargetWheelComponent->SuspensionSpringConfig.SpringStiffness;
+		
+		return true;
 	}
-	return TargetWheelComponent != nullptr;
+	else
+	{
+		return false;
+	}
 }
 
 void FVehicleSuspensionSolver::SetSprungMass(float NewSprungMass)
@@ -104,6 +109,8 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 
 void FVehicleSuspensionSolver::StartUpdateSolidAxle(float InSteeringAngle)
 {
+	if (!IsValid(TargetWheelComponent))return;
+
 	SimData.SteeringAngle = InSteeringAngle;
 	PrepareSimulation();
 	ComputeRayCastLocation();
@@ -116,6 +123,8 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	const FVector& InKnuckleWorldPos,
 	const FVector& InAxleWorldDirection)
 {
+	if (!IsValid(TargetWheelComponent))return;
+
 	SimData.PhysicsDelatTime = InDeltaTime;
 	SimData.SwaybarForce = InSwaybarForce;
 
@@ -155,6 +164,8 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 
 void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
 {
+	if (!IsValid(TargetWheelComponent))return;
+
 	SimData.SuspensionExtensionRatio = InExtensionRatio;
 	SimData.SteeringAngle = InSteeringAngle;
 

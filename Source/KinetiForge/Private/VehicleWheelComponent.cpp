@@ -198,6 +198,9 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	}
 
 	/**** Anti-Pitch ****/
+	// attention: the anti-pitch geometry does not work in this way,
+	// the logic will be fixed in the future (when I find a better solution)
+	// the axis of the suspension is the forward vector of the component
 	const FVector& ArmRelativeAxis = Suspension.SimData.ComponentRelativeForwardVector;
 	FVector ArmAxis = Suspension.SimData.CarbodyWorldTransform.TransformVectorNoScale(ArmRelativeAxis);
 	FVector ArmAxisProjOnGround = FVector::VectorPlaneProject(ArmAxis, HitStruct.ImpactNormal);
@@ -238,16 +241,28 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	// ...
 
-	//check if staticloadmass should be calculated again
+	// check if sprungmass should be updated
 	FVector NewRelativeLocation = GetRelativeLocation();
 	if ((CachedComponentRelativeLocation - NewRelativeLocation).SquaredLength() > 1.f)
 	{
 		if (IsValid(WheelCoordinator))WheelCoordinator->NotifyWheelMoved();
 	}
 
+	// check if suspension damping need to be updated
 	Suspension.CheckIsDampingDirty();
 
-	if (bUpdateAnimAutomatically) UpdateWheelAnim(DeltaTime, 0);
+	// update animation
+	if (bUpdateAnimAutomatically)
+	{
+		UpdateWheelAnim(DeltaTime, 0);
+	}
+
+	// smoothen the slip
+	Wheel.SmoothenSlip(DeltaTime, 10.f);
+	/*
+	* get the smoothend slip:
+	* Wheel.SmoothendSlipRatio; Wheel.SmoothendSlipAngle;
+	*/
 }
 
 Chaos::FRigidBodyHandle_Internal* UVehicleWheelComponent::GetInternalHandle(UPrimitiveComponent* Component, FName BoneName)
@@ -317,11 +332,11 @@ float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float L
 {
 	// if the slip velocity is too low, should scale the affection of slip ratio, 0.5 is just magic number
 	float SpeedScaleX = FMath::Clamp(0.5f * Wheel.SimData.LongSlipVelocity, -1.f, 1.f);
-	float NormalizedSx = Wheel.SimData.SlipRatio * LongitudinalScale * SpeedScaleX;
+	float NormalizedSx = Wheel.SmoothenedSlipRatio * LongitudinalScale * SpeedScaleX;
 
 	// also if the lateral velocity is too low, should scale the affection of slip angle
 	float SpeedScaleY = FMath::Clamp(0.5f * Wheel.SimData.LocalLinearVelocity.Y, -1.f, 1.f);
-	float NormalizedSy = 0.011111f * Wheel.SimData.SlipAngle * LateralScale * SpeedScaleY;
+	float NormalizedSy = 0.011111f * Wheel.SmoothenedSlipAngle * LateralScale * SpeedScaleY;
 
 	// combined slip
 	float NormalizedSc = FMath::Sqrt(NormalizedSx * NormalizedSx + NormalizedSy * NormalizedSy);

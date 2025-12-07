@@ -24,7 +24,7 @@ High-performance, modular vehicle physics system for Unreal Engine 5, fully impl
 
     - Tire forces based on force analysis, curve-tunable, supporting camber/toe effects, friction ellipse, combined slip
 
-    - Suspension supports Telescopic Fork, MacPherson, double wishbone, trailing arm, with adjustable stiffness, damping, preload
+    - Suspension supports Telescopic Fork, MacPherson, double wishbone, trailing arm, with tunable camber/toe/caster change and anti-pitch/anti-roll geometry
 
     - Engine, clutch, gearbox, and differential are fully simulated with inertia, turbo, stall/reverse support, LSD
 
@@ -87,7 +87,7 @@ Special thanks to all developers who have provided suggestions and feedback!
 
    - 轮胎力基于合理的受力分析，可通过曲线微调，支持 camber/toe 影响、摩擦椭圆、联合滑移
 
-   - 悬挂支持直线、麦弗逊、双叉臂、拖曳臂，参数可调，支持自定义 camber/toe 曲线
+   - 悬挂支持直线、麦弗逊、双叉臂、拖曳臂，参数可调，支持自定义 camber/toe 曲线，支持抗俯仰/侧倾悬挂
 
    - 引擎、离合器、变速箱、差速器均基于物理模拟，支持涡轮增压、熄火、反转、限滑差速器
 

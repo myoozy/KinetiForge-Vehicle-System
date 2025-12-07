@@ -40,9 +40,6 @@ void UVehicleEngineComponent::EngineAcceleration()
 	// absolut engine rpm
 	float AbsolutRPM = FMath::Abs(SimData.EngineRPM);
 
-	// normalized rpm
-	float NormalizedRPM = SafeDivide(AbsolutRPM, NAConfig.EngineMaxRPM);
-
 	// internal friction of the engine
 	float FrictionTorque = NAConfig.StartFriction + NAConfig.FrictionCoefficient * AbsolutRPM;
 
@@ -67,7 +64,7 @@ void UVehicleEngineComponent::EngineAcceleration()
 
 	//turbo charged and na have different behavior
 	//check if engine is really turbo charged
-	if (TurboConfig.MaxBoostPressure > SMALL_NUMBER)
+	if (TurboConfig.MaxBoostPressure > SMALL_NUMBER && NAConfig.EngineIdleRPM > 0.f)
 	{
 		float RPMFactor = FMath::GetMappedRangeValueClamped(
 			FVector2D(0.f, TurboConfig.FullBoostRPM),
@@ -199,13 +196,20 @@ void UVehicleEngineComponent::EngineAcceleration()
 	
 	// get the effective engine torque (the power)
 	SimData.EffectiveTorque = IndicatedTorque - FrictionTorque;
+}
 
-	/********************* Unburnt Fuel Logic **********************/
+void UVehicleEngineComponent::UpdateExhaust()
+{
+	// absolut engine rpm
+	float AbsolutRPM = FMath::Abs(SimData.EngineRPM);
+
+	// normalized rpm
+	float NormalizedRPM = SafeDivide(AbsolutRPM, NAConfig.EngineMaxRPM);
 
 	// check if engine is slowing down (and not idling)
-	bool bIsDecelerating = 
-		IndicatedTorque < FrictionTorque
-		&& AbsolutRPM > (NAConfig.EngineIdleRPM * 1.5f)
+	bool bIsDecelerating =
+		SimData.EffectiveTorque < 0.f
+		&& AbsolutRPM >(NAConfig.EngineIdleRPM * 1.5f)
 		&& AbsolutRPM < NAConfig.EngineMaxRPM;
 
 	// get the AFR or lambda
@@ -221,7 +225,8 @@ void UVehicleEngineComponent::EngineAcceleration()
 	if (SimData.bFuelInjection)
 	{
 		// approximate fuel flow
-		float BaseFuelFlow = NormalizedRPM * SimData.RealThrottle;
+		float BaseFuelFlow = SimData.bIsAntiLagTriggered ? 
+			SimData.TurboSpool * SimData.TurboSpool : NormalizedRPM * SimData.RealThrottle;
 
 		// if spark is off, or if anti-lag is on
 		// all the fuel will be sent to the exhaust
@@ -230,14 +235,62 @@ void UVehicleEngineComponent::EngineAcceleration()
 		float UnburntFuel = bAllInExhaust ?
 			BaseFuelFlow : BaseFuelFlow * FMath::Max(0.f, 1.f - TargetLamda);
 
-		SimData.UnburntFuelBuffer += NAConfig.BackfireAccumulationRate * UnburntFuel * SimData.PhysicsDeltaTime;
+		// accumulate unburnt fuel
+		SimData.UnburntFuelBuffer += NAConfig.UnburntFuelAccumulationRate * UnburntFuel * SimData.PhysicsDeltaTime;
 	}
 
 	// higher lambda or higher rpm causes the unburnt fuel decay faster
-	float UnBurntFuelDecayAmount = NAConfig.ExhaustScavengingStrength * SimData.UnburntFuelBuffer * TargetLamda * NormalizedRPM;
-	
+	float UnBurntFuelDecayAmount = ExhaustConfig.ExhaustScavengingStrength * SimData.UnburntFuelBuffer * TargetLamda * NormalizedRPM;
+
+	// update unburnt fuel
 	SimData.UnburntFuelBuffer -= UnBurntFuelDecayAmount * SimData.PhysicsDeltaTime;
+
+	// get target exhaust heat
+	// high rpm & lot of throttle = heat
+	float TargetHeat = NormalizedRPM * SimData.RealThrottle;
+
+	// get interp speed 
+	float HeatInterpSpeed = TargetHeat > SimData.ExhaustHeat ? 
+		ExhaustConfig.HeatUpRate : ExhaustConfig.CoolDownRate;
+
+	// update exhaust heat
+	SimData.ExhaustHeat = FMath::FInterpTo(
+		SimData.ExhaustHeat,
+		TargetHeat,
+		SimData.PhysicsDeltaTime,
+		HeatInterpSpeed
+	);
+
+	SimData.BackfireIntensity = 0.f;
+
+	if (SimData.ExhaustHeat > ExhaustConfig.FlashPoint && SimData.UnburntFuelBuffer > ExhaustConfig.PopFuelThreshold)
+	{
+		float Intensity = FMath::GetMappedRangeValueUnclamped(
+			FVector2D(
+				ExhaustConfig.PopFuelThreshold, 
+				ExhaustConfig.FlameFuelThreshold
+			),
+			FVector2D(0.f, 1.f),
+			SimData.UnburntFuelBuffer
+		);
+
+		Intensity = FMath::Max(0.f, Intensity);
+
+		float Chance = ExhaustConfig.IgnitionProbability * Intensity;
+
+		if (FMath::FRand() < Chance)
+		{
+			SimData.BackfireIntensity = Intensity;
+			SimData.UnburntFuelBuffer -= SimData.UnburntFuelBuffer * Intensity;
+			float HeatAdded = ExhaustConfig.BackfireHeatSpike * Intensity;
+			SimData.ExhaustHeat += HeatAdded;
+			bShouldTriggerBackfiringCallback = true;
+		}
+	}
+
+	// clamp the value
 	SimData.UnburntFuelBuffer = FMath::Max(0.f, SimData.UnburntFuelBuffer);
+	SimData.ExhaustHeat = FMath::Clamp(SimData.ExhaustHeat, 0.f, 1.f);
 }
 
 float UVehicleEngineComponent::SafeDivide(float a, float b)
@@ -275,18 +328,18 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		}
 	}
 
-	if (bShouldTriggerAntiLagCallback)
+	if (bShouldTriggerBackfiringCallback)
 	{
-		bShouldTriggerAntiLagCallback = false;
-		for (FOnBackFiringDelegate AntiLagCallback : AntiLagCallbacks)
+		bShouldTriggerBackfiringCallback = false;
+		for (FOnBackfiringDelegate BackfiringCallback : BackfiringCallbacks)
 		{
-			if (AntiLagCallback.IsBound())
+			if (BackfiringCallback.IsBound())
 			{
-				AntiLagCallback.Execute();
+				BackfiringCallback.Execute();
 			}
 			else
 			{
-				AntiLagCallbacks.Remove(AntiLagCallback);
+				BackfiringCallbacks.Remove(BackfiringCallback);
 			}
 		}
 	}
@@ -329,7 +382,7 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 		}
 
 		//check if throttle is released and if idle is valid
-		if (SimData.RawThrottleInput < SMALL_NUMBER && NAConfig.EngineIdleRPM > 0)
+		if (SimData.RawThrottleInput < SMALL_NUMBER && NAConfig.EngineIdleRPM > 0.f)
 		{
 			//check if engine is idling
 			if (SimData.EngineRPM < NAConfig.EngineIdleRPM)
@@ -405,6 +458,7 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 	}
 
 	EngineAcceleration();
+	UpdateExhaust();
 }
 
 void UVehicleEngineComponent::Initialize()
@@ -489,10 +543,10 @@ void UVehicleEngineComponent::BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate 
 	}
 }
 
-void UVehicleEngineComponent::BindEventToOnBackFiring(FOnBackFiringDelegate InOnBackFiring)
+void UVehicleEngineComponent::BindEventToOnBackfiring(FOnBackfiringDelegate InOnBackFiring)
 {
-	if (AntiLagCallbacks.Find(InOnBackFiring) == INDEX_NONE)
+	if (BackfiringCallbacks.Find(InOnBackFiring) == INDEX_NONE)
 	{
-		AntiLagCallbacks.Add(InOnBackFiring);
+		BackfiringCallbacks.Add(InOnBackFiring);
 	}
 }

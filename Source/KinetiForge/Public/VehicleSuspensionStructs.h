@@ -44,7 +44,7 @@ struct FVehicleSuspensionKinematicsConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TEnumAsByte<ECollisionChannel> TraceChannel = ECollisionChannel::ECC_WorldDynamic;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "The location of the top mount relative to the pivot of the arm. It is under the coordinate of the wheel component, not car body."))
-	FVector TopMountPosition = FVector(0.f, 40.f, 45.f);
+	FVector TopMountPosition = FVector(0.f, 40.f, 35.f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The traveling distance of the strut"))
 	float Stroke = 20.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The length of the strut when the suspension is fully compressed."))
@@ -134,7 +134,7 @@ struct FVehicleSuspensionSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector ComponentUpVector = FVector(0.f);			//world
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector ComponentRelativeForwardVector = FVector(0.f);		//relative
+	FVector ComponentRelativeForwardVector = FVector(0.f);		//relative, also the axis of arm
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector WheelRightVector = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")

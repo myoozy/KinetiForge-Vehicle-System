@@ -34,8 +34,15 @@ public:
 		bool bDrawVelocity = true,
 		bool bDrawSlip = true,
 		bool bDrawInertia = true);
+	void SmoothenSlip(float InDeltaTime, float InInterpSpeed);
 
+	// all data during simulation
 	FVehicleWheelSimData SimData;
+
+	// e.g. for skid mark / sound
+	float SmoothenedSlipRatio = 0.f;
+	// e.g. for skid mark / sound
+	float SmoothenedSlipAngle = 0.f;
 
 protected:
 	UVehicleWheelComponent* TargetWheelComponent;
