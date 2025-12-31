@@ -198,8 +198,20 @@ public:
 	bool GetRayCastResult(FHitResult& OutHitResult, bool& OutRefinement);
 	bool GetRayCastResult() { return Suspension.SimData.bHitGround; }
 
-	UFUNCTION(BlueprintCallable, Category = "Suspension", meta = (ToolTip = "This is not the real location of the wheel center, but the approximated wheel location according to the raycast result"))
-	FVector GetRayCastWheelCenterWorldLocation();
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	FVector GetRayCastHitLocation();
+
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	float GetRayCastHitDistance() { return Suspension.SimData.HitDistance; }
+
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	FVector GetRayCastImpactPoint() { return Suspension.SimData.HitStruct.ImpactPoint; }
+
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	FTransform GetCarbodyWorldTransform() { return Suspension.SimData.CarbodyWorldTransform; }
+
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	FVector GetKnuckleRelativePosition() { return Suspension.SimData.KnuckleRelativePos; }
 
 	//debug draw
 	UFUNCTION(BlueprintCallable, Category = "Debug")

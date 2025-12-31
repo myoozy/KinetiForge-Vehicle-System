@@ -79,8 +79,8 @@ private:
 	void SuspensionBoxTrace();
 	void SuspensionSphereTraceNoRefinement();
 	void SuspensionMultiSphereTrace();
+	bool ShouldDoRefinedTrace();
 	void ComputeHitDistance(float EquivalentSphereTraceRadius = 0.f);
-	void IterateKnucklePos();	// only for macpherson or wishbone suspension, this funciton is not finished
 	void ComputeStraightSuspension();
 	void ComputeMacpherson();
 	void ComputeDoubleWishbone();

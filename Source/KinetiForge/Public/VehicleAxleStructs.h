@@ -20,6 +20,13 @@ enum class EVehicleAxleSuspensionType : uint8
 	Solid
 };
 
+UENUM(BlueprintType)
+enum class EVehicleSolidAxleAnimPivot : uint8
+{
+	Center,
+	Left,
+	Right
+};
 USTRUCT(BlueprintType, Blueprintable)
 struct FVehicleAxleConfig
 {

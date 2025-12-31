@@ -113,6 +113,11 @@ public:
 	void SetWheelPosition(float NewTrackWidth);
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void UpdateTrackWidth();
+	UFUNCTION(BlueprintCallable, Category = "Animation")
+	void UpdateSolidAxleAnim(
+		USceneComponent* InSolidAxleMesh,
+		EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint = EVehicleSolidAxleAnimPivot::Center
+	);
 
 	void SetWheelBase(float NewWheelBase) { SimData.WheelBase = NewWheelBase; }
 	void GetLinearVelocity(FVector& OutLocalVelocity, FVector& OutWorldVelocity);

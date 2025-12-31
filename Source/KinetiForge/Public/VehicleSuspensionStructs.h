@@ -16,18 +16,17 @@ enum class ESuspensionType : uint8
 UENUM(BlueprintType)
 enum class ESuspensionRayCastMode : uint8
 {
-	LineTrace					UMETA(ToolTip = "The fastest raycast mode."),
+	LineTrace					UMETA(ToolTip = "The fastest raycast mode. The Line Trace will start at outer side of the wheel."),
 	SphereTrace					UMETA(ToolTip = "Using sphere(radius is wheel radius) instead of line trace. If impact point is wrong(e.g. hit the wall), it will do sphere trace again."),
 	BoxTrace					UMETA(ToolTip = "Using a box (with 45deg of pitch displacement) to trace."),
 	SphereTraceNoRefinement		UMETA(ToolTip = "Using a small sphere to trace(radius = min(WheelRadius, WheelWidth * 0.5)."),
-	MultiSphereTrace			UMETA(ToolTip = "Similar to sphere trace. First it uses sphere trace. If the result is not valid(e.g. hit the wall), it will do box trace(to roughly check if there're obstacles). If box trace did hit, then it will do multi-sphere trace. The performance can be really bad in worst case. But normally the same as SphereTrace.")
+	MultiSphereTrace			UMETA(ToolTip = "Similar to sphere trace. First it uses sphere trace. If the result is not valid(e.g. hit the wall), it will do box trace(to roughly check if there're obstacles). If box trace did hit, then it will do multi-sphere trace. The performance can be really bad in worst case. But normally the same as SphereTrace. Some times not very stable.")
 };
 
 UENUM(BlueprintType)
 enum class EPositionToApplyForce : uint8
 {
 	ImpactPoint			UMETA(ToolTip = "Apply suspension and tire force at the impact point of the ray-casting"),
-	ImpactPointWithBias UMETA(ToolTip = "Apply force at ImpactPoint + WheelRightVector * HalfWheelWidth, which causes less roll"),
 	WheelCenter			UMETA(ToolTip = "Apply suspension and tire force at the center of wheel, which causes less pitch and roll")
 };
 
@@ -49,7 +48,7 @@ struct FVehicleSuspensionKinematicsConfig
 	float Stroke = 20.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The length of the strut when the suspension is fully compressed."))
 	float MinStrutLength = 30.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType != ESuspensionType::StraightLine", EditConditionHides, ClampMin = "0.0", ToolTip = "Unit: cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm"))
 	float ArmLength = 50.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "The distance of the wheel hub(where the wheel is mounted) to the wheel knuckle(where the arm and wheel-hub/strut is connected)."))
 	float AxialHubOffset = 5.f;
@@ -137,8 +136,8 @@ struct FVehicleSuspensionSimData
 	FVector ComponentRelativeForwardVector = FVector(0.f);		//relative, also the axis of arm
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector WheelRightVector = FVector(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector WheelOffsetToKnuckle = FVector(0.f);		//relative
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "From Knuckle to Center of wheel"))
+	FVector WheelCenterToKnuckle = FVector(0.f);		//relative, from knuckle to center of the wheel
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector KnuckleRelativePos = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")

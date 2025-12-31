@@ -326,8 +326,8 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics()
 	RightWheel->StartUpdateSolidAxlePhysics(SimData.RightWheelSteeringAngle);
 	LeftWheel->StartUpdateSolidAxlePhysics(SimData.LeftWheelSteeringAngle);
 
-	FVector LeftWorldPos = LeftWheel->GetRayCastWheelCenterWorldLocation();
-	FVector RightWorldPos = RightWheel->GetRayCastWheelCenterWorldLocation();
+	FVector LeftWorldPos = LeftWheel->GetRayCastHitLocation();
+	FVector RightWorldPos = RightWheel->GetRayCastHitLocation();
 
 	// get the world direction of the axle
 	FVector AxleDirection = (RightWorldPos - LeftWorldPos).GetSafeNormal();
@@ -537,6 +537,44 @@ void UVehicleAxleAssemblyComponent::UpdateTrackWidth()
 	SetWheelPosition(AxleConfig.TrackWidth);
 }
 
+void UVehicleAxleAssemblyComponent::UpdateSolidAxleAnim(USceneComponent* InSolidAxleMesh, EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint)
+{
+	if (!IsValid(LeftWheel) || !IsValid(RightWheel))return;
+
+	// get the position of the ball joint(connecting the wheel and the suspension) of each wheel
+	FVector LeftKnuckleRelativePos = LeftWheel->GetKnuckleRelativePosition();
+	FVector RightKnuckleRelativePos = RightWheel->GetKnuckleRelativePosition();
+
+	FVector LeftKnuckleWorldPos = Carbody->GetComponentTransform().TransformPositionNoScale(LeftKnuckleRelativePos);
+	FVector RightKnuckleWorldPos = Carbody->GetComponentTransform().TransformPositionNoScale(RightKnuckleRelativePos);
+
+	// get the world direction of the axle
+	FVector AxleDirection = (RightKnuckleWorldPos - LeftKnuckleWorldPos).GetSafeNormal();
+
+	// the center of axle under world coordinate
+	FVector AxleCenter = (RightKnuckleWorldPos + LeftKnuckleWorldPos) * 0.5f;
+
+	// get the relative rotation of the axle
+	FVector DefaultRight = FVector(0.f, 1.f, 0.f);
+	FQuat AxleRotation = FQuat::FindBetweenNormals(DefaultRight, AxleDirection);
+	InSolidAxleMesh->SetWorldRotation(AxleRotation);
+
+	switch (AxleMeshAnchorPoint)
+	{
+	case EVehicleSolidAxleAnimPivot::Center:
+		InSolidAxleMesh->SetWorldLocation(AxleCenter);
+		break;
+	case EVehicleSolidAxleAnimPivot::Left:
+		InSolidAxleMesh->SetWorldLocation(LeftKnuckleWorldPos);
+		break;
+	case EVehicleSolidAxleAnimPivot::Right:
+		InSolidAxleMesh->SetWorldLocation(RightKnuckleWorldPos);
+		break;
+	default:
+		break;
+	}
+}
+
 void UVehicleAxleAssemblyComponent::GetLinearVelocity(FVector& OutLocalVelocity, FVector& OutWorldVelocity)
 {
 	OutLocalVelocity = SimData.LocalLinearVelocity;
@@ -695,4 +733,3 @@ bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 
 	return IsValid(Differential);
 }
-

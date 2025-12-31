@@ -184,11 +184,6 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	case EPositionToApplyForce::ImpactPoint:
 		PosToApplyImpulse = HitStruct.ImpactPoint;
 		break;
-	case EPositionToApplyForce::ImpactPointWithBias:
-		WidthBias = Suspension.SimData.WheelRightVector * (Suspension.SimData.WheelPos * WheelConfig.Width * 0.5);
-		WidthBias = FVector::VectorPlaneProject(WidthBias, HitStruct.ImpactNormal);
-		PosToApplyImpulse = HitStruct.ImpactPoint + WidthBias;
-		break;
 	case EPositionToApplyForce::WheelCenter:
 		PosToApplyImpulse = Suspension.SimData.WheelWorldPos;
 		break;
@@ -198,7 +193,7 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	}
 
 	/**** Anti-Pitch ****/
-	// attention: the anti-pitch geometry does not work in this way,
+	// attention: the anti-pitch geometry does not work in this way in real life,
 	// the logic will be fixed in the future (when I find a better solution)
 	// the axis of the suspension is the forward vector of the component
 	const FVector& ArmRelativeAxis = Suspension.SimData.ComponentRelativeForwardVector;
@@ -476,7 +471,7 @@ bool UVehicleWheelComponent::GetRayCastResult(FHitResult& OutHitResult, bool& Ou
 	return Suspension.SimData.bHitGround;
 }
 
-FVector UVehicleWheelComponent::GetRayCastWheelCenterWorldLocation()
+FVector UVehicleWheelComponent::GetRayCastHitLocation()
 {
 	float DistanceToRayCastStart = FMath::Max(0.f, Suspension.SimData.HitDistance - WheelConfig.Radius);
 	FVector OffsetToRayCastStart = Suspension.SimData.ComponentUpVector * DistanceToRayCastStart;
