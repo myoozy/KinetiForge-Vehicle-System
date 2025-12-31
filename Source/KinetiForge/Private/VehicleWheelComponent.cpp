@@ -588,6 +588,11 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 
 FTransform UVehicleWheelComponent::GetSkidMarkWorldTransform(float InSkidMarkBias, float InSkidMarkScale)
 {
+	if (SuspensionKinematicsConfig.RayCastMode == ESuspensionRayCastMode::LineTrace)
+	{
+		// the impact point of line trace is always on the outer side of the wheel
+		InSkidMarkBias -= WheelConfig.Width * 0.5f;
+	}
 	FVector N = Suspension.SimData.HitStruct.ImpactNormal;
 	FQuat q = FRotationMatrix::MakeFromZX(N, Wheel.SimData.WorldLinearVelocity).ToQuat();
 	FVector v = Suspension.SimData.HitStruct.ImpactPoint + N;	//to avoid spawned in the ground
