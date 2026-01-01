@@ -199,17 +199,17 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	const FVector& ArmRelativeAxis = Suspension.SimData.ComponentRelativeForwardVector;
 	FVector ArmAxis = Suspension.SimData.CarbodyWorldTransform.TransformVectorNoScale(ArmRelativeAxis);
 	FVector ArmAxisProjOnGround = FVector::VectorPlaneProject(ArmAxis, HitStruct.ImpactNormal);
-	float TireForceCausingAntiPitch = FVector::DotProduct(Wheel.SimData.TyreForce, ArmAxisProjOnGround.GetSafeNormal());
+	float TireForceCausingAntiPitch = FVector::DotProduct(Wheel.SimData.TireForce, ArmAxisProjOnGround.GetSafeNormal());
 	FVector AntiPitchForce = (ArmAxis - ArmAxisProjOnGround) * TireForceCausingAntiPitch;
 
 	float dt = Wheel.SimData.PhysicsDeltaTime;
 	FVector SuspensionForceProj = Suspension.SimData.SuspensionForceVector.ProjectOnTo(HitStruct.ImpactNormal);
-	FVector LinearImpulse = (Wheel.SimData.TyreForce + SuspensionForceProj + AntiPitchForce) * dt;
+	FVector LinearImpulse = (Wheel.SimData.TireForce + SuspensionForceProj + AntiPitchForce) * dt;
 
 	if (Chaos::FRigidBodyHandle_Internal* RigidHandle = GetInternalHandle(Carbody, NAME_None))
 	{
 		// split linear force and angular force
-		//FVector TotalImpulse = (Wheel.SimData.TyreForce + Suspension.SimData.SuspensionForceVector) * dt;
+		//FVector TotalImpulse = (Wheel.SimData.TireForce + Suspension.SimData.SuspensionForceVector) * dt;
 		const Chaos::FVec3 WorldCOM = Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(RigidHandle);
 		const Chaos::FVec3 AngularImpulse = Chaos::FVec3::CrossProduct(PosToApplyImpulse - WorldCOM, LinearImpulse);
 
@@ -428,7 +428,7 @@ float UVehicleWheelComponent::ComputeFeedBackTorque()
 {
 	// get machanism trail
 	FVector Arm = WheelConfig.Radius * Suspension.SimData.StrutDirection.ProjectOnToNormal(Suspension.SimData.HitStruct.ImpactNormal);
-	FVector Torque = FVector::CrossProduct(Arm, Wheel.SimData.TyreForce);
+	FVector Torque = FVector::CrossProduct(Arm, Wheel.SimData.TireForce);
 	return FVector::DotProduct(Suspension.SimData.StrutDirection, Torque);
 }
 

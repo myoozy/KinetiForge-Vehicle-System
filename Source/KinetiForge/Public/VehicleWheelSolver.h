@@ -49,31 +49,30 @@ protected:
 
 private:
 	void UpdateABS(float TargetBrakeTorque, bool bHitGround);
-	void ComputeDynamicFrictionMultiplier(const FHitResult& HitStruct);
-	void ComputeLinearVelocity(
+	void UpdateDynamicFrictionMultiplier(const FHitResult& HitStruct);
+	void UpdateLinearVelocity(
 		const FVector& LongForceDir,
 		const FVector& LatForceDir,
 		const FHitResult& HitStruct );
 	void WheelAcceleration(float AccelerationTolerance = 0.1);
-	void ComputeSlipAngle(bool bHitGround);
-	void ComputeSlipRatio(bool bHitGround);
-	float ComputeConstraintLongForce(float SprungMass);
-	float ComputeConstraintLatForce(float SprungMass);
-	FVector2D ComputeGravityProjectionOnSlope(
+	void UpdateSlipAngle(bool bHitGround);
+	void UpdateSlipRatio(bool bHitGround);
+	float CalculateConstraintLongForce(float SprungMass);
+	float CalculateConstraintLatForce(float SprungMass);
+	void UpdateGravityCompensationOnSlope(
 		float PositiveSuspensionForce,
+		bool bHitGround,
 		const FVector& LongForceDir,
 		const FVector& LatForceDir);
-	FVector2D ComputeTireSmoothingFactor();
 	float CalculateScaledWheelLoad(
 		float SprungMass,
 		float WheelLoad,
 		float Saturation);
-	void ComputeTireForce(
+	void UpdateTireForce(
 		float SprungMass,
 		float PositiveSuspensionForce,
 		bool bHitGround,
 		const FVector& LongForceDirUnNorm,
-		const FVector& LatForceDirUnNorm,
-		const FVector2D& GravityProjOnSlope);
+		const FVector& LatForceDirUnNorm);
 	float SafeDivide(float a, float b);
 };

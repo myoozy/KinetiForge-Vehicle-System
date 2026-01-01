@@ -41,11 +41,11 @@ struct FVehicleTireConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	ETireFrictionCombineMode TireFrictionCombineMode = ETireFrictionCombineMode::Average;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Higher value makes the wheel softer. If the vahicle is not stable at low physics sim frequency/low vehicle weight, try to set this higher."))
-	FVector2D RelaxationLength = FVector2D(0.005, 0.01);
+	FVector2D RelaxationLength = FVector2D(0.3, 0.5);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This value determines the length of the semi-axis of the friction ellipse. The larger this value, the greater the longitudinal force that the tire can provide."))
 	float MaxFx = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This value determines the length of the semi-axis of the friction ellipse. The larger this value, the greater the lateral force that the tire can provide."))
-	float MaxFy = 1.1f;
+	float MaxFy = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float WheelLoadInfluenceFactor = 0.8;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Input: absolute value of slip ratio; Output: normalized unscaled longitudinal tire force; If this curve is not set, the tire will be treated as a rigid body in the longitudinal direction."))
@@ -56,6 +56,10 @@ struct FVehicleTireConfig
 	UCurveFloat* Gx = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Input: absolute value of slip ratio; Output: scaling factor for Fy; Through this curve, the distribution of lateral forces can be manually adjusted. If no settings are made, the distribution of lateral forces will follow the classic friction ellipse."))
 	UCurveFloat* Gy = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
+	FVector2D StictionSpeedThreshold = FVector2D(0.5f, 1.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
+	float ParkingResponseSpeed = 1.f;
 };
 
 USTRUCT(BlueprintType)
@@ -124,11 +128,13 @@ struct FVehicleWheelSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float TorqueFromGroundInteraction = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float LongForce = 0.f;
+	FVector2D MFTireForce2D = FVector2D(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float LatForce = 0.f;
+	FVector2D GravityCompensationForce = FVector2D(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	FVector TyreForce = FVector(0.f, 0.f, 0.f);
+	FVector2D TireForce2D = FVector2D(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
+	FVector TireForce = FVector(0.f, 0.f, 0.f);
 
 	//Physics
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
