@@ -421,7 +421,8 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 	Smoothing *= Scale;
 
 	// clamp between 0 to 1
-	Smoothing = FMath::Clamp(Smoothing, 0.f, 1.f);
+	Smoothing.X = FMath::Clamp(Smoothing.X, 0.f, 1.f);
+	Smoothing.Y = FMath::Clamp(Smoothing.Y, 0.f, 1.f);
 
 	SimData.GravityCompensationForce.X += (GravityComp.X - SimData.GravityCompensationForce.X) * Smoothing.X;
 	SimData.GravityCompensationForce.Y += (GravityComp.Y - SimData.GravityCompensationForce.Y) * Smoothing.Y;
@@ -522,7 +523,7 @@ void FVehicleWheelSolver::UpdateTireForce(
 
 	// relaxation length
 	float Distance = SimData.PhysicsDeltaTime * FMath::Abs(SimData.LocalLinearVelocity.X);
-	FVector2D RelaxationLengthSmoothing = FVector2D(Distance) / FMath::Max(TireConfig.RelaxationLength, SMALL_NUMBER);
+	FVector2D RelaxationLengthSmoothing = FVector2D(Distance) / FVector2D::Max(TireConfig.RelaxationLength, FVector2D(SMALL_NUMBER));
 
 	// smoothing factor under stiction condition (low speed)
 	float Scale = TireConfig.ParkingResponseSpeed;
@@ -535,8 +536,11 @@ void FVehicleWheelSolver::UpdateTireForce(
 		FVector2D(0.f, 1.f),
 		FMath::Abs(SimData.LocalLinearVelocity.X)
 	);
+
 	FVector2D SmoothingFactor = FMath::Lerp(StictionSmoothing, RelaxationLengthSmoothing, Alpha);
-	SmoothingFactor = FMath::Clamp(SmoothingFactor, 0.f, 1.f);
+	SmoothingFactor.X = FMath::Clamp(SmoothingFactor.X, 0.f, 1.f);
+	SmoothingFactor.Y = FMath::Clamp(SmoothingFactor.Y, 0.f, 1.f);
+
 	SimData.MFTireForce2D += (TargetTireForce - SimData.MFTireForce2D) * SmoothingFactor;
 
 	// final tire force, magic formula + gravity
