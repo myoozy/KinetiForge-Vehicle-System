@@ -45,7 +45,7 @@ struct FVehicleTireConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This value determines the length of the semi-axis of the friction ellipse. The larger this value, the greater the longitudinal force that the tire can provide."))
 	float MaxFx = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This value determines the length of the semi-axis of the friction ellipse. The larger this value, the greater the lateral force that the tire can provide."))
-	float MaxFy = 1.f;
+	float MaxFy = 1.1f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float WheelLoadInfluenceFactor = 0.8;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Input: absolute value of slip ratio; Output: normalized unscaled longitudinal tire force; If this curve is not set, the tire will be treated as a rigid body in the longitudinal direction."))
