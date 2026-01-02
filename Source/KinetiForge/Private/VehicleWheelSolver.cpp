@@ -430,6 +430,9 @@ void FVehicleWheelSolver::UpdateTireForce(
 	const FVector& LongForceDirUnNorm,
 	const FVector& LatForceDirUnNorm)
 {
+	UpdateSlipRatio(bHitGround);
+	UpdateSlipAngle(bHitGround);
+
 	if (!bHitGround)
 	{
 		SimData.MFTireForce2D = FVector2D(0.f);
@@ -439,9 +442,6 @@ void FVehicleWheelSolver::UpdateTireForce(
 	}
 
 	FVehicleTireConfig& TireConfig = TargetWheelComponent->TireConfig;
-
-	UpdateSlipRatio(bHitGround);
-	UpdateSlipAngle(bHitGround);
 
 	// Constraint tire force
 	FVector2D ConstraintForce = FVector2D(
