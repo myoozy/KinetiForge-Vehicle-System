@@ -488,12 +488,13 @@ void FVehicleWheelSolver::UpdateTireForce(
 
 	// lerp between constraint force and magic formula force
 	FVector2D V = FVector2D(0.f);
-	V.X = FMath::Max(FMath::Abs(SimData.LocalLinearVelocity.X), FMath::Abs(SimData.LongSlipVelocity));
+	V.X = FMath::Max(FMath::Abs(SimData.LocalLinearVelocity.X), FMath::Abs(SimData.AngularVelocity * SimData.R));
 	V.Y = FMath::Abs(SimData.LocalLinearVelocity.Y);
+	float ScalarV = V.Length();
 	float Alpha = FMath::GetMappedRangeValueClamped(
-		FMath::Square(TireConfig.StictionSpeedThreshold),
+		TireConfig.StictionSpeedThreshold,
 		FVector2D(0.f, 1.f),
-		V.SquaredLength()
+		ScalarV
 	);
 	TargetTireForce = FMath::Lerp(ConstraintForce, TargetTireForce, Alpha);
 
@@ -508,8 +509,7 @@ void FVehicleWheelSolver::UpdateTireForce(
 	}
 
 	// relaxation length
-	float Speed = FMath::Max(FMath::Abs(SimData.LocalLinearVelocity.X), FMath::Abs(SimData.AngularVelocity * SimData.R));
-	float Distance = SimData.PhysicsDeltaTime * Speed;
+	float Distance = SimData.PhysicsDeltaTime * ScalarV;
 	FVector2D RelaxationLengthSmoothing = FVector2D(Distance) / FVector2D::Max(TireConfig.RelaxationLength, FVector2D(SMALL_NUMBER));
 
 	// smoothing factor under stiction condition (low speed)
@@ -518,12 +518,6 @@ void FVehicleWheelSolver::UpdateTireForce(
 	StictionSmoothing *= Scale;
 
 	// lerp and smoothen
-	Alpha = FMath::GetMappedRangeValueClamped(
-		TireConfig.StictionSpeedThreshold,
-		FVector2D(0.f, 1.f),
-		FMath::Abs(SimData.LocalLinearVelocity.X)
-	);
-
 	FVector2D SmoothingFactor = FMath::Lerp(StictionSmoothing, RelaxationLengthSmoothing, Alpha);
 	SmoothingFactor.X = FMath::Clamp(SmoothingFactor.X, 0.f, 1.f);
 	SmoothingFactor.Y = FMath::Clamp(SmoothingFactor.Y, 0.f, 1.f);

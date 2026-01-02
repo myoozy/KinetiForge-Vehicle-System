@@ -41,7 +41,7 @@ struct FVehicleTireConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	ETireFrictionCombineMode TireFrictionCombineMode = ETireFrictionCombineMode::Average;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Higher value makes the wheel softer. If the vahicle is not stable at low physics sim frequency/low vehicle weight, try to set this higher."))
-	FVector2D RelaxationLength = FVector2D(0.3, 0.5);
+	FVector2D RelaxationLength = FVector2D(0.1f, 0.2f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This value determines the length of the semi-axis of the friction ellipse. The larger this value, the greater the longitudinal force that the tire can provide."))
 	float MaxFx = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This value determines the length of the semi-axis of the friction ellipse. The larger this value, the greater the lateral force that the tire can provide."))
