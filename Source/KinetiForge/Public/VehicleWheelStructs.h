@@ -108,8 +108,6 @@ struct FVehicleWheelSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AntiBrake")
 	bool bABSTriggered = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	FVector WorldLinearVelocity = FVector(0.f, 0.f, 0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	FVector2D LocalLinearVelocity = FVector2D(0.f, 0.f);
 
 	//Force

@@ -102,6 +102,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 		break;
 	}
 
+	UpdateImpactPointWorldVelocity();
 	ComputeSuspensionForce();
 }
 
@@ -155,6 +156,9 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	// have to calculate the 2d position of the ball joint, to decide the raycast start for next frame
 	FVector KnuckleLocalPos = SimData.RelativeTransform.InverseTransformPositionNoScale(SimData.KnuckleRelativePos);
 	SimData.KnucklePos2D = ZYPlaneToSuspensionPlane(KnuckleLocalPos);
+
+	// update velocity
+	UpdateImpactPointWorldVelocity();
 
 	// get suspension force
 	ComputeSuspensionForce();
@@ -277,7 +281,7 @@ void FVehicleSuspensionSolver::DrawSuspensionForce(float Duration, float Thickne
 	const FTransform& CarbodyTrans = SimData.CarbodyWorldTransform;
 
 	FVector TempStart = CarbodyTrans.TransformPositionNoScale(SimData.TopMountRelativePos);
-	FVector TempEnd = TempStart + SimData.SuspensionForceVector * Length * 0.01;
+	FVector TempEnd = TempStart + SimData.HitStruct.ImpactNormal * SimData.ForceAlongImpactNormal * Length * 0.01;
 	DrawDebugLine(TempWorld, TempStart, TempEnd, TempColor, false, Duration, 0, Thickness);
 }
 
@@ -516,35 +520,26 @@ void FVehicleSuspensionSolver::SuspensionRayCast()
 		return;
 	}
 
-	//switch to line trace if the suspension is completly compressed
-	//or if the raycastlength is too small
-	if (SimData.RayCastLength < 1.f || SimData.HitDistance <= TargetWheelComponent->WheelConfig.Radius)
+	switch (TargetWheelComponent->SuspensionKinematicsConfig.RayCastMode)
 	{
+	case ESuspensionRayCastMode::LineTrace:
 		SuspensionLineTrace();
-	}
-	else
-	{
-		switch (TargetWheelComponent->SuspensionKinematicsConfig.RayCastMode)
-		{
-		case ESuspensionRayCastMode::LineTrace:
-			SuspensionLineTrace();
-			break;
-		case ESuspensionRayCastMode::SphereTrace:
-			SuspensionSphereTrace();
-			break;
-		case ESuspensionRayCastMode::BoxTrace:
-			SuspensionBoxTrace();
-			break;
-		case ESuspensionRayCastMode::SphereTraceNoRefinement:
-			SuspensionSphereTraceNoRefinement();
-			break;
-		case ESuspensionRayCastMode::MultiSphereTrace:
-			SuspensionMultiSphereTrace();
-			break;
-		default:
-			SuspensionLineTrace();
-			break;
-		}
+		break;
+	case ESuspensionRayCastMode::SphereTrace:
+		SuspensionSphereTrace();
+		break;
+	case ESuspensionRayCastMode::BoxTrace:
+		SuspensionBoxTrace();
+		break;
+	case ESuspensionRayCastMode::SphereTraceNoRefinement:
+		SuspensionSphereTraceNoRefinement();
+		break;
+	case ESuspensionRayCastMode::MultiSphereTrace:
+		SuspensionMultiSphereTrace();
+		break;
+	default:
+		SuspensionLineTrace();
+		break;
 	}
 }
 
@@ -719,39 +714,8 @@ bool FVehicleSuspensionSolver::ShouldDoRefinedTrace()
 void FVehicleSuspensionSolver::ComputeHitDistance(float EquivalentSphereTraceRadius)
 {
 	float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	float TargetHitDistance = SimData.bHitGround ? 
+	SimData.HitDistance = SimData.bHitGround ?
 		SimData.HitStruct.Distance + EquivalentSphereTraceRadius : SimData.RayCastLength + WheelRadius;
-
-	// if stroke is 0, never smoothen hit distance
-	// so that the suspension can roughly simulate a soft body wheel
-	bool bIsStrokeValid = TargetWheelComponent->SuspensionKinematicsConfig.Stroke > SMALL_NUMBER;
-
-	// if the suspension is completely compressed
-	// we can smoothen the hit distance
-	if ((TargetHitDistance < WheelRadius || SimData.HitDistance < WheelRadius) && bIsStrokeValid)
-	{
-		float GameFrequency = SafeDivide(1.f, SimData.PhysicsDelatTime);
-		float Rate = -SimData.HitDistanceRate;
-		float UnDampedFrequency = FMath::Max(10.f, GameFrequency * 0.1f);	// magic number
-		float DampingRatio = 1.f;
-		FMath::SpringDamper(
-			SimData.HitDistance,
-			Rate,
-			TargetHitDistance,
-			0.f,
-			SimData.PhysicsDelatTime,
-			UnDampedFrequency,
-			DampingRatio
-		);
-		SimData.HitDistanceRate = -Rate;
-	}
-	else
-	{
-		float LastHitDistance = SimData.HitDistance;
-		SimData.HitDistance = TargetHitDistance;
-		SimData.HitDistanceRate = SafeDivide(LastHitDistance - SimData.HitDistance, SimData.PhysicsDelatTime);
-	}
-
 	float HitDistanceNoBias = FMath::Max(0.f, SimData.HitDistance - WheelRadius);
 	SimData.SuspensionExtensionRatio = SafeDivide(HitDistanceNoBias, SimData.RayCastLength);
 }
@@ -849,6 +813,36 @@ void FVehicleSuspensionSolver::ComputeDoubleWishbone()
 	SimData.WheelWorldPos = SimData.CarbodyWorldTransform.TransformPositionNoScale(SimData.WheelRelativeTransform.GetLocation());
 }
 
+void FVehicleSuspensionSolver::UpdateImpactPointWorldVelocity()
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelLinearVelocity);
+
+	if (SimData.HitStruct.bBlockingHit)
+	{
+		FVector LinVelWorldA = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(
+			TargetWheelComponent->GetCarbody(), 
+			SimData.HitStruct.ImpactPoint, 
+			"NONE"
+		);
+		FVector LinVelWorldB = FVector(0.f);
+
+		if (IsValid(SimData.HitStruct.GetComponent()) && SimData.HitStruct.GetComponent()->Mobility != EComponentMobility::Static)
+		{
+			LinVelWorldB = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(
+				SimData.HitStruct.GetComponent(), 
+				SimData.HitStruct.ImpactPoint, 
+				SimData.HitStruct.BoneName
+			);
+		}
+
+		SimData.ImpactPointWorldVelocity = 0.01 * (LinVelWorldA - LinVelWorldB);
+	}
+	else
+	{
+		SimData.ImpactPointWorldVelocity = FVector(0.f);
+	}
+}
+
 void FVehicleSuspensionSolver::ComputeSuspensionForce()
 {
 	FVehicleSuspensionSpringConfig& Config = TargetWheelComponent->SuspensionSpringConfig;
@@ -862,45 +856,43 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce()
 
 	ComputeValidPreload();
 
-	float Frequency = SafeDivide(1, SimData.PhysicsDelatTime);
+	float DeltaTimeInv = SafeDivide(1.f, SimData.PhysicsDelatTime);
 
 	float SpringForce = Config.SpringStiffness * (SuspensionStroke - SimData.SuspensionCurrentLength) + SimData.ValidPreload + SimData.SwaybarForce;
 
 	float DampingRatio = (SimData.SuspensionCurrentLength > LastLength) ? Config.ReboundDampingRatio : Config.CompressionDampingRatio;
 	float DamperStiffness = SimData.CriticalDamping * DampingRatio;
 
-	float DampingForce = DamperStiffness * (LastLength - SimData.SuspensionCurrentLength) * Frequency;
-
-	//if the suspension is completely compressed
-	if (SimData.SuspensionCurrentLength < SMALL_NUMBER)
-	{
-		//Compute the max stiffness
-		float Omega = Frequency * 0.5;	// this is a magic number
-		float MaxStiffness = Omega * Omega * SimData.SprungMass * 0.01;
-		float MaxDamping = 0.02 * Omega * SimData.SprungMass;	//critical damping
-
-		float Stiffness = FMath::Lerp(Config.SpringStiffness, MaxStiffness, Config.BottomOutStiffness);
-		float Damping = FMath::Lerp(DamperStiffness, MaxDamping, Config.BottomOutStiffness);
-
-		Stiffness = FMath::Max(Stiffness, Config.SpringStiffness);
-		Damping = FMath::Max(Damping, DamperStiffness);
-
-		SpringForce += (WheelRadius - SimData.HitDistance) * Stiffness;
-		DampingForce += SimData.HitDistanceRate * Damping;
-	}
+	float DampingForce = DamperStiffness * (LastLength - SimData.SuspensionCurrentLength) * DeltaTimeInv;
 
 	SimData.SuspensionForce = SpringForce + DampingForce;
 
 	SimData.StrutDirection = SimData.CarbodyWorldTransform.TransformVectorNoScale(SimData.StrutRelativeDirection);
-	SimData.SuspensionForceVector = SimData.StrutDirection * SimData.SuspensionForce;
+	FVector SuspensionForceVector = SimData.StrutDirection * SimData.SuspensionForce;
 
-	float Fn = FVector::DotProduct(SimData.SuspensionForceVector, SimData.HitStruct.ImpactNormal);
-	SimData.WheelLoad = FMath::Max(0, Fn);
+	// if suspension is compeletly compressed
+	float ForceToHoldCar = 0.f;
+	if (SimData.SuspensionCurrentLength < SMALL_NUMBER)
+	{
+		// try to stop the car immediately
+		float VelocityIntoSurface = FVector::DotProduct(SimData.HitStruct.ImpactNormal, SimData.ImpactPointWorldVelocity);
+		float ForceToBringToStop = -VelocityIntoSurface * DeltaTimeInv * SimData.SprungMass;
+		ForceToHoldCar = ForceToBringToStop * Config.BottomOutStiffness;
+
+		// the spring system in another direction (normal of impact surface)
+		FVector WheelCenterToImpactPoint = SimData.WheelWorldPos - SimData.HitStruct.ImpactPoint;
+		float DistanceToSurface = FVector::DotProduct(SimData.HitStruct.ImpactNormal, WheelCenterToImpactPoint);
+		SpringForce = (WheelRadius - DistanceToSurface) * Config.SpringStiffness;
+		DampingForce = -VelocityIntoSurface * DamperStiffness;
+		ForceToHoldCar += SpringForce + DampingForce;
+	}
+
+	float SuspensionForceProj = FVector::DotProduct(SuspensionForceVector, SimData.HitStruct.ImpactNormal);
+	SimData.ForceAlongImpactNormal = SuspensionForceProj + ForceToHoldCar;
 	
 	if (!SimData.bHitGround)
 	{
-		SimData.WheelLoad = 0.f;
+		SimData.ForceAlongImpactNormal = 0.f;
 		SimData.SuspensionForce = 0.f;
-		SimData.SuspensionForceVector = FVector(0.f);
 	}	
 }

@@ -80,7 +80,7 @@ struct FVehicleSuspensionSpringConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
 	float SpringPreload = 0.f;			//N
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", ToolTip = "Scales the stiffness of the auxiliary spring to prevent ground penetration at full suspension compression."))
-	float BottomOutStiffness = 0.f;
+	float BottomOutStiffness = 0.8f;
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "suspension state in simulation"))
@@ -100,8 +100,6 @@ struct FVehicleSuspensionSimData
 	float RayCastLength = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast", meta = (ToolTip = "The smoothened hit distance from hit result (smoothened using spring and damper)"))
 	float HitDistance = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	float HitDistanceRate = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float SuspensionCurrentLength = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
@@ -117,11 +115,11 @@ struct FVehicleSuspensionSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float SuspensionForce = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float WheelLoad = 0.f;
+	float ForceAlongImpactNormal = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float SprungMass = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float WorldGravityZ = 9.8;
+	float WorldGravityZ = 9.8f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector2D TopMountPos2D = FVector2D(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
@@ -150,10 +148,10 @@ struct FVehicleSuspensionSimData
 	FVector StrutRelativeDirection = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
 	FVector StrutDirection = FVector(0.f);	// strut direction in world space
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	FVector SuspensionForceVector = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector WheelWorldPos = FVector(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	FVector ImpactPointWorldVelocity = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FTransform RayCastTransform = FTransform(FQuat(0.f));
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")

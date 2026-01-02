@@ -202,20 +202,17 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	float TireForceCausingAntiPitch = FVector::DotProduct(Wheel.SimData.TireForce, ArmAxisProjOnGround.GetSafeNormal());
 	FVector AntiPitchForce = (ArmAxis - ArmAxisProjOnGround) * TireForceCausingAntiPitch;
 
-	float dt = Wheel.SimData.PhysicsDeltaTime;
-	FVector SuspensionForceProj = Suspension.SimData.SuspensionForceVector.ProjectOnTo(HitStruct.ImpactNormal);
-	FVector LinearImpulse = (Wheel.SimData.TireForce + SuspensionForceProj + AntiPitchForce) * dt;
-
-	if (Chaos::FRigidBodyHandle_Internal* RigidHandle = GetInternalHandle(Carbody, NAME_None))
-	{
-		// split linear force and angular force
-		//FVector TotalImpulse = (Wheel.SimData.TireForce + Suspension.SimData.SuspensionForceVector) * dt;
-		const Chaos::FVec3 WorldCOM = Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(RigidHandle);
-		const Chaos::FVec3 AngularImpulse = Chaos::FVec3::CrossProduct(PosToApplyImpulse - WorldCOM, LinearImpulse);
-
-		RigidHandle->SetLinearImpulse(RigidHandle->LinearImpulse() + LinearImpulse * 100, false);
-		RigidHandle->SetAngularImpulse(RigidHandle->AngularImpulse() + AngularImpulse * 100, false);
-	}
+	// project the suspension force onto the impact normal
+	// so that the car will not move by itself when parked
+	FVector SuspensionForceProj = HitStruct.ImpactNormal * Suspension.SimData.ForceAlongImpactNormal;
+	FVector Impulse = (Wheel.SimData.TireForce + SuspensionForceProj + AntiPitchForce) * Wheel.SimData.PhysicsDeltaTime;
+	
+	// add impulse at carbody
+	UAsyncTickFunctions::ATP_AddImpulseAtPosition(
+		Carbody,
+		PosToApplyImpulse,
+		Impulse * 100.f
+	);
 
 	// also add force to the contacted component
 	if (IsValid(HitStruct.GetComponent()) &&
@@ -224,7 +221,7 @@ void UVehicleWheelComponent::ApplyWheelForce()
 		UAsyncTickFunctions::ATP_AddImpulseAtPosition(
 			HitStruct.GetComponent(),
 			HitStruct.ImpactPoint, 
-			LinearImpulse * -100,
+			Impulse * -100.f,	// don't add impulse against gravity
 			HitStruct.BoneName);
 	}
 }
@@ -594,7 +591,7 @@ FTransform UVehicleWheelComponent::GetSkidMarkWorldTransform(float InSkidMarkBia
 		InSkidMarkBias -= WheelConfig.Width * 0.5f;
 	}
 	FVector N = Suspension.SimData.HitStruct.ImpactNormal;
-	FQuat q = FRotationMatrix::MakeFromZX(N, Wheel.SimData.WorldLinearVelocity).ToQuat();
+	FQuat q = FRotationMatrix::MakeFromZX(N, Suspension.SimData.ImpactPointWorldVelocity).ToQuat();
 	FVector v = Suspension.SimData.HitStruct.ImpactPoint + N;	//to avoid spawned in the ground
 	FVector rightV = FVector::VectorPlaneProject(Suspension.SimData.WheelRightVector, N).GetSafeNormal();
 	v += rightV * InSkidMarkBias * Suspension.SimData.WheelPos;

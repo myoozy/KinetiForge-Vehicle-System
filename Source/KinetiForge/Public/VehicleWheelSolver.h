@@ -53,14 +53,16 @@ private:
 	void UpdateLinearVelocity(
 		const FVector& LongForceDir,
 		const FVector& LatForceDir,
-		const FHitResult& HitStruct );
-	void WheelAcceleration(float AccelerationTolerance = 0.1);
+		const FVector& ImpactPointWorldVelocity);
+	void WheelAcceleration(
+		const FVector& LongForceDir,
+		float AccelerationTolerance = 0.f);
 	void UpdateSlipAngle(bool bHitGround);
 	void UpdateSlipRatio(bool bHitGround);
 	float CalculateConstraintLongForce(float SprungMass);
 	float CalculateConstraintLatForce(float SprungMass);
 	void UpdateGravityCompensationOnSlope(
-		float PositiveSuspensionForce,
+		float ForceIntoSurface,
 		bool bHitGround,
 		const FVector& LongForceDir,
 		const FVector& LatForceDir);

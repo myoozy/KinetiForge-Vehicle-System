@@ -134,7 +134,7 @@ public:
 	float GetTotalInertia() { return Wheel.SimData.TotalInertia; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Wheel")
-	FVector GetWorldLinaerVelocity() { return Wheel.SimData.WorldLinearVelocity; }
+	FVector GetWorldLinaerVelocity() { return Suspension.SimData.ImpactPointWorldVelocity; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "Update the independent suspension and wheel physics"))
 	void UpdatePhysics(

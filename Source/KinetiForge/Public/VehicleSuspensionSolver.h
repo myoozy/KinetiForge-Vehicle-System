@@ -84,6 +84,7 @@ private:
 	void ComputeStraightSuspension();
 	void ComputeMacpherson();
 	void ComputeDoubleWishbone();
+	void UpdateImpactPointWorldVelocity();
 	void ComputeSuspensionForce();
 
 	//cache
