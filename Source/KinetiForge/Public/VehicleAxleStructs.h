@@ -92,7 +92,7 @@ struct FVehicleTCSConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCSSetup", meta = (ClampMin = "0.0", ToolTip = "minimum speed(m / s) to activate assist"))
 	float ActivationSpeed = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCSSetup", meta = (ClampMin = "0.0"))
-	float Sensitivity = 1.f;
+	float Sensitivity = 5.f;
 };
 
 

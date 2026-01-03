@@ -45,21 +45,17 @@ struct FVehicleTireConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This value determines the length of the semi-axis of the friction ellipse. The larger this value, the greater the longitudinal force that the tire can provide."))
 	float MaxFx = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This value determines the length of the semi-axis of the friction ellipse. The larger this value, the greater the lateral force that the tire can provide."))
-	float MaxFy = 1.1f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MaxFy = 1.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0", ToolTip = "Affects how much the longitudinal and lateral slip can affect each other"))
+	float CombinedSlipInterference = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0", ToolTip = "Decides whether there will be more lateral force or longitudinal force. If value is 0, there will only be longitudinal force. If value is 1, there will only be lateral force."))
+	float CombiendSlipBias = 0.6f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0", ToolTip = "if value is 1, the wheel load will be proportional to suspension force. If value is 0, the wheel load will be constant (gravity of sprungmass)."))
 	float WheelLoadInfluenceFactor = 0.8;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Input: absolute value of slip ratio; Output: normalized unscaled longitudinal tire force; If this curve is not set, the tire will be treated as a rigid body in the longitudinal direction."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Input: absolute value of slip ratio(def: SlipRatio = Vslip / max(|Vx|, |omega * R|); Output: normalized unscaled longitudinal tire force; If this curve is not set, the tire will be treated as a rigid body in the longitudinal direction."))
 	UCurveFloat* Fx = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Input: absolute value of slip angle(in degrees); Output: normalized unscaled lateral tire force; If this curve is not set, the tire will be treated as a rigid body in the lateral direction."))
 	UCurveFloat* Fy = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Input: absolute value of slip angle(in degrees); Output: scaling factor for Fx; Through this curve, the distribution of longitudinal forces can be manually adjusted. If no settings are made, the distribution of longitudinal forces will follow the classic friction ellipse."))
-	UCurveFloat* Gx = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Input: absolute value of slip ratio; Output: scaling factor for Fy; Through this curve, the distribution of lateral forces can be manually adjusted. If no settings are made, the distribution of lateral forces will follow the classic friction ellipse."))
-	UCurveFloat* Gy = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
-	FVector2D StictionSpeedThreshold = FVector2D(0.5f, 1.f);
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
-	float ParkingResponseSpeed = 1.f;
 };
 
 USTRUCT(BlueprintType)

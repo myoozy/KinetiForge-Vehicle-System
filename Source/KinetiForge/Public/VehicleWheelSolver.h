@@ -7,6 +7,7 @@
 #include "VehicleSuspensionStructs.h"
 
 class UVehicleWheelComponent;
+class UCurveFloat;
 
 /**
  * 
@@ -35,6 +36,8 @@ public:
 		bool bDrawSlip = true,
 		bool bDrawInertia = true);
 	void SmoothenSlip(float InDeltaTime, float InInterpSpeed);
+
+	static float GetTangentAtOrigin(const UCurveFloat* Curve);
 
 	// all data during simulation
 	FVehicleWheelSimData SimData;

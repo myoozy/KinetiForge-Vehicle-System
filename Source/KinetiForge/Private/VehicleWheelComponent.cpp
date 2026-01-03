@@ -37,28 +37,6 @@ UVehicleWheelComponent::UVehicleWheelComponent()
 		}
 	}
 
-	if (!TireConfig.Gx)
-	{
-		static ConstructorHelpers::FObjectFinder<UCurveFloat> DefaultMuLongCurveObj(
-			TEXT("/Script/Engine.CurveFloat'/KinetiForge/DefaultConfigs/Curves/DefaultGx.DefaultGx'")
-		);
-		if (DefaultMuLongCurveObj.Succeeded())
-		{
-			TireConfig.Gx = DefaultMuLongCurveObj.Object;
-		}
-	}
-
-	if (!TireConfig.Gy)
-	{
-		static ConstructorHelpers::FObjectFinder<UCurveFloat> DefaultMuLatCurveObj(
-			TEXT("/Script/Engine.CurveFloat'/KinetiForge/DefaultConfigs/Curves/DefaultGy.DefaultGy'")
-		);
-		if (DefaultMuLatCurveObj.Succeeded())
-		{
-			TireConfig.Gy = DefaultMuLatCurveObj.Object;
-		}
-	}
-
 	if (!SuspensionKinematicsConfig.CamberCurve)
 	{
 		static ConstructorHelpers::FObjectFinder<UCurveFloat> DefaultCamberCurveObj(
@@ -133,8 +111,6 @@ void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 	if (IsValid(Carbody))Carbody = nullptr;
 	if (TireConfig.Fx)TireConfig.Fx = nullptr;
 	if (TireConfig.Fy)TireConfig.Fy = nullptr;
-	if (TireConfig.Gx)TireConfig.Gx = nullptr;
-	if (TireConfig.Gy)TireConfig.Gy = nullptr;
 	if (SuspensionKinematicsConfig.CamberCurve)SuspensionKinematicsConfig.CamberCurve = nullptr;
 	if (SuspensionKinematicsConfig.ToeCurve)SuspensionKinematicsConfig.ToeCurve = nullptr;
 	if (SuspensionKinematicsConfig.CasterCurve)SuspensionKinematicsConfig.CasterCurve = nullptr;

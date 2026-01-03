@@ -167,8 +167,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 	}
 }
 
-void FVehicleWheelSolver::SmoothenSlip(float InDeltaTime, float InInterpSpeed
-)
+void FVehicleWheelSolver::SmoothenSlip(float InDeltaTime, float InInterpSpeed)
 {
 	SmoothenedSlipRatio = FMath::FInterpTo(
 		SmoothenedSlipRatio,
@@ -183,6 +182,15 @@ void FVehicleWheelSolver::SmoothenSlip(float InDeltaTime, float InInterpSpeed
 		InDeltaTime,
 		InInterpSpeed
 	);
+}
+
+float FVehicleWheelSolver::GetTangentAtOrigin(const UCurveFloat* Curve)
+{
+	if (!Curve || Curve->FloatCurve.Keys.Num() == 0) return 10.f;
+
+	const auto& Key0 = Curve->FloatCurve.Keys[0];
+
+	return Key0.LeaveTangent;
 }
 
 void FVehicleWheelSolver::UpdateABS(float TargetBrakeTorque, bool bHitGround)
@@ -314,8 +322,8 @@ void FVehicleWheelSolver::UpdateSlipAngle(bool bHitGround)
 	//-V.y = |V| * sin(SlipAngle) ¡Ö |V| * SlipAngle ¡Ö SlipAngle; when slip angle is small and |v| --> 1.f
 	float LowSpeedSlipAngle = -FMath::RadiansToDegrees(SimData.LocalLinearVelocity.Y);
 
-	//get alpha for lerp, lerp between high speed and low speed
-	float Alpha = FMath::GetMappedRangeValueClamped(FVector2D(0.5, 1.f), FVector2D(0.f, 1.f), SimData.LocalLinearVelocity.SquaredLength());
+	//get alpha for lerp, lerp between high speed and low speede
+	float Alpha = FMath::GetMappedRangeValueClamped(FVector2D(0.01f, 0.1f), FVector2D(0.f, 1.f), SimData.LocalLinearVelocity.SquaredLength());
 
 	//combine low speed and high speed
 	SimData.SlipAngle = FMath::Lerp(LowSpeedSlipAngle, SlipAngleRaw, Alpha) * bHitGround;
@@ -329,7 +337,9 @@ void FVehicleWheelSolver::UpdateSlipRatio(bool bHitGround)
 	SimData.LongSlipVelocity *= bHitGround;
 
 	//calculate slip ratio
-	SimData.SlipRatio = SafeDivide(SimData.LongSlipVelocity, FMath::Max(FMath::Abs(SimData.LocalLinearVelocity.X), 1.f));
+	float Denominator = FMath::Max(FMath::Max(FMath::Abs(SimData.LocalLinearVelocity.X), FMath::Abs(SimData.AngularVelocity * SimData.R)), 1.f);
+	SimData.SlipRatio = SimData.LongSlipVelocity / Denominator;
+	SimData.SlipRatio = FMath::Clamp(SimData.SlipRatio, -1.f, 1.f);
 }
 
 float FVehicleWheelSolver::CalculateConstraintLongForce(float SprungMass)
@@ -353,10 +363,7 @@ float FVehicleWheelSolver::CalculateConstraintLatForce(float SprungMass)
 {
 	float ForceRequiredToBringToStop = -SimData.LocalLinearVelocity.Y * SimData.PhysicsDeltaTimeInv * SprungMass;
 	
-	//more stable lateral force at low speed
-	float Scale = FMath::Clamp(FMath::Abs(SimData.LocalLinearVelocity.Y), 0.5, 1.f);
-	
-	return ForceRequiredToBringToStop * Scale;
+	return ForceRequiredToBringToStop;
 }
 
 void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
@@ -402,7 +409,7 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 	// in the lateral direction, the wheel can be treated as it is always braking
 
 	// then do some smoothing
-	float Scale = TargetWheelComponent->TireConfig.ParkingResponseSpeed;
+	float Scale = 1.f;
 	FVector2D Smoothing = FVector2D(FMath::Abs(SimData.LongSlipVelocity), FMath::Abs(SimData.LocalLinearVelocity.Y));
 	Smoothing *= Scale;
 
@@ -444,18 +451,24 @@ void FVehicleWheelSolver::UpdateTireForce(
 	FVehicleTireConfig& TireConfig = TargetWheelComponent->TireConfig;
 
 	// Constraint tire force
-	FVector2D ConstraintForce = FVector2D(
+	FVector2D ConstraintTireForce = FVector2D(
 		CalculateConstraintLongForce(SprungMass),
 		CalculateConstraintLatForce(SprungMass)
 	);
 
-	FVector2D TargetTireForce = ConstraintForce;
-
 	// get wheel load
 	float ScaledWheelLoad = CalculateScaledWheelLoad(SprungMass, WheelLoad, TireConfig.WheelLoadInfluenceFactor);
 	float AvailableGrip = SimData.DynFrictionMultiplier * ScaledWheelLoad;
-	float SlipInputScale = SafeDivide(TireConfig.FrictionMultiplier, SimData.DynFrictionMultiplier);
 
+	// get combined slip
+	FVector2D WeightXY = FVector2D(1.f - TireConfig.CombiendSlipBias, TireConfig.CombiendSlipBias);
+	WeightXY *= FVector2D(SafeDivide(1.f, TireConfig.MaxFx), SafeDivide(1.f, TireConfig.MaxFy));
+	float NormalizedSlipAngle = SimData.SlipAngle / 90.f;
+	FVector2D NormalizedSc = (FVector2D(SimData.SlipRatio, NormalizedSlipAngle) * WeightXY).GetSafeNormal().GetAbs();
+
+	// the tangent of the linear region should not be changed, if the vehicle is driving on a surface with high friction multiplier
+	float SlipInputScale = SafeDivide(TireConfig.FrictionMultiplier, SimData.DynFrictionMultiplier);
+	
 	// if the user has only setup one of the Fx or Fy curve, the Constraint force on the other direction should be cut, before computing combined slip
 	bool bUseFxCurve = (TireConfig.Fx != nullptr);
 	bool bUseFyCurve = (TireConfig.Fy != nullptr);
@@ -463,59 +476,75 @@ void FVehicleWheelSolver::UpdateTireForce(
 	// magic formula
 	float MaxFx = TireConfig.MaxFx * AvailableGrip;
 	float MaxFy = TireConfig.MaxFy * AvailableGrip;
+	FVector2D MFTireForce = ConstraintTireForce;
 	if (bUseFxCurve)
 	{
-		float Fx = MaxFx * TireConfig.Fx->GetFloatValue(FMath::Abs(SimData.SlipRatio * SlipInputScale));
-		TargetTireForce.X = FMath::Clamp(TargetTireForce.X, -Fx, Fx);
+		// the input of magic formula should be ajusted. 
+		// Since the combined slip logci is similar to TMeasy (a tire model), 
+		// the input should theoretically be the combined slip.
+		// But here we are using a pacejka-style curve (Fx and Fy),
+		// so it also make sense to seperately use slip ratio and slip angle as input
+		float InputX = FMath::Sqrt(FMath::Square(SimData.SlipRatio) + FMath::Square(NormalizedSlipAngle * TireConfig.CombinedSlipInterference));
+		InputX *= SlipInputScale;
+
+		float MuX = TireConfig.Fx->GetFloatValue(InputX);
+
+		// get the tangent of the linear region
+		float k = GetTangentAtOrigin(TireConfig.Fx);
+
+		// lerp between linear and non-linear region
+		// If directly use Fx * NormalizedSc.X, 
+		// it will produce a singularity when the slip ratio is very low and the slip angle is high.
+		// at that singularity, Fx is scaled to almost 0
+		MuX = FMath::Lerp(MuX, MuX * NormalizedSc.X, FMath::Min(FMath::Abs(InputX * k), 1.f));
+
+		float Fx = MuX * MaxFx;
+		MFTireForce.X = FMath::Clamp(ConstraintTireForce.X, -Fx, Fx);
 	}
 	if (bUseFyCurve)
 	{
-		float Fy = MaxFy * TireConfig.Fy->GetFloatValue(FMath::Abs(SimData.SlipAngle * SlipInputScale));
-		TargetTireForce.Y = FMath::Clamp(TargetTireForce.Y, -Fy, Fy);
+		// the input of magic formula should be ajusted. 
+		// Since the combined slip logci is similar to TMeasy (a tire model), 
+		// the input should theoretically be the combined slip.
+		// But here we are using a pacejka-style curve (Fx and Fy),
+		// so it also make sense to seperately use slip ratio and slip angle as input
+		float InputY = FMath::Sqrt(FMath::Square(NormalizedSlipAngle) + FMath::Square(SimData.SlipRatio * TireConfig.CombinedSlipInterference));
+		InputY *= 90.f;
+		InputY *= SlipInputScale;
+
+		float MuY = TireConfig.Fy->GetFloatValue(InputY);
+
+		// get the tangent of the linear region
+		float k = GetTangentAtOrigin(TireConfig.Fy);
+
+		// lerp between linear and non-linear region
+		// If directly use Fy * NormalizedSc.Y, 
+		// it will produce a singularity when the slip angle is very low and the slip ratio is high.
+		// at that singularity, Fy is scaled to almost 0
+		MuY = FMath::Lerp(MuY, MuY * NormalizedSc.Y, FMath::Min(FMath::Abs(InputY * k), 1.f));
+
+		float Fy = MuY * MaxFy;
+		MFTireForce.Y = FMath::Clamp(ConstraintTireForce.Y, -Fy, Fy);
 	}
 	if (bUseFxCurve != bUseFyCurve) {
-		if (!bUseFxCurve) TargetTireForce.X = FMath::Clamp(TargetTireForce.X, -MaxFx, MaxFx);
-		if (!bUseFyCurve) TargetTireForce.Y = FMath::Clamp(TargetTireForce.Y, -MaxFy, MaxFy);
+		if (!bUseFxCurve) MFTireForce.X = FMath::Clamp(ConstraintTireForce.X, -MaxFx, MaxFx);
+		if (!bUseFyCurve) MFTireForce.Y = FMath::Clamp(ConstraintTireForce.Y, -MaxFy, MaxFy);
 	}
 
-	// combined slip, if the user has setup curves
-	float Gx = 1.f;
-	float Gy = 1.f;
-	if (TireConfig.Gx)Gx = TireConfig.Gx->GetFloatValue(FMath::Abs(SimData.SlipAngle * SlipInputScale));
-	if (TireConfig.Gy)Gy = TireConfig.Gy->GetFloatValue(FMath::Abs(SimData.SlipRatio * SlipInputScale));
-	TargetTireForce.X *= Gx;
-	TargetTireForce.Y *= Gy;
-
-	// lerp between constraint force and magic formula force
+	// lerp between constraint force (more stable at low speed) and MF force (more accurate at high speed)
 	FVector2D V = FVector2D(0.f);
 	V.X = FMath::Max(FMath::Abs(SimData.LocalLinearVelocity.X), FMath::Abs(SimData.AngularVelocity * SimData.R));
 	V.Y = FMath::Abs(SimData.LocalLinearVelocity.Y);
 	float ScalarV = V.Length();
-	float Alpha = FMath::GetMappedRangeValueClamped(
-		TireConfig.StictionSpeedThreshold,
-		FVector2D(0.f, 1.f),
-		ScalarV
-	);
-	TargetTireForce = FMath::Lerp(ConstraintForce, TargetTireForce, Alpha);
-
-	// the friction ellipse
-	FVector2D MaxForceInv = FVector2D(SafeDivide(1.f, MaxFx), SafeDivide(1.f, MaxFy));
-	FVector2D NormalizedForce = TargetTireForce * MaxForceInv;
-	if (NormalizedForce.SquaredLength() > 1.f)
-	{
-		NormalizedForce = NormalizedForce.GetSafeNormal();
-		TargetTireForce.X = NormalizedForce.X * MaxFx;
-		TargetTireForce.Y = NormalizedForce.Y * MaxFy;
-	}
+	float Alpha = FMath::Clamp(ScalarV, 0.f, 1.f);
+	FVector2D TargetTireForce = FMath::Lerp(ConstraintTireForce, MFTireForce, Alpha);
 
 	// relaxation length
 	float Distance = SimData.PhysicsDeltaTime * ScalarV;
 	FVector2D RelaxationLengthSmoothing = FVector2D(Distance) / FVector2D::Max(TireConfig.RelaxationLength, FVector2D(SMALL_NUMBER));
 
-	// smoothing factor under stiction condition (low speed)
-	float Scale = TireConfig.ParkingResponseSpeed;
-	FVector2D StictionSmoothing = FVector2D(FMath::Abs(SimData.LongSlipVelocity), FMath::Abs(SimData.LocalLinearVelocity.Y));
-	StictionSmoothing *= Scale;
+	// smoothing factor under stiction condition (low speed, no smoothing)
+	FVector2D StictionSmoothing = FVector2D(1.f);
 
 	// lerp and smoothen
 	FVector2D SmoothingFactor = FMath::Lerp(StictionSmoothing, RelaxationLengthSmoothing, Alpha);
@@ -528,7 +557,8 @@ void FVehicleWheelSolver::UpdateTireForce(
 	SimData.TireForce2D = SimData.MFTireForce2D + SimData.GravityCompensationForce;
 
 	// cut with friction ellipse again to prevent overshoot
-	NormalizedForce = SimData.TireForce2D * MaxForceInv;
+	FVector2D MaxForceInv = FVector2D(SafeDivide(1.f, MaxFx), SafeDivide(1.f, MaxFy));
+	FVector2D NormalizedForce = SimData.TireForce2D * MaxForceInv;
 	if (NormalizedForce.SquaredLength() > 1.f)
 	{
 		NormalizedForce = NormalizedForce.GetSafeNormal();
