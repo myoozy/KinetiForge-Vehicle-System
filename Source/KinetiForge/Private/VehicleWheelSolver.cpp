@@ -389,7 +389,7 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 	// the vehicle is not able to stop on the slope
 	// even if the slope is not steep
 	// so we add a little extra friction force
-	float Mu = SimData.DynFrictionMultiplier;
+	float Mu = 0.1f * SimData.DynFrictionMultiplier;
 
 	//Lateral:
 	float SlipSign = FMath::Sign(-SimData.LocalLinearVelocity.Y);

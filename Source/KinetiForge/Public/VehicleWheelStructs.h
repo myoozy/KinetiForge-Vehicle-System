@@ -22,13 +22,13 @@ struct FVehicleWheelConfig
 
 	//WheelSetup
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
-	float Radius = 33;
+	float Radius = 33.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
-	float Width = 20;
+	float Width = 20.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
-	float Inertia = 1;
+	float Inertia = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This is just a constant additional handbrake torque"))
-	float RollingRisistance = 5;
+	float RollingRisistance = 5.f;
 };
 
 USTRUCT(BlueprintType)
@@ -66,9 +66,9 @@ struct FVehicleABSConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bAntiBrakeSystemEnabled = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
-	float OptimalSlip = 0.1;
+	float OptimalSlip = 0.1f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Meter per second, m/s"))
-	float ActivationSpeed = 1.f;
+	float ActivationSpeed = 5.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
 	float Sensitivity = 5.f;
 };
