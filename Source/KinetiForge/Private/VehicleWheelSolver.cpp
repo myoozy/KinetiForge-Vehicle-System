@@ -409,7 +409,7 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 	// in the lateral direction, the wheel can be treated as it is always braking
 
 	// then do some smoothing
-	float Scale = 1.f;
+	const float Scale = 1.f;
 	FVector2D Smoothing = FVector2D(FMath::Abs(SimData.LongSlipVelocity), FMath::Abs(SimData.LocalLinearVelocity.Y));
 	Smoothing *= Scale;
 
@@ -543,8 +543,10 @@ void FVehicleWheelSolver::UpdateTireForce(
 	float Distance = SimData.PhysicsDeltaTime * ScalarV;
 	FVector2D RelaxationLengthSmoothing = FVector2D(Distance) / FVector2D::Max(TireConfig.RelaxationLength, FVector2D(SMALL_NUMBER));
 
-	// smoothing factor under stiction condition (low speed, no smoothing)
-	FVector2D StictionSmoothing = FVector2D(1.f);
+	// smoothing factor under stiction condition (low speed)
+	FVector2D StictionSmoothing = FVector2D(FMath::Abs(SimData.LongSlipVelocity), FMath::Abs(SimData.LocalLinearVelocity.Y));
+	const float Scale = 1.f;
+	StictionSmoothing *= Scale;
 
 	// lerp and smoothen
 	FVector2D SmoothingFactor = FMath::Lerp(StictionSmoothing, RelaxationLengthSmoothing, Alpha);
