@@ -25,10 +25,10 @@ public:
 		float InBrakeTorque,
 		float InHandbrakeTorque,
 		float InReflectedInertia,
-		const FVehicleSuspensionSimData& SuspensionSimData);
+		const FVehicleSuspensionSimState& SuspensionState);
 	void DrawWheelForce(
 		UWorld* InCurrentWorld,
-		const FVehicleSuspensionSimData& InSuspensionSimData,
+		const FVehicleSuspensionSimState& SuspensionState,
 		float Duration = -1,
 		float Thickness = 5,
 		float Length = 1,
@@ -40,7 +40,7 @@ public:
 	static float GetTangentAtOrigin(const UCurveFloat* Curve);
 
 	// all data during simulation
-	FVehicleWheelSimData SimData;
+	FVehicleWheelSimState State;
 
 	// e.g. for skid mark / sound
 	float SmoothenedSlipRatio = 0.f;
@@ -52,13 +52,13 @@ protected:
 
 private:
 	void UpdateABS(float TargetBrakeTorque, bool bHitGround);
-	void UpdateDynamicFrictionMultiplier(const FHitResult& HitStruct);
+	void UpdateDynamicFrictionMultiplier(float ImpactFriction);
 	void UpdateLinearVelocity(
-		const FVector& LongForceDir,
-		const FVector& LatForceDir,
-		const FVector& ImpactPointWorldVelocity);
+		const FVector3f& LongForceDir,
+		const FVector3f& LatForceDir,
+		const FVector3f& ImpactPointWorldVelocity);
 	void WheelAcceleration(
-		const FVector& LongForceDir,
+		const FVector3f& LongForceDir,
 		float AccelerationTolerance = 0.1f);
 	void UpdateSlipAngle(bool bHitGround);
 	void UpdateSlipRatio(bool bHitGround);
@@ -67,8 +67,8 @@ private:
 	void UpdateGravityCompensationOnSlope(
 		float ForceIntoSurface,
 		bool bHitGround,
-		const FVector& LongForceDir,
-		const FVector& LatForceDir);
+		const FVector3f& LongForceDir,
+		const FVector3f& LatForceDir);
 	float CalculateScaledWheelLoad(
 		float SprungMass,
 		float WheelLoad,
@@ -77,7 +77,7 @@ private:
 		float SprungMass,
 		float PositiveSuspensionForce,
 		bool bHitGround,
-		const FVector& LongForceDirUnNorm,
-		const FVector& LatForceDirUnNorm);
+		const FVector3f& LongForceDirUnNorm,
+		const FVector3f& LatForceDirUnNorm);
 	float SafeDivide(float a, float b);
 };

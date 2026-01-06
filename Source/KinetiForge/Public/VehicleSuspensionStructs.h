@@ -31,7 +31,7 @@ enum class EPositionToApplyForce : uint8
 };
 
 USTRUCT(BlueprintType)
-struct FVehicleSuspensionKinematicsConfig
+struct KINETIFORGE_API FVehicleSuspensionKinematicsConfig
 {
 	GENERATED_BODY()
 
@@ -43,7 +43,7 @@ struct FVehicleSuspensionKinematicsConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TEnumAsByte<ECollisionChannel> TraceChannel = ECollisionChannel::ECC_WorldDynamic;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "The location of the top mount relative to the pivot of the arm. It is under the coordinate of the wheel component, not car body."))
-	FVector TopMountPosition = FVector(0.f, 40.f, 35.f);
+	FVector3f TopMountPosition = FVector3f(0.f, 40.f, 35.f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The traveling distance of the strut"))
 	float Stroke = 20.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The length of the strut when the suspension is fully compressed."))
@@ -67,7 +67,7 @@ struct FVehicleSuspensionKinematicsConfig
 };
 
 USTRUCT(BlueprintType)
-struct FVehicleSuspensionSpringConfig
+struct KINETIFORGE_API FVehicleSuspensionSpringConfig
 {
 	GENERATED_BODY()
 
@@ -84,16 +84,59 @@ struct FVehicleSuspensionSpringConfig
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "suspension state in simulation"))
-struct FVehicleSuspensionSimData
+struct KINETIFORGE_API FVehicleSuspensionSimState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	float SteeringAngle = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float SuspensionCurrentLength = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Config")
+	float CriticalDamping = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
+	float SprungMass = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
+	float ForceAlongImpactNormal = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	float ImpactFriction = 1.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FVector2f KnucklePos2D = FVector2f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FVector3f WheelRightVector = FVector3f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "From Knuckle to Center of wheel"))
+	FVector3f WheelCenterToKnuckle = FVector3f(0.f);		//relative, from knuckle to center of the wheel
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FVector3f KnuckleRelativePos = FVector3f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FVector3f TopMountRelativePos = FVector3f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
+	FVector3f StrutDirection = FVector3f(0.f);	// strut direction in world space
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Position")
+	bool bIsRightWheel = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	bool bHitGround = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	TWeakObjectPtr<UPrimitiveComponent> ImpactComponent = nullptr;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	FVector3f ImpactPointWorldVelocity = FVector3f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	FVector3f ImpactNormal = FVector3f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	FVector ImpactPoint = FVector(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FVector WheelWorldPos = FVector(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FQuat4f WheelRelativeRotation = FQuat4f(0.f);
+};
+
+USTRUCT(BlueprintType, meta = (ToolTip = "suspension context in simulation"))
+struct KINETIFORGE_API FVehicleSuspensionSimContext
 {
 	GENERATED_BODY()
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Position")
 	float WheelPos = 1.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	bool bHitGround = true;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	bool bRayCastRefined = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
 	float PhysicsDelatTime = 0.00833333;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
@@ -121,45 +164,49 @@ struct FVehicleSuspensionSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float WorldGravityZ = 9.8f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector2D TopMountPos2D = FVector2D(0.f);
+	FVector2f TopMountPos2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector2D KnucklePos2D = FVector2D(0.f);
+	FVector2f KnucklePos2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	FVector2D RayCastStart2D = FVector2D(0.f);
+	FVector2f RayCastStart2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
-	FVector2D StrutDirection2D = FVector2D(0.f);
+	FVector2f StrutDirection2D = FVector2f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FVector3f ComponentRelativeForwardVector = FVector3f(0.f);		//relative, also the axis of arm
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "From Knuckle to Center of wheel"))
+	FVector3f WheelCenterToKnuckle = FVector3f(0.f);		//relative, from knuckle to center of the wheel
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FVector3f KnuckleRelativePos = FVector3f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FVector3f TopMountRelativePos = FVector3f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
+	FVector3f StrutRelativeDirection = FVector3f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	FVector3f ImpactPointWorldVelocity = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector ComponentUpVector = FVector(0.f);			//world
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector ComponentRelativeForwardVector = FVector(0.f);		//relative, also the axis of arm
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector WheelRightVector = FVector(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "From Knuckle to Center of wheel"))
-	FVector WheelCenterToKnuckle = FVector(0.f);		//relative, from knuckle to center of the wheel
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector KnuckleRelativePos = FVector(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector TopMountRelativePos = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector RayCastStartPos = FVector(0.f);	//for sphere trace
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector RayCastEndPos = FVector(0.f);		//for sphere trace
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
-	FVector StrutRelativeDirection = FVector(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
 	FVector StrutDirection = FVector(0.f);	// strut direction in world space
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector WheelWorldPos = FVector(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	FVector ImpactPointWorldVelocity = FVector(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	bool bHitGround = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	bool bRayCastRefined = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FTransform RayCastTransform = FTransform(FQuat(0.f));
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FTransform CarbodyWorldTransform = FTransform(FQuat(0.f));
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FTransform RelativeTransform = FTransform(FQuat(0.f));
+	FTransform3f RelativeTransform = FTransform3f(FQuat4f(0.f));
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FTransform WheelRelativeTransform = FTransform(FQuat(0.f));	//relative to carbody
+	FTransform3f WheelRelativeTransform = FTransform3f(FQuat4f(0.f));	//relative to carbody
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FHitResult HitStruct = FHitResult();
 };

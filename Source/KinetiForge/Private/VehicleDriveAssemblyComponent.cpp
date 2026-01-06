@@ -521,7 +521,7 @@ void UVehicleDriveAssemblyComponent::OnRep_ServerCurrentGear()
 
 void UVehicleDriveAssemblyComponent::ServerStartVehicleEngine_Implementation()
 {
-	ServerVehicleEngineState = Engine->StartVehicleEngine();
+	ServerVehicleEngineOperationMode = Engine->StartVehicleEngine();
 	MultiCastStartVehicleEngine();
 }
 
@@ -536,7 +536,7 @@ void UVehicleDriveAssemblyComponent::MultiCastStartVehicleEngine_Implementation(
 
 void UVehicleDriveAssemblyComponent::ServerShutVehicleEngine_Implementation()
 {
-	ServerVehicleEngineState = Engine->ShutVehicleEngine();
+	ServerVehicleEngineOperationMode = Engine->ShutVehicleEngine();
 	MultiCastShutVehicleEngine();
 }
 
@@ -549,25 +549,25 @@ void UVehicleDriveAssemblyComponent::MultiCastShutVehicleEngine_Implementation()
 	}
 }
 
-void UVehicleDriveAssemblyComponent::OnRep_ServerVehicleEngineState()
+void UVehicleDriveAssemblyComponent::OnRep_ServerVehicleEngineOperationMode()
 {
-	FVehicleEngineSimData e;
+	FVehicleEngineSimState e;
 	Engine->GetEngineMovement(e);
 
-	if (e.State != ServerVehicleEngineState)
+	if (e.OperationMode != ServerVehicleEngineOperationMode)
 	{
-		switch (ServerVehicleEngineState)
+		switch (ServerVehicleEngineOperationMode)
 		{
-		case EVehicleEngineState::On:
+		case EVehicleEngineOperationMode::On:
 			Engine->StartVehicleEngine();
 			break;
-		case EVehicleEngineState::Off:
+		case EVehicleEngineOperationMode::Off:
 			Engine->ShutVehicleEngine();
 			break;
-		case EVehicleEngineState::Starting:
+		case EVehicleEngineOperationMode::Starting:
 			Engine->StartVehicleEngine();
 			break;
-		case EVehicleEngineState::Shutting:
+		case EVehicleEngineOperationMode::Shutting:
 			Engine->ShutVehicleEngine();
 			break;
 		default:
@@ -750,7 +750,7 @@ void UVehicleDriveAssemblyComponent::ShiftDown(float InAutoShiftCoolDown, bool b
 	}
 }
 
-EVehicleEngineState UVehicleDriveAssemblyComponent::StartVehicleEngine()
+EVehicleEngineOperationMode UVehicleDriveAssemblyComponent::StartVehicleEngine()
 {
 	if (IsValid(Engine))
 	{
@@ -760,15 +760,15 @@ EVehicleEngineState UVehicleDriveAssemblyComponent::StartVehicleEngine()
 		}
 
 		ServerStartVehicleEngine();
-		return ServerVehicleEngineState;
+		return ServerVehicleEngineOperationMode;
 	}
 	else
 	{
-		return EVehicleEngineState::Off;
+		return EVehicleEngineOperationMode::Off;
 	}
 }
 
-EVehicleEngineState UVehicleDriveAssemblyComponent::ShutVehicleEngine()
+EVehicleEngineOperationMode UVehicleDriveAssemblyComponent::ShutVehicleEngine()
 {
 	if (IsValid(Engine))
 	{
@@ -778,11 +778,11 @@ EVehicleEngineState UVehicleDriveAssemblyComponent::ShutVehicleEngine()
 		}
 
 		ServerShutVehicleEngine();
-		return ServerVehicleEngineState;
+		return ServerVehicleEngineOperationMode;
 	}
 	else
 	{
-		return EVehicleEngineState::On;
+		return EVehicleEngineOperationMode::On;
 	}
 }
 

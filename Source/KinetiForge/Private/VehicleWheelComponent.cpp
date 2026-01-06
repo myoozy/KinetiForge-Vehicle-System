@@ -148,9 +148,7 @@ void UVehicleWheelComponent::ApplyWheelForce()
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelAddForce);
 
-	if (!Suspension.SimData.HitStruct.bBlockingHit)return;
-
-	const FHitResult& HitStruct = Suspension.SimData.HitStruct;
+	if (!Suspension.State.bHitGround)return;
 
 	FVector WidthBias = FVector(0.f);
 	FVector PosToApplyImpulse = FVector(0.f);
@@ -158,13 +156,13 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	switch (SuspensionKinematicsConfig.PositionToApplyForce)
 	{
 	case EPositionToApplyForce::ImpactPoint:
-		PosToApplyImpulse = HitStruct.ImpactPoint;
+		PosToApplyImpulse = Suspension.State.ImpactPoint;
 		break;
 	case EPositionToApplyForce::WheelCenter:
-		PosToApplyImpulse = Suspension.SimData.WheelWorldPos;
+		PosToApplyImpulse = Suspension.State.WheelWorldPos;
 		break;
 	default:
-		PosToApplyImpulse = HitStruct.ImpactPoint;
+		PosToApplyImpulse = Suspension.State.ImpactPoint;
 		break;
 	}
 
@@ -172,16 +170,17 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	// attention: the anti-pitch geometry does not work in this way in real life,
 	// the logic will be fixed in the future (when I find a better solution)
 	// the axis of the suspension is the forward vector of the component
-	const FVector& ArmRelativeAxis = Suspension.SimData.ComponentRelativeForwardVector;
-	FVector ArmAxis = Suspension.SimData.CarbodyWorldTransform.TransformVectorNoScale(ArmRelativeAxis);
-	FVector ArmAxisProjOnGround = FVector::VectorPlaneProject(ArmAxis, HitStruct.ImpactNormal);
-	float TireForceCausingAntiPitch = FVector::DotProduct(Wheel.SimData.TireForce, ArmAxisProjOnGround.GetSafeNormal());
-	FVector AntiPitchForce = (ArmAxis - ArmAxisProjOnGround) * TireForceCausingAntiPitch;
+	const FVector& ArmRelativeAxis = GetRelativeTransform().GetRotation().GetForwardVector();
+	FVector3f ArmAxis = (FVector3f)CarbodyAsyncWorldTransform.TransformVectorNoScale(ArmRelativeAxis);
+	FVector3f ImpactNormal = Suspension.State.ImpactNormal;
+	FVector3f ArmAxisProjOnGround = FVector3f::VectorPlaneProject(ArmAxis, ImpactNormal);
+	float TireForceCausingAntiPitch = FVector3f::DotProduct(Wheel.State.TireForce, ArmAxisProjOnGround.GetSafeNormal());
+	FVector3f AntiPitchForce = (ArmAxis - ArmAxisProjOnGround) * TireForceCausingAntiPitch;
 
 	// project the suspension force onto the impact normal
 	// so that the car will not move by itself when parked
-	FVector SuspensionForceProj = HitStruct.ImpactNormal * Suspension.SimData.ForceAlongImpactNormal;
-	FVector Impulse = (Wheel.SimData.TireForce + SuspensionForceProj + AntiPitchForce) * Wheel.SimData.PhysicsDeltaTime;
+	FVector3f SuspensionForceProj = ImpactNormal * Suspension.State.ForceAlongImpactNormal;
+	FVector Impulse = (FVector)(Wheel.State.TireForce + SuspensionForceProj + AntiPitchForce) * Wheel.State.PhysicsDeltaTime;
 	
 	// add impulse at carbody
 	UAsyncTickFunctions::ATP_AddImpulseAtPosition(
@@ -191,14 +190,14 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	);
 
 	// also add force to the contacted component
-	if (IsValid(HitStruct.GetComponent()) &&
-		HitStruct.GetComponent()->IsSimulatingPhysics())
+	if (Suspension.State.ImpactComponent.IsValid() &&
+		Suspension.State.ImpactComponent.Get()->IsSimulatingPhysics())
 	{
 		UAsyncTickFunctions::ATP_AddImpulseAtPosition(
-			HitStruct.GetComponent(),
-			HitStruct.ImpactPoint, 
-			Impulse * -100.f,	// don't add impulse against gravity
-			HitStruct.BoneName);
+			Suspension.State.ImpactComponent.Get(),
+			Suspension.State.ImpactPoint,
+			Impulse * -100.f	// don't add impulse against gravity
+			);
 	}
 }
 
@@ -296,14 +295,22 @@ void UVehicleWheelComponent::SetSprungMass(float NewSprungMass)
 	Suspension.SetSprungMass(NewSprungMass);
 }
 
+FTransform3f UVehicleWheelComponent::GetWheelRelativeTransform()
+{
+
+	return FTransform3f(
+		Suspension.State.WheelRelativeRotation,
+		Suspension.State.KnuckleRelativePos + Suspension.State.WheelCenterToKnuckle);
+}
+
 float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float LateralScale)
 {
 	// if the slip velocity is too low, should scale the affection of slip ratio, 0.5 is just magic number
-	float SpeedScaleX = FMath::Clamp(0.5f * Wheel.SimData.LongSlipVelocity, -1.f, 1.f);
+	float SpeedScaleX = FMath::Clamp(0.5f * Wheel.State.LongSlipVelocity, -1.f, 1.f);
 	float NormalizedSx = Wheel.SmoothenedSlipRatio * LongitudinalScale * SpeedScaleX;
 
 	// also if the lateral velocity is too low, should scale the affection of slip angle
-	float SpeedScaleY = FMath::Clamp(0.5f * Wheel.SimData.LocalLinearVelocity.Y, -1.f, 1.f);
+	float SpeedScaleY = FMath::Clamp(0.5f * Wheel.State.LocalLinearVelocity.Y, -1.f, 1.f);
 	float NormalizedSy = 0.011111f * Wheel.SmoothenedSlipAngle * LateralScale * SpeedScaleY;
 
 	// combined slip
@@ -337,9 +344,11 @@ void UVehicleWheelComponent::UpdatePhysics(
 	}
 
 	//Update anim cache
-	PrevKnucklePos2D = Suspension.SimData.KnucklePos2D;
-	PrevWheelRelativeRot = Suspension.SimData.WheelRelativeTransform.GetRotation();
+	PrevKnucklePos2D = Suspension.State.KnucklePos2D;
+	PrevWheelRelativeRot = Suspension.State.WheelRelativeRotation;
 	TimeSinceLastPhysicsTick = 0.f;
+
+	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody);
 
 	//Suspension
 	Suspension.UpdateSuspension(
@@ -354,14 +363,20 @@ void UVehicleWheelComponent::UpdatePhysics(
 		InBrakeTorque,
 		InHandbrakeTorque,
 		InReflectedInertia,
-		Suspension.SimData);
+		Suspension.State);
 
 	ApplyWheelForce();
 }
 
-void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(float InSteeringAngle)
+void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
+	float InSteeringAngle,
+	FVector& OutApporximatedWheelWorldPos,
+	FVehicleSuspensionSimContext& Ctx
+)
 {
-	Suspension.StartUpdateSolidAxle(InSteeringAngle);
+	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody);
+
+	return Suspension.StartUpdateSolidAxle(InSteeringAngle, OutApporximatedWheelWorldPos, Ctx);
 }
 
 void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
@@ -371,6 +386,7 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 	float InHandbrakeTorque,
 	float InSwaybarForce,
 	float InReflectedInertia,
+	FVehicleSuspensionSimContext& Ctx,
 	const FVector& InKnuckleWorldPos,
 	const FVector& InAxleWorldDirection
 )
@@ -378,6 +394,7 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 	Suspension.FinalizeUpdateSolidAxle(
 		InPhysicsDeltaTime, 
 		InSwaybarForce,
+		Ctx,
 		InKnuckleWorldPos,
 		InAxleWorldDirection);
 
@@ -387,7 +404,7 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 		InBrakeTorque,
 		InHandbrakeTorque,
 		InReflectedInertia,
-		Suspension.SimData);
+		Suspension.State);
 
 	ApplyWheelForce();
 }
@@ -400,9 +417,9 @@ void UVehicleWheelComponent::GetWheelCoordinator(UVehicleWheelCoordinatorCompone
 float UVehicleWheelComponent::ComputeFeedBackTorque()
 {
 	// get machanism trail
-	FVector Arm = WheelConfig.Radius * Suspension.SimData.StrutDirection.ProjectOnToNormal(Suspension.SimData.HitStruct.ImpactNormal);
-	FVector Torque = FVector::CrossProduct(Arm, Wheel.SimData.TireForce);
-	return FVector::DotProduct(Suspension.SimData.StrutDirection, Torque);
+	FVector3f Arm = WheelConfig.Radius * Suspension.State.StrutDirection.ProjectOnToNormal(Suspension.State.ImpactNormal);
+	FVector3f Torque = FVector3f::CrossProduct(Arm, Wheel.State.TireForce);
+	return FVector3f::DotProduct(Suspension.State.StrutDirection, Torque);
 }
 
 void UVehicleWheelComponent::SetInertiaTensor(UPrimitiveComponent* InComponent, FVector InInertia)
@@ -437,18 +454,9 @@ void UVehicleWheelComponent::SetInertiaTensor(UPrimitiveComponent* InComponent, 
 	});
 }
 
-bool UVehicleWheelComponent::GetRayCastResult(FHitResult& OutHitResult, bool& OutRefinement)
+FTransform UVehicleWheelComponent::GetCarbodyWorldTransform()
 {
-	OutHitResult = Suspension.SimData.HitStruct;
-	OutRefinement = Suspension.SimData.bRayCastRefined;
-	return Suspension.SimData.bHitGround;
-}
-
-FVector UVehicleWheelComponent::GetRayCastHitLocation()
-{
-	float DistanceToRayCastStart = FMath::Max(0.f, Suspension.SimData.HitDistance - WheelConfig.Radius);
-	FVector OffsetToRayCastStart = Suspension.SimData.ComponentUpVector * DistanceToRayCastStart;
-	return Suspension.SimData.RayCastStartPos - OffsetToRayCastStart;
+	return IsValid(Carbody) ? Carbody->GetComponentTransform() : FTransform();
 }
 
 void UVehicleWheelComponent::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)
@@ -463,7 +471,7 @@ void UVehicleWheelComponent::DrawSuspensionForce(float Duration, float Thickness
 
 void UVehicleWheelComponent::DrawWheelForce(float Duration, float Thickness, float Length, bool bDrawVelocity, bool bDrawSlip, bool bDrawInertia)
 {
-	Wheel.DrawWheelForce(CurrentWorld, Suspension.SimData, Duration, Thickness, Length, bDrawVelocity, bDrawSlip, bDrawInertia);
+	Wheel.DrawWheelForce(CurrentWorld, Suspension.State, Duration, Thickness, Length, bDrawVelocity, bDrawSlip, bDrawInertia);
 }
 
 bool UVehicleWheelComponent::SetMesh(
@@ -527,34 +535,35 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 		TimeSinceLastPhysicsTick += DeltaTime;
 
 		// blend between physics frames
-		float Alpha = FMath::Clamp(TimeSinceLastPhysicsTick / Wheel.SimData.PhysicsDeltaTime, 0.0f, 1.0f);
-		FVector2D TargetAnimKnucklePos2D = FMath::Lerp(PrevKnucklePos2D, Suspension.SimData.KnucklePos2D, Alpha);
-		FQuat TargetAnimWheelRelativeRot = FMath::Lerp(PrevWheelRelativeRot, Suspension.SimData.WheelRelativeTransform.GetRotation(), Alpha);
+		float Alpha = FMath::Clamp(TimeSinceLastPhysicsTick / Wheel.State.PhysicsDeltaTime, 0.0f, 1.0f);
+		FVector2f TargetAnimKnucklePos2D = FMath::Lerp(PrevKnucklePos2D, Suspension.State.KnucklePos2D, Alpha);
+		FQuat4f TargetAnimWheelRelativeRot = FMath::Lerp(PrevWheelRelativeRot, Suspension.State.WheelRelativeRotation, Alpha);
 
 		// interp
-		AnimKnucklePos2D = FMath::Vector2DInterpTo(AnimKnucklePos2D, TargetAnimKnucklePos2D, DeltaTime, AnimInterpSpeed);
-		AnimWheelRelativeRot = FMath::QInterpTo(AnimWheelRelativeRot, TargetAnimWheelRelativeRot, DeltaTime, AnimInterpSpeed);
+		AnimKnucklePos2D = (FVector2f)FMath::Vector2DInterpTo((FVector2D)AnimKnucklePos2D, (FVector2D)TargetAnimKnucklePos2D, DeltaTime, AnimInterpSpeed);
+		AnimWheelRelativeRot = (FQuat4f)FMath::QInterpTo((FQuat)AnimWheelRelativeRot, (FQuat)TargetAnimWheelRelativeRot, DeltaTime, AnimInterpSpeed);
 	}
 	else
 	{
 		TimeSinceLastPhysicsTick = 0.f;
-		AnimKnucklePos2D = Suspension.SimData.KnucklePos2D;
-		AnimWheelRelativeRot = Suspension.SimData.WheelRelativeTransform.GetRotation();
+		AnimKnucklePos2D = Suspension.State.KnucklePos2D;
+		AnimWheelRelativeRot = Suspension.State.WheelRelativeRotation;
 	}
 
-	WheelKnuckleComponent->SetRelativeLocation(Suspension.SuspensionPlaneToZYPlane(AnimKnucklePos2D));
-	WheelKnuckleComponent->SetRelativeRotation(Suspension.SimData.RelativeTransform.InverseTransformRotation(AnimWheelRelativeRot));
+	float WheelPos = Suspension.State.bIsRightWheel ? 1.f : -1.f;
+	WheelKnuckleComponent->SetRelativeLocation((FVector)Suspension.SuspensionPlaneToZYPlane(AnimKnucklePos2D, WheelPos));
+	WheelKnuckleComponent->SetRelativeRotation(GetRelativeTransform().InverseTransformRotation((FQuat)AnimWheelRelativeRot));
 	
 	if (IsValid(WheelMeshComponent))
 	{
 		if (MaxAnimAngularVelocity > 0)
 		{
 			WheelMeshComponent->AddLocalRotation(FRotator(FMath::RadiansToDegrees(
-				FMath::Clamp(-Wheel.SimData.AngularVelocity, -MaxAnimAngularVelocity, MaxAnimAngularVelocity)) * DeltaTime, 0, 0));
+				FMath::Clamp(-Wheel.State.AngularVelocity, -MaxAnimAngularVelocity, MaxAnimAngularVelocity)) * DeltaTime, 0, 0));
 		}
 		else
 		{
-			WheelMeshComponent->AddLocalRotation(FRotator(FMath::RadiansToDegrees(-Wheel.SimData.AngularVelocity) * DeltaTime, 0, 0));
+			WheelMeshComponent->AddLocalRotation(FRotator(FMath::RadiansToDegrees(-Wheel.State.AngularVelocity) * DeltaTime, 0, 0));
 		}
 	}
 }
@@ -566,82 +575,86 @@ FTransform UVehicleWheelComponent::GetSkidMarkWorldTransform(float InSkidMarkBia
 		// the impact point of line trace is always on the outer side of the wheel
 		InSkidMarkBias -= WheelConfig.Width * 0.5f;
 	}
-	FVector N = Suspension.SimData.HitStruct.ImpactNormal;
-	FQuat q = FRotationMatrix::MakeFromZX(N, Suspension.SimData.ImpactPointWorldVelocity).ToQuat();
-	FVector v = Suspension.SimData.HitStruct.ImpactPoint + N;	//to avoid spawned in the ground
-	FVector rightV = FVector::VectorPlaneProject(Suspension.SimData.WheelRightVector, N).GetSafeNormal();
-	v += rightV * InSkidMarkBias * Suspension.SimData.WheelPos;
+	FVector N = (FVector)Suspension.State.ImpactNormal;
+	FQuat q = FRotationMatrix::MakeFromZX(N, FVector(Suspension.State.ImpactPointWorldVelocity)).ToQuat();
+	FVector v = Suspension.State.ImpactPoint + N;	//to avoid spawned in the ground
+	FVector rightV = FVector::VectorPlaneProject(FVector(Suspension.State.WheelRightVector), N).GetSafeNormal();
+	v += rightV * InSkidMarkBias * (Suspension.State.bIsRightWheel ? 1.f : -1.f);
 	v += q.GetForwardVector() * -0.25 * InSkidMarkScale;	//-0.25 is for no reason
-	FVector LocalLinVel = FVector(Wheel.SimData.LocalLinearVelocity, 0.f);
+	FVector LocalLinVel = FVector((FVector2D)Wheel.State.LocalLinearVelocity, 0.f);
 	return FTransform(q, v, LocalLinVel);
 }
 
-FQuat UVehicleWheelComponent::UpdateSuspensionArmAnim(USceneComponent* InArmMesh, FRotator InRotationOffset)
+FQuat4f UVehicleWheelComponent::UpdateSuspensionArmAnim(USceneComponent* InArmMesh, FRotator InRotationOffset)
 {
-	float PosSign = Suspension.SimData.WheelPos;
+	float PosSign = Suspension.State.bIsRightWheel ? 1.f : -1.f;
 	InRotationOffset.Yaw *= PosSign;
 	InRotationOffset.Roll *= PosSign;
-	FQuat TempInitialRot = InRotationOffset.Quaternion();
-	FQuat TempArmRot = Suspension.MakeQuatFrom2DVectors(
-		FVector2D(0.f, -PosSign),
-		FVector2D(Suspension.SimData.KnucklePos2D.X, Suspension.SimData.KnucklePos2D.Y * -PosSign),
-		Suspension.SimData.ComponentRelativeForwardVector);
+	FQuat4f TempInitialRot = (FQuat4f)InRotationOffset.Quaternion();
+	FQuat4f TempArmRot = Suspension.MakeQuatFrom2DVectors(
+		FVector2f(0.f, -PosSign),
+		FVector2f(AnimKnucklePos2D.X, AnimKnucklePos2D.Y * -PosSign),
+		(FVector3f)GetRelativeTransform().GetRotation().GetForwardVector());
 	TempArmRot *= TempInitialRot;
 	TempArmRot.Normalize();
 
 	if (IsValid(InArmMesh))
 	{
-		InArmMesh->SetRelativeRotation(TempArmRot);
+		InArmMesh->SetRelativeRotation((FQuat)TempArmRot);
 	}
 
 	return TempArmRot;
 }
 
-FTransform UVehicleWheelComponent::UpdateSuspensionSpringAnim(
+FTransform3f UVehicleWheelComponent::UpdateSuspensionSpringAnim(
 	USceneComponent* InSpringMesh, 
 	FVector InScaleAxis, 
 	float InOffsetAlongArm, 
-	FVector2D InKnuckleOffset,
+	FVector InKnuckleOffset,
 	FRotator InRotationOffset, 
 	float InLengthBias, 
 	FVector InInitialScale)
 {
-	if (!IsValid(InSpringMesh))return FTransform();
+	if (!IsValid(InSpringMesh))return FTransform3f();
 
-	float PosSign = Suspension.SimData.WheelPos;
+	float PosSign = Suspension.State.bIsRightWheel ? 1.f : -1.f;
 	InRotationOffset.Yaw *= PosSign;
 	InRotationOffset.Roll *= PosSign;
 
 	InKnuckleOffset.Y *= PosSign;
 
-	FVector KnuckleOffset3D = Suspension.SimData.WheelRelativeTransform.TransformPosition(FVector(0.f, InKnuckleOffset.Y, InKnuckleOffset.X));
-	KnuckleOffset3D -= Suspension.SimData.WheelRelativeTransform.GetLocation();
+	FTransform3f RelativeTrans = (FTransform3f)GetRelativeTransform();
+	FVector3f KnuckleRelativePos = FVector3f(Suspension.State.KnuckleRelativePos);
+	FTransform3f WheelRelativeTransform = GetWheelRelativeTransform();
+	FVector3f KnuckleOffset3D = WheelRelativeTransform.TransformPosition(FVector3f(0.f, InKnuckleOffset.Y, InKnuckleOffset.X));
+	KnuckleOffset3D -= WheelRelativeTransform.GetLocation();
 
-	FVector PivotPos = Suspension.SimData.RelativeTransform.TransformPosition(Suspension.SuspensionPlaneToZYPlane(FVector2D(0.f)));
-	FVector ArmDir = (PivotPos - Suspension.SimData.KnuckleRelativePos).GetSafeNormal();
+	FVector3f PivotPos = RelativeTrans.TransformPosition(Suspension.SuspensionPlaneToZYPlane(FVector2f(0.f), PosSign));
+	FVector3f ArmDir = (PivotPos - KnuckleRelativePos).GetSafeNormal();
 	
-	FVector OffsetJointPos = Suspension.SimData.KnuckleRelativePos + ArmDir * InOffsetAlongArm;
-	FVector OffsetInitialJointPos = Suspension.SimData.RelativeTransform.TransformPosition(FVector(0.f, InOffsetAlongArm * -PosSign, 0.f));
+	FVector3f OffsetJointPos = KnuckleRelativePos + ArmDir * InOffsetAlongArm;
+	FVector3f OffsetInitialJointPos = RelativeTrans.TransformPosition(FVector3f(0.f, InOffsetAlongArm * -PosSign, 0.f));
 
 	OffsetJointPos += KnuckleOffset3D;
 	OffsetInitialJointPos += KnuckleOffset3D;
 
-	FVector AnimStrut = InSpringMesh->GetRelativeLocation() - OffsetJointPos;
-	FVector AnimStrutDir = AnimStrut.GetSafeNormal();
+	FVector3f SpringMeshRelativePos = (FVector3f)InSpringMesh->GetRelativeLocation();
+	FVector3f AnimStrut = SpringMeshRelativePos - OffsetJointPos;
+	FVector3f AnimStrutDir = AnimStrut.GetSafeNormal();
 
-	FQuat AnimStrutRot = FRotationMatrix::MakeFromXZ(Suspension.SimData.ComponentRelativeForwardVector, AnimStrutDir).ToQuat();
-
-	float InitialLength = (InSpringMesh->GetRelativeLocation() - OffsetInitialJointPos).Length();
+	FQuat4f AnimStrutRot = FRotationMatrix44f::MakeFromXZ(RelativeTrans.GetRotation().GetForwardVector(), AnimStrutDir).ToQuat();
+	
+	float InitialLength = (SpringMeshRelativePos - OffsetInitialJointPos).Length();
 	float CurrentLength = AnimStrut.Length();
 
 	float Scale = SafeDivide(CurrentLength, InitialLength);
-	FVector Scale3D = FVector(1.f) + InScaleAxis * (Scale - 1.f);
-	Scale3D *= InInitialScale;
+	FVector3f Scale3D = FVector3f(1.f) + (FVector3f)InScaleAxis * (Scale - 1.f);
+	Scale3D *= (FVector3f)InInitialScale;
 
-	InSpringMesh->SetRelativeRotation(AnimStrutRot);
-	InSpringMesh->SetRelativeScale3D(Scale3D);
+	InSpringMesh->SetRelativeRotation((FQuat)AnimStrutRot);
+	InSpringMesh->SetRelativeScale3D((FVector)Scale3D);
 
-	return FTransform(AnimStrutRot, InSpringMesh->GetRelativeLocation(), Scale3D);
+	return FTransform3f(AnimStrutRot, SpringMeshRelativePos, Scale3D);
 }
 
 void UVehicleWheelComponent::AttachComponentToKnuckle(USceneComponent* InComponent, FTransform InTransform)
@@ -649,9 +662,4 @@ void UVehicleWheelComponent::AttachComponentToKnuckle(USceneComponent* InCompone
 	if (!IsValid(InComponent))return;
 	InComponent->AttachToComponent(WheelKnuckleComponent, FAttachmentTransformRules::KeepRelativeTransform);
 	InComponent->SetRelativeTransform(InTransform);
-}
-
-float UVehicleWheelComponent::SafeDivide(auto a, auto b)
-{
-	return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
 }

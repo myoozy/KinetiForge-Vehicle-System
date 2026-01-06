@@ -25,7 +25,7 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 
-	FVehicleClutchSimData SimData;
+	FVehicleClutchSimState State;
 
 	void UpdateSpringStiffness();
 	float GetTorqueSpringModel();
@@ -46,7 +46,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	float GetCluchTorque();
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	void GetClutchMovement(FVehicleClutchSimData& Out) { Out = SimData; }
+	void GetClutchMovement(FVehicleClutchSimState& Out) { Out = State; }
 
 private:
 	float SafeDivide(float a, float b);

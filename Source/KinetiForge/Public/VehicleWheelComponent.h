@@ -79,11 +79,13 @@ protected:
 	//wheel movement
 	FVehicleWheelSolver Wheel;
 
+	FTransform CarbodyAsyncWorldTransform;
+
 	//anim
-	FVector2D PrevKnucklePos2D;
-	FQuat PrevWheelRelativeRot;
-	FVector2D AnimKnucklePos2D;
-	FQuat AnimWheelRelativeRot;
+	FVector2f PrevKnucklePos2D;
+	FQuat4f PrevWheelRelativeRot;
+	FVector2f AnimKnucklePos2D;
+	FQuat4f AnimWheelRelativeRot;
 	float TimeSinceLastPhysicsTick = 0.0f;
 
 	//cache
@@ -97,6 +99,8 @@ public:
 		UPrimitiveComponent* Component,
 		FName BoneName = NAME_None);
 
+	FVector GetRayCastHitLocation(FVehicleSuspensionSimContext& Ctx);
+
 	UFUNCTION(BlueprintCallable, Category = "Initialization")
 	static void CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target, bool bReInitialize = false);
 
@@ -107,34 +111,34 @@ public:
 	void SetSprungMass(float NewSprungMass);
 
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
-	FVector GetTopMountRelativeLocation() { return Suspension.SimData.TopMountRelativePos; }
+	FVector3f GetTopMountRelativeLocation() { return Suspension.State.TopMountRelativePos; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Suspension")
-	FTransform GetWheelRelativeTransform() { return Suspension.SimData.WheelRelativeTransform; }
+	FTransform3f GetWheelRelativeTransform();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Suspension")
-	float GetSuspensionLength() { return Suspension.SimData.SuspensionCurrentLength; }
+	float GetSuspensionLength() { return Suspension.State.SuspensionCurrentLength; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Suspension")
-	float GetSteeringAngle() { return Suspension.SimData.SteeringAngle; }
+	float GetSteeringAngle() { return Suspension.State.SteeringAngle; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tire")
-	float GetSlipRatio() { return Wheel.SimData.SlipRatio; }
+	float GetSlipRatio() { return Wheel.State.SlipRatio; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tire")
-	float GetSlipAngle() { return Wheel.SimData.SlipAngle; }
+	float GetSlipAngle() { return Wheel.State.SlipAngle; }
 
 	UFUNCTION(BlueprintCallable, Category = "Tire", meta = (ToolTip = "Obtain a normalized tire combination slip value. This function can be used for tire skid particles or tire sound effects."))
 	float GetNormalizedSlip(float LongitudinalScale = 1.f, float LateralScale = 1.f);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Wheel")
-	float GetAngularVelocity() { return Wheel.SimData.AngularVelocity; }
+	float GetAngularVelocity() { return Wheel.State.AngularVelocity; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Wheel")
-	float GetTotalInertia() { return Wheel.SimData.TotalInertia; }
+	float GetTotalInertia() { return Wheel.State.TotalInertia; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Wheel")
-	FVector GetWorldLinaerVelocity() { return Suspension.SimData.ImpactPointWorldVelocity; }
+	FVector GetWorldLinaerVelocity() { return FVector(Suspension.State.ImpactPointWorldVelocity); }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "Update the independent suspension and wheel physics"))
 	void UpdatePhysics(
@@ -147,7 +151,11 @@ public:
 		float InReflectedInertia);
 
 	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "Start updating the solid axle physics, this function will only prepare and do raycast"))
-	void StartUpdateSolidAxlePhysics(float InSteeringAngle);
+	void StartUpdateSolidAxlePhysics(
+		float InSteeringAngle,
+		FVector& OutApporximatedWheelWorldPos,
+		FVehicleSuspensionSimContext& Ctx
+	);
 
 	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "Finalize updating the solid axle physics, this function will only apply the wheel transform"))
 	void FinalizeUpdateSolidAxlePhysics(
@@ -157,6 +165,7 @@ public:
 		float InHandbrakeTorque,
 		float InSwaybarForce,
 		float InReflectedInertia,
+		FVehicleSuspensionSimContext& Ctx,
 		const FVector& InKnuckleWorldPos,
 		const FVector& InAxleWorldDirection);
 
@@ -171,47 +180,42 @@ public:
 	float ComputeFeedBackTorque();
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
-	void SetEspBrakeTorque(float NewTorque = 0.f) { Wheel.SimData.BrakeTorqueFromESP = NewTorque; }
+	void SetEspBrakeTorque(float NewTorque = 0.f) { Wheel.State.BrakeTorqueFromESP = NewTorque; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
-	float GetEspBrakeTorque() { return Wheel.SimData.BrakeTorqueFromESP; }
+	float GetEspBrakeTorque() { return Wheel.State.BrakeTorqueFromESP; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
-	void SetP4MotorTorque(float NewTorque = 0.f) { Wheel.SimData.P4MotorTorque = NewTorque; }
+	void SetP4MotorTorque(float NewTorque = 0.f) { Wheel.State.P4MotorTorque = NewTorque; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	float GetP4MotorTorque() { return Wheel.SimData.P4MotorTorque; }
+	float GetP4MotorTorque() { return Wheel.State.P4MotorTorque; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "kg/m^2"))
 	static void SetInertiaTensor(UPrimitiveComponent* InComponent, FVector InInertia);
 
 	UFUNCTION(BlueprintCallable, Category = "Wheel")
-	void GetWheelMovement(FVehicleWheelSimData& Out) { Out = Wheel.SimData; }
+	void GetWheelMovement(FVehicleWheelSimState& Out) { Out = Wheel.State; }
 
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
-	void GetSuspensionMovement(FVehicleSuspensionSimData& Out) { Out = Suspension.SimData; }
+	FVehicleSuspensionSimState GetSuspensionMovement() { return Suspension.State; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ReadOnly")
 	UPrimitiveComponent* GetCarbody() { return Carbody; }
 
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
-	bool GetRayCastResult(FHitResult& OutHitResult, bool& OutRefinement);
-	bool GetRayCastResult() { return Suspension.SimData.bHitGround; }
+	bool GetRayCastResult() { return Suspension.State.bHitGround; }
 
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
-	FVector GetRayCastHitLocation();
+	FVector GetRayCastImpactPoint() { return Suspension.State.ImpactPoint; }
+
+	UFUNCTION(BlueprintCallable, Category = "Physics")
+	FTransform GetCarbodyAsyncWorldTransform() { return CarbodyAsyncWorldTransform; }
+	UFUNCTION(BlueprintCallable, Category = "Physics")
+	FTransform GetCarbodyWorldTransform();
 
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
-	float GetRayCastHitDistance() { return Suspension.SimData.HitDistance; }
-
-	UFUNCTION(BlueprintCallable, Category = "Suspension")
-	FVector GetRayCastImpactPoint() { return Suspension.SimData.HitStruct.ImpactPoint; }
-
-	UFUNCTION(BlueprintCallable, Category = "Suspension")
-	FTransform GetCarbodyWorldTransform() { return Suspension.SimData.CarbodyWorldTransform; }
-
-	UFUNCTION(BlueprintCallable, Category = "Suspension")
-	FVector GetKnuckleRelativePosition() { return Suspension.SimData.KnuckleRelativePos; }
+	FVector GetKnuckleRelativePosition() { return FVector(Suspension.State.KnuckleRelativePos); }
 
 	//debug draw
 	UFUNCTION(BlueprintCallable, Category = "Debug")
@@ -271,14 +275,14 @@ public:
 	FTransform GetSkidMarkWorldTransform(float InSkidMarkBias, float InSkidMarkScale);
 
 	UFUNCTION(BlueprintCallable, Category = "Animation", meta = (ToolTip = "Rotate the arm mesh around its own origin"))
-	FQuat UpdateSuspensionArmAnim(USceneComponent* InArmMesh,
+	FQuat4f UpdateSuspensionArmAnim(USceneComponent* InArmMesh,
 		FRotator InRotationOffset = FRotator(0.f, 0.f, 0.f));
 
 	UFUNCTION(BlueprintCallable, Category = "Animation", meta = (ToolTip = "Rotate and scale the spring mesh around its own origin"))
-	FTransform UpdateSuspensionSpringAnim(USceneComponent* InSpringMesh,
+	FTransform3f UpdateSuspensionSpringAnim(USceneComponent* InSpringMesh,
 		FVector InScaleAxis = FVector(0.f, 0.f, 1.f),
 		float InOffsetAlongArm = 0.f,
-		FVector2D InKnuckleOffset = FVector2D(0.f, 0.f),
+		FVector InKnuckleOffset = FVector(0.f, 0.f, 0.f),
 		FRotator InRotationOffset = FRotator(0.f, 0.f, 0.f),
 		float InLengthBias = 0.f,
 		FVector InInitialScale = FVector(1.f, 1.f, 1.f));
@@ -287,5 +291,8 @@ public:
 	void AttachComponentToKnuckle(USceneComponent* InComponent, FTransform InTransform);
 
 private:
-	float SafeDivide(auto a, auto b);
+	static FORCEINLINE auto SafeDivide(auto a, auto b)
+	{
+		return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
+	}
 };

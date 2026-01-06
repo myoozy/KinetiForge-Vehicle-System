@@ -38,7 +38,7 @@ protected:
 	bool bShouldTriggerBackfiringCallback = false;
 	TArray<FOnTurboBlowOffDelegate> TurboBlowOffCallbacks;
 	TArray<FOnBackfiringDelegate> BackfiringCallbacks;
-	FVehicleEngineSimData SimData;
+	FVehicleEngineSimState State;
 
 	void EngineAcceleration();
 	void UpdateExhaust();
@@ -52,25 +52,28 @@ public:
 	void UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque);
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
-	void GetEngineMovement(FVehicleEngineSimData& Out) { Out = SimData; }
+	void GetEngineMovement(FVehicleEngineSimState& Out) { Out = State; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
-	void SetP1MotorTorque(float NewTorque) {SimData.P1MotorTorque = NewTorque; }
+	void SetP1MotorTorque(float NewTorque) {State.P1MotorTorque = NewTorque; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	float GetP1MotorTorque() { return SimData.P1MotorTorque; }
+	float GetP1MotorTorque() { return State.P1MotorTorque; }
 
 	UFUNCTION(BlueprintCallable, Category = "Initialize")
 	void Initialize();
 
 	UFUNCTION(BlueprintCallable, Category = "Input")
-	EVehicleEngineState StartVehicleEngine();
+	EVehicleEngineOperationMode StartVehicleEngine();
 
 	UFUNCTION(BlueprintCallable, Category = "Input")
-	EVehicleEngineState ShutVehicleEngine();
+	EVehicleEngineOperationMode ShutVehicleEngine();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	float GetEngineTorque() { return SimData.EffectiveTorque; }
+	float GetEngineTorque() { return State.EffectiveTorque; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	EVehicleEngineOperationMode GetEngineOperationMode() { return State.OperationMode; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	float GetMaxRPM() { return NAConfig.EngineMaxRPM; }
@@ -79,22 +82,22 @@ public:
 	float GetIdleRPM() { return NAConfig.EngineIdleRPM; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	float GetRPM() { return SimData.EngineRPM; }
+	float GetRPM() { return State.EngineRPM; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	float GetAngularVelocity() { return SimData.EngineAngularVelocity; }
+	float GetAngularVelocity() { return State.EngineAngularVelocity; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	float GetTurboSpool() { return SimData.TurboSpool; }
+	float GetTurboSpool() { return State.TurboSpool; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	float GetTurboPressure() { return SimData.TurboPressure; }
+	float GetTurboPressure() { return State.TurboPressure; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	float GetBackfireIntensity() { return SimData.BackfireIntensity; }
+	float GetBackfireIntensity() { return State.BackfireIntensity; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
-	float GetRealThrottleValue() { return SimData.RealThrottle; }
+	float GetRealThrottleValue() { return State.RealThrottle; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics")
 	void BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate InOnTurboBlowOff);

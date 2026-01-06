@@ -8,7 +8,7 @@
 /*****************************ENGINE******************************/
 
 UENUM(BlueprintType)
-enum class EVehicleEngineState : uint8
+enum class EVehicleEngineOperationMode : uint8
 {
 	On  UMETA(DisplayName = "EngineON"),
 	Off UMETA(DisplayName = "EngineOFF"),
@@ -17,7 +17,7 @@ enum class EVehicleEngineState : uint8
 };
 
 USTRUCT(BlueprintType, Blueprintable)
-struct FVehicleNaturallyAspiratedEngineConfig
+struct KINETIFORGE_API FVehicleNaturallyAspiratedEngineConfig
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -48,7 +48,7 @@ struct FVehicleNaturallyAspiratedEngineConfig
 };
 
 USTRUCT(BlueprintType, Blueprintable)
-struct FVehicleEngineTurboConfig
+struct KINETIFORGE_API FVehicleEngineTurboConfig
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -75,7 +75,7 @@ struct FVehicleEngineTurboConfig
 };
 
 USTRUCT(BlueprintType, Blueprintable)
-struct  FVehicleEngineExhaustConfig
+struct KINETIFORGE_API FVehicleEngineExhaustConfig
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -98,12 +98,16 @@ struct  FVehicleEngineExhaustConfig
 };
 
 USTRUCT(BlueprintType, Blueprintable)
-struct FVehicleEngineSimData
+struct KINETIFORGE_API FVehicleEngineSimState
 {
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
-	EVehicleEngineState State = EVehicleEngineState::Starting;
+	EVehicleEngineOperationMode OperationMode = EVehicleEngineOperationMode::Starting;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fuel")
+	bool bSpark = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fuel")
+	bool bFuelInjection = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
 	float PhysicsDeltaTime = 0.00833333;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -140,10 +144,6 @@ struct FVehicleEngineSimData
 	float RevLimiterTimer = 0.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Force")
 	float P1MotorTorque = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fuel")
-	bool bSpark = false;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fuel")
-	bool bFuelInjection = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
 	bool bIsTurboBlowingOff = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turbo")
@@ -161,7 +161,7 @@ enum class EClutchSimMode : uint8
 };
 
 USTRUCT(BlueprintType)
-struct FVehicleClutchConfig
+struct KINETIFORGE_API FVehicleClutchConfig
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -176,7 +176,7 @@ struct FVehicleClutchConfig
 };
 
 USTRUCT(BlueprintType)
-struct FVehicleClutchSimData
+struct KINETIFORGE_API FVehicleClutchSimState
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -188,8 +188,6 @@ struct FVehicleClutchSimData
 	float SpringDamping = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float CriticalDamping = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float MaxNaturalFrequency = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float EngineInertia = 0.2;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -220,7 +218,7 @@ struct FVehicleClutchSimData
 
 
 USTRUCT(BlueprintType)
-struct FVehicleGearboxConfig
+struct KINETIFORGE_API FVehicleGearboxConfig
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -245,7 +243,7 @@ struct FVehicleGearboxConfig
 };
 
 USTRUCT(BlueprintType)
-struct FAutoGearboxConfig
+struct KINETIFORGE_API FAutoGearboxConfig
 {
 	GENERATED_USTRUCT_BODY()
 

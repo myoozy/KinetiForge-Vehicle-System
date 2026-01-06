@@ -38,23 +38,23 @@ void UVehicleEngineComponent::BeginPlay()
 void UVehicleEngineComponent::EngineAcceleration()
 {
 	// absolut engine rpm
-	float AbsolutRPM = FMath::Abs(SimData.EngineRPM);
+	float AbsolutRPM = FMath::Abs(State.EngineRPM);
 
 	// internal friction of the engine
 	float FrictionTorque = NAConfig.StartFriction + NAConfig.FrictionCoefficient * AbsolutRPM;
 
 	// check if there is combustion
-	bool bCombustion = SimData.bFuelInjection && SimData.bSpark;
+	bool bCombustion = State.bFuelInjection && State.bSpark;
 
 	// torque generated inside of the engine
 	float IndicatedTorque = 0.f;
 	if (NAConfig.EngineTorqueCurve)
 	{
-		IndicatedTorque = SimData.RealThrottle* (FrictionTorque + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(AbsolutRPM));
+		IndicatedTorque = State.RealThrottle* (FrictionTorque + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(AbsolutRPM));
 	}
 	else
 	{
-		IndicatedTorque = SimData.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque);
+		IndicatedTorque = State.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque);
 	}
 
 	// no combustion, no torque
@@ -72,7 +72,7 @@ void UVehicleEngineComponent::EngineAcceleration()
 			AbsolutRPM
 		);
 
-		float TargetSpool = RPMFactor * SimData.RealThrottle;
+		float TargetSpool = RPMFactor * State.RealThrottle;
 
 		float MinSpoolForPositiveBoost = (TurboConfig.FullBoostRPM > SMALL_NUMBER) ? TurboConfig.SpoolStartRPM / TurboConfig.FullBoostRPM : 0.f;
 
@@ -84,41 +84,41 @@ void UVehicleEngineComponent::EngineAcceleration()
 		// other wise it will be related to throttle input(smaller imput -> more vacuum)
 		float ManifoldVacuum = 0.f;
 
-		SimData.bIsAntiLagTriggered = TurboConfig.bEnableAntiLag
-			&& TargetSpool < SimData.TurboSpool
+		State.bIsAntiLagTriggered = TurboConfig.bEnableAntiLag
+			&& TargetSpool < State.TurboSpool
 			&& AbsolutRPM > TurboConfig.AntiLagMinRPM
-			&& SimData.TurboSpool > MinSpoolForPositiveBoost;
+			&& State.TurboSpool > MinSpoolForPositiveBoost;
 
 		// if throttle input is too small, blow off valve will be opened
 		// if anti-lag is triggered, the valve should not be open
-		bool bIsBlowOffValveOpen = SimData.RawThrottleInput <= SMALL_NUMBER && !SimData.bIsAntiLagTriggered;
+		bool bIsBlowOffValveOpen = State.RawThrottleInput <= SMALL_NUMBER && !State.bIsAntiLagTriggered;
 
 		if (bIsBlowOffValveOpen)
 		{
 			SpoolInterpSpeed = (TurboConfig.PressureDecayDuration > SMALL_NUMBER) ? 3.f / TurboConfig.PressureDecayDuration : 0.f;
 
 			// if blowing off not marked and turbo spinning fast
-			if (!SimData.bIsTurboBlowingOff && SimData.TurboSpool > MinSpoolForPositiveBoost)
+			if (!State.bIsTurboBlowingOff && State.TurboSpool > MinSpoolForPositiveBoost)
 			{
 				// trigger blow off callbacks in next game tick
-				SimData.bIsTurboBlowingOff = true;
+				State.bIsTurboBlowingOff = true;
 				bShouldTriggerTurboBlowOffCallback = true;
 			}
 		}
 		else
 		{
-			SimData.bIsTurboBlowingOff = false;
+			State.bIsTurboBlowingOff = false;
 
 			// if throttle is hit, blow off valve close
 			SpoolInterpSpeed = (TurboConfig.SpoolUpDuration > SMALL_NUMBER) ? 3.f / TurboConfig.SpoolUpDuration : 0.f;
 
-			if (SimData.bIsAntiLagTriggered)
+			if (State.bIsAntiLagTriggered)
 			{
 				// inject fuel during exhaust stroke
-				SimData.bFuelInjection = true;
+				State.bFuelInjection = true;
 
 				float ALS_TargetSpool = FMath::Sqrt(TurboConfig.AntiLagTargetPressureRatio);
-				TargetSpool = FMath::Min(SimData.TurboSpool, ALS_TargetSpool);
+				TargetSpool = FMath::Min(State.TurboSpool, ALS_TargetSpool);
 			}
 			else
 			{
@@ -127,24 +127,24 @@ void UVehicleEngineComponent::EngineAcceleration()
 				float CurrentIntakeRestriction = FMath::GetMappedRangeValueClamped(
 					FVector2D(0.f, MinSpoolForPositiveBoost),
 					FVector2D(TurboConfig.StaticIntakeRestriction, 0.f),
-					SimData.TurboSpool
+					State.TurboSpool
 				);
 
-				ManifoldVacuum = FMath::Lerp(TurboConfig.StaticIntakeRestriction, CurrentIntakeRestriction, SimData.RawThrottleInput);
+				ManifoldVacuum = FMath::Lerp(TurboConfig.StaticIntakeRestriction, CurrentIntakeRestriction, State.RawThrottleInput);
 			}
 		}
 
 		// get spool
-		SimData.TurboSpool = FMath::FInterpTo(
-			SimData.TurboSpool, 
+		State.TurboSpool = FMath::FInterpTo(
+			State.TurboSpool, 
 			TargetSpool, 
-			SimData.PhysicsDeltaTime, 
+			State.PhysicsDeltaTime, 
 			SpoolInterpSpeed
 		);
 
 		// get turbo boost
-		SimData.TurboSpool = FMath::Clamp(SimData.TurboSpool, 0.f, 1.f);
-		float SpoolSqr = SimData.TurboSpool * SimData.TurboSpool;
+		State.TurboSpool = FMath::Clamp(State.TurboSpool, 0.f, 1.f);
+		float SpoolSqr = State.TurboSpool * State.TurboSpool;
 		float CurrentBoost = FMath::GetMappedRangeValueClamped(
 			FVector2D(MinSpoolForPositiveBoost * MinSpoolForPositiveBoost, 1.f),
 			FVector2D(0.0f, TurboConfig.MaxBoostPressure),
@@ -154,61 +154,61 @@ void UVehicleEngineComponent::EngineAcceleration()
 		// get target pressure and get current pressure
 		float TargetPressure = CurrentBoost + ManifoldVacuum;
 		float PressureBuildSpeed = 3.f / 0.1f; // 3 / PressureBuildTime
-		SimData.TurboPressure = FMath::FInterpTo(
-			SimData.TurboPressure,
+		State.TurboPressure = FMath::FInterpTo(
+			State.TurboPressure,
 			TargetPressure,
-			SimData.PhysicsDeltaTime,
+			State.PhysicsDeltaTime,
 			PressureBuildSpeed
 		);
 
 		//get indicated torque
-		float TorqueMultiplier = 1.f + SimData.TurboPressure * TurboConfig.BoostEfficiency;
+		float TorqueMultiplier = 1.f + State.TurboPressure * TurboConfig.BoostEfficiency;
 		IndicatedTorque *= FMath::Max(SMALL_NUMBER, TorqueMultiplier);
 	}
 	else
 	{
 		// clear all cache if not turbo charged
-		SimData.bIsTurboBlowingOff = false;
-		SimData.bIsAntiLagTriggered = false;
-		SimData.TurboPressure *= 0.9f;
-		SimData.TurboSpool *= 0.9f;
+		State.bIsTurboBlowingOff = false;
+		State.bIsAntiLagTriggered = false;
+		State.TurboPressure *= 0.9f;
+		State.TurboSpool *= 0.9f;
 	}
 
 	/*************** Calculation of Angular Velocity ***************/
 
 	// consider P1 motor
-	IndicatedTorque += SimData.P1MotorTorque;
+	IndicatedTorque += State.P1MotorTorque;
 
 	// accelerate engine
-	SimData.EngineAngularVelocity += SafeDivide(SimData.PhysicsDeltaTime, NAConfig.EngineInertia) * (IndicatedTorque - SimData.LoadTorque + SimData.StarterMotorTorque);
+	State.EngineAngularVelocity += SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * (IndicatedTorque - State.LoadTorque + State.StarterMotorTorque);
 	
 	// get the direction of friction torque
-	float AngVelSignWithoutFriction = FMath::Sign(SimData.EngineAngularVelocity);
+	float AngVelSignWithoutFriction = FMath::Sign(State.EngineAngularVelocity);
 	FrictionTorque = FrictionTorque * AngVelSignWithoutFriction;
-	SimData.EngineAngularVelocity -= SafeDivide(SimData.PhysicsDeltaTime, NAConfig.EngineInertia) * FrictionTorque;
+	State.EngineAngularVelocity -= SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * FrictionTorque;
 	
 	// zero cross check
-	bool bCrossZero = FMath::Sign(SimData.EngineAngularVelocity) != AngVelSignWithoutFriction;
-	if (bCrossZero)SimData.EngineAngularVelocity = 0.f;
+	bool bCrossZero = FMath::Sign(State.EngineAngularVelocity) != AngVelSignWithoutFriction;
+	if (bCrossZero)State.EngineAngularVelocity = 0.f;
 	
 	// get engine rpm
-	SimData.EngineRPM = RadToRPM * SimData.EngineAngularVelocity;
+	State.EngineRPM = RadToRPM * State.EngineAngularVelocity;
 	
 	// get the effective engine torque (the power)
-	SimData.EffectiveTorque = IndicatedTorque - FrictionTorque;
+	State.EffectiveTorque = IndicatedTorque - FrictionTorque;
 }
 
 void UVehicleEngineComponent::UpdateExhaust()
 {
 	// absolut engine rpm
-	float AbsolutRPM = FMath::Abs(SimData.EngineRPM);
+	float AbsolutRPM = FMath::Abs(State.EngineRPM);
 
 	// normalized rpm
 	float NormalizedRPM = SafeDivide(AbsolutRPM, NAConfig.EngineMaxRPM);
 
 	// check if engine is slowing down (and not idling)
 	bool bIsDecelerating =
-		SimData.EffectiveTorque < 0.f
+		State.EffectiveTorque < 0.f
 		&& AbsolutRPM >(NAConfig.EngineIdleRPM * 1.5f)
 		&& AbsolutRPM < NAConfig.EngineMaxRPM;
 
@@ -218,52 +218,52 @@ void UVehicleEngineComponent::UpdateExhaust()
 		FMath::GetMappedRangeValueClamped(
 			FVector2D(0.8f, 0.9f),
 			FVector2D(1.f, NAConfig.MaxPowerLambda),
-			SimData.RawThrottleInput
+			State.RawThrottleInput
 		);
 
 	// if there is fuel injection, do the backfiring logic
-	if (SimData.bFuelInjection)
+	if (State.bFuelInjection)
 	{
 		// approximate fuel flow
-		float BaseFuelFlow = SimData.bIsAntiLagTriggered ? 
-			SimData.TurboSpool * SimData.TurboSpool : NormalizedRPM * SimData.RealThrottle;
+		float BaseFuelFlow = State.bIsAntiLagTriggered ? 
+			State.TurboSpool * State.TurboSpool : NormalizedRPM * State.RealThrottle;
 
 		// if spark is off, or if anti-lag is on
 		// all the fuel will be sent to the exhaust
-		bool bAllInExhaust = !SimData.bSpark || SimData.bIsAntiLagTriggered;
+		bool bAllInExhaust = !State.bSpark || State.bIsAntiLagTriggered;
 
 		float UnburntFuel = bAllInExhaust ?
 			BaseFuelFlow : BaseFuelFlow * FMath::Max(0.f, 1.f - TargetLamda);
 
 		// accumulate unburnt fuel
-		SimData.UnburntFuelBuffer += NAConfig.UnburntFuelAccumulationRate * UnburntFuel * SimData.PhysicsDeltaTime;
+		State.UnburntFuelBuffer += NAConfig.UnburntFuelAccumulationRate * UnburntFuel * State.PhysicsDeltaTime;
 	}
 
 	// higher lambda or higher rpm causes the unburnt fuel decay faster
-	float UnBurntFuelDecayAmount = ExhaustConfig.ExhaustScavengingStrength * SimData.UnburntFuelBuffer * TargetLamda * NormalizedRPM;
+	float UnBurntFuelDecayAmount = ExhaustConfig.ExhaustScavengingStrength * State.UnburntFuelBuffer * TargetLamda * NormalizedRPM;
 
 	// update unburnt fuel
-	SimData.UnburntFuelBuffer -= UnBurntFuelDecayAmount * SimData.PhysicsDeltaTime;
+	State.UnburntFuelBuffer -= UnBurntFuelDecayAmount * State.PhysicsDeltaTime;
 
 	// get target exhaust heat
 	// high rpm & lot of throttle = heat
-	float TargetHeat = NormalizedRPM * SimData.RealThrottle;
+	float TargetHeat = NormalizedRPM * State.RealThrottle;
 
 	// get interp speed 
-	float HeatInterpSpeed = TargetHeat > SimData.ExhaustHeat ? 
+	float HeatInterpSpeed = TargetHeat > State.ExhaustHeat ? 
 		ExhaustConfig.HeatUpRate : ExhaustConfig.CoolDownRate;
 
 	// update exhaust heat
-	SimData.ExhaustHeat = FMath::FInterpTo(
-		SimData.ExhaustHeat,
+	State.ExhaustHeat = FMath::FInterpTo(
+		State.ExhaustHeat,
 		TargetHeat,
-		SimData.PhysicsDeltaTime,
+		State.PhysicsDeltaTime,
 		HeatInterpSpeed
 	);
 
-	SimData.BackfireIntensity = 0.f;
+	State.BackfireIntensity = 0.f;
 
-	if (SimData.ExhaustHeat > ExhaustConfig.FlashPoint && SimData.UnburntFuelBuffer > ExhaustConfig.PopFuelThreshold)
+	if (State.ExhaustHeat > ExhaustConfig.FlashPoint && State.UnburntFuelBuffer > ExhaustConfig.PopFuelThreshold)
 	{
 		float Intensity = FMath::GetMappedRangeValueUnclamped(
 			FVector2D(
@@ -271,7 +271,7 @@ void UVehicleEngineComponent::UpdateExhaust()
 				ExhaustConfig.FlameFuelThreshold
 			),
 			FVector2D(0.f, 1.f),
-			SimData.UnburntFuelBuffer
+			State.UnburntFuelBuffer
 		);
 
 		Intensity = FMath::Max(0.f, Intensity);
@@ -280,17 +280,17 @@ void UVehicleEngineComponent::UpdateExhaust()
 
 		if (FMath::FRand() < Chance)
 		{
-			SimData.BackfireIntensity = Intensity;
-			SimData.UnburntFuelBuffer -= SimData.UnburntFuelBuffer * Intensity;
+			State.BackfireIntensity = Intensity;
+			State.UnburntFuelBuffer -= State.UnburntFuelBuffer * Intensity;
 			float HeatAdded = ExhaustConfig.BackfireHeatSpike * Intensity;
-			SimData.ExhaustHeat += HeatAdded;
+			State.ExhaustHeat += HeatAdded;
 			bShouldTriggerBackfiringCallback = true;
 		}
 	}
 
 	// clamp the value
-	SimData.UnburntFuelBuffer = FMath::Max(0.f, SimData.UnburntFuelBuffer);
-	SimData.ExhaustHeat = FMath::Clamp(SimData.ExhaustHeat, 0.f, 1.f);
+	State.UnburntFuelBuffer = FMath::Max(0.f, State.UnburntFuelBuffer);
+	State.ExhaustHeat = FMath::Clamp(State.ExhaustHeat, 0.f, 1.f);
 }
 
 float UVehicleEngineComponent::SafeDivide(float a, float b)
@@ -347,57 +347,57 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque)
 {
-	SimData.PhysicsDeltaTime = InDeltaTime;
-	SimData.RawThrottleInput = FMath::Clamp(InThrottle, 0.f, 1.f);
-	SimData.LoadTorque = InLoadTorque;
+	State.PhysicsDeltaTime = InDeltaTime;
+	State.RawThrottleInput = FMath::Clamp(InThrottle, 0.f, 1.f);
+	State.LoadTorque = InLoadTorque;
 
 	//update revlimit timer
-	SimData.RevLimiterTimer += SimData.PhysicsDeltaTime;
+	State.RevLimiterTimer += State.PhysicsDeltaTime;
 	//avoid overflow
 	// avoid rapid toggling due to RevLimiterTime being too short (not unit conversion)
-	SimData.RevLimiterTimer = FMath::Min(SimData.RevLimiterTimer, NAConfig.RevLimiterTime * 99999);
+	State.RevLimiterTimer = FMath::Min(State.RevLimiterTimer, NAConfig.RevLimiterTime * 99999);
 
-	switch (SimData.State)
+	switch (State.OperationMode)
 	{
-	case EVehicleEngineState::On:
+	case EVehicleEngineOperationMode::On:
 		// get real throttle value
-		SimData.RealThrottle = FMath::Lerp(SimData.IdleThrottle, 1.f, SimData.RawThrottleInput);
+		State.RealThrottle = FMath::Lerp(State.IdleThrottle, 1.f, State.RawThrottleInput);
 
 		// enable fuel injection and spark if there's throttle input
 		// the fuel injection and spark might be disabled in certain conditions
-		SimData.bFuelInjection = SimData.RawThrottleInput > SMALL_NUMBER;
-		SimData.bSpark = true;
+		State.bFuelInjection = State.RawThrottleInput > SMALL_NUMBER;
+		State.bSpark = true;
 
-		if (SimData.EngineRPM > NAConfig.EngineMaxRPM)
+		if (State.EngineRPM > NAConfig.EngineMaxRPM)
 		{
 			//cut power(disable spark) at max rpm
 			// but keep fuel injection, because we want back fireing
-			SimData.bSpark = false;
-			SimData.RevLimiterTimer = 0.f;
+			State.bSpark = false;
+			State.RevLimiterTimer = 0.f;
 		}
 		else
 		{
 			// if rpm is smaller than max rpm and the timer fullfills the timer limit
-			SimData.bSpark = SimData.RevLimiterTimer >= NAConfig.RevLimiterTime;
+			State.bSpark = State.RevLimiterTimer >= NAConfig.RevLimiterTime;
 		}
 
 		//check if throttle is released and if idle is valid
-		if (SimData.RawThrottleInput < SMALL_NUMBER && NAConfig.EngineIdleRPM > 0.f)
+		if (State.RawThrottleInput < SMALL_NUMBER && NAConfig.EngineIdleRPM > 0.f)
 		{
 			//check if engine is idling
-			if (SimData.EngineRPM < NAConfig.EngineIdleRPM)
+			if (State.EngineRPM < NAConfig.EngineIdleRPM)
 			{
 				// if rpm is too low
 				// interp the throttle to 1
 				// and enable spark and fuel injection
 				// to maintain the rpm
-				SimData.RealThrottle = FMath::FInterpTo(
-					SimData.RealThrottle, 
+				State.RealThrottle = FMath::FInterpTo(
+					State.RealThrottle, 
 					1.f, 
-					SimData.PhysicsDeltaTime, 
+					State.PhysicsDeltaTime, 
 					NAConfig.IdleThrottleInterpSpeed);
 
-				SimData.bFuelInjection = SimData.bSpark = true;
+				State.bFuelInjection = State.bSpark = true;
 			}
 			else
 			{
@@ -405,55 +405,55 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 				// interp the trottle to 0
 				// because sometimes the idle throttle is slighly too large
 				// (Due to floating-point precision)
-				SimData.RealThrottle = FMath::FInterpTo(
-					SimData.RealThrottle, 
+				State.RealThrottle = FMath::FInterpTo(
+					State.RealThrottle, 
 					0.f, 
-					SimData.PhysicsDeltaTime, 
+					State.PhysicsDeltaTime, 
 					NAConfig.IdleThrottleInterpSpeed);
 
-				SimData.bFuelInjection = false;
+				State.bFuelInjection = false;
 			}
 		}
 
 		// check if engine is off
-		if (SimData.EngineRPM <= SimData.EngineOffRPM)
+		if (State.EngineRPM <= State.EngineOffRPM)
 		{
-			SimData.State = EVehicleEngineState::Off;
-			SimData.bFuelInjection = SimData.bSpark = false;
+			State.OperationMode = EVehicleEngineOperationMode::Off;
+			State.bFuelInjection = State.bSpark = false;
 		}
 		break;
-	case EVehicleEngineState::Off:
-		SimData.bFuelInjection = SimData.bSpark = false;
-		if (SimData.EngineRPM > SimData.EngineOffRPM)
+	case EVehicleEngineOperationMode::Off:
+		State.bFuelInjection = State.bSpark = false;
+		if (State.EngineRPM > State.EngineOffRPM)
 		{
-			SimData.State = EVehicleEngineState::On;
-			SimData.bFuelInjection = SimData.bSpark = true;
+			State.OperationMode = EVehicleEngineOperationMode::On;
+			State.bFuelInjection = State.bSpark = true;
 		}
 		break;
-	case EVehicleEngineState::Starting:
-		SimData.RealThrottle = FMath::Lerp(SimData.IdleThrottle, 1.f, SimData.RawThrottleInput);
-		SimData.bFuelInjection = SimData.bSpark = true;
+	case EVehicleEngineOperationMode::Starting:
+		State.RealThrottle = FMath::Lerp(State.IdleThrottle, 1.f, State.RawThrottleInput);
+		State.bFuelInjection = State.bSpark = true;
 		//check if engine is started
-		if (SimData.EngineRPM > FMath::Min(1.5 * NAConfig.EngineIdleRPM, 0.9 * NAConfig.EngineMaxRPM))
+		if (State.EngineRPM > FMath::Min(1.5 * NAConfig.EngineIdleRPM, 0.9 * NAConfig.EngineMaxRPM))
 		{
-			SimData.State = EVehicleEngineState::On;
-			SimData.StarterMotorTorque = 0.f;
+			State.OperationMode = EVehicleEngineOperationMode::On;
+			State.StarterMotorTorque = 0.f;
 		}
 		else
 		{
-			SimData.StarterMotorTorque += SimData.PhysicsDeltaTime * SimData.TorqueRequiredToStartEngine * 10;
+			State.StarterMotorTorque += State.PhysicsDeltaTime * State.TorqueRequiredToStartEngine * 10;
 		}
 		break;
-	case EVehicleEngineState::Shutting:
-		SimData.StarterMotorTorque = 0.f;
-		SimData.bFuelInjection = false;
-		if (SimData.EngineRPM <= SimData.EngineOffRPM)
+	case EVehicleEngineOperationMode::Shutting:
+		State.StarterMotorTorque = 0.f;
+		State.bFuelInjection = false;
+		if (State.EngineRPM <= State.EngineOffRPM)
 		{
-			SimData.State = EVehicleEngineState::Off;
+			State.OperationMode = EVehicleEngineOperationMode::Off;
 		}
 		break;
 	default:
-		SimData.State = EVehicleEngineState::On;
+		State.OperationMode = EVehicleEngineOperationMode::On;
 		break;
 	}
 
@@ -466,73 +466,73 @@ void UVehicleEngineComponent::Initialize()
 	//get required torque to start engine
 	NAConfig.StartFriction = FMath::Max(NAConfig.StartFriction, SMALL_NUMBER);
 	NAConfig.FrictionCoefficient = FMath::Max(NAConfig.FrictionCoefficient, SMALL_NUMBER);
-	SimData.TorqueRequiredToStartEngine = NAConfig.StartFriction + NAConfig.EngineIdleRPM * NAConfig.FrictionCoefficient;
+	State.TorqueRequiredToStartEngine = NAConfig.StartFriction + NAConfig.EngineIdleRPM * NAConfig.FrictionCoefficient;
 	//get idle throttle
 	if (NAConfig.EngineTorqueCurve)
 	{
-		SimData.IdleThrottle = FMath::Clamp(
-			SafeDivide(SimData.TorqueRequiredToStartEngine,
-				SimData.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(NAConfig.EngineIdleRPM)),
+		State.IdleThrottle = FMath::Clamp(
+			SafeDivide(State.TorqueRequiredToStartEngine,
+				State.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(NAConfig.EngineIdleRPM)),
 			0.f, 1.f);
 	}
 	else
 	{
-		SimData.IdleThrottle = FMath::Clamp(
-			SafeDivide(SimData.TorqueRequiredToStartEngine,
-				SimData.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque), 0.f, 1.f);
+		State.IdleThrottle = FMath::Clamp(
+			SafeDivide(State.TorqueRequiredToStartEngine,
+				State.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque), 0.f, 1.f);
 	}
 
 	//check if idle rpm is valid
 	if (NAConfig.EngineIdleRPM > 0)
 	{
-		SimData.EngineOffRPM = 0.7 * NAConfig.EngineIdleRPM;
+		State.EngineOffRPM = 0.7 * NAConfig.EngineIdleRPM;
 	}
 	else
 	{
-		SimData.IdleThrottle = 0;
-		SimData.EngineOffRPM = -BIG_NUMBER;
+		State.IdleThrottle = 0;
+		State.EngineOffRPM = -BIG_NUMBER;
 	}
 
 	// reset rev-limiter
-	SimData.RevLimiterTimer = NAConfig.RevLimiterTime;
+	State.RevLimiterTimer = NAConfig.RevLimiterTime;
 }
 
-EVehicleEngineState UVehicleEngineComponent::StartVehicleEngine()
+EVehicleEngineOperationMode UVehicleEngineComponent::StartVehicleEngine()
 {
-	switch (SimData.State)
+	switch (State.OperationMode)
 	{
-	case EVehicleEngineState::On:
+	case EVehicleEngineOperationMode::On:
 		break;
-	case EVehicleEngineState::Off:SimData.State = EVehicleEngineState::Starting;
+	case EVehicleEngineOperationMode::Off:State.OperationMode = EVehicleEngineOperationMode::Starting;
 		break;
-	case EVehicleEngineState::Starting:
+	case EVehicleEngineOperationMode::Starting:
 		break;
-	case EVehicleEngineState::Shutting://State = EVehicleEngineState::Starting;
+	case EVehicleEngineOperationMode::Shutting://State = EVehicleEngineState::Starting;
 		break;
 	default:
 		break;
 	}
 
-	return SimData.State;
+	return State.OperationMode;
 }
 
-EVehicleEngineState UVehicleEngineComponent::ShutVehicleEngine()
+EVehicleEngineOperationMode UVehicleEngineComponent::ShutVehicleEngine()
 {
-	switch (SimData.State)
+	switch (State.OperationMode)
 	{
-	case EVehicleEngineState::On:SimData.State = EVehicleEngineState::Shutting;
+	case EVehicleEngineOperationMode::On:State.OperationMode = EVehicleEngineOperationMode::Shutting;
 		break;
-	case EVehicleEngineState::Off:
+	case EVehicleEngineOperationMode::Off:
 		break;
-	case EVehicleEngineState::Starting://State = EVehicleEngineState::Shutting;
+	case EVehicleEngineOperationMode::Starting://State = EVehicleEngineState::Shutting;
 		break;
-	case EVehicleEngineState::Shutting:
+	case EVehicleEngineOperationMode::Shutting:
 		break;
 	default:
 		break;
 	}
 
-	return SimData.State;
+	return State.OperationMode;
 }
 
 void UVehicleEngineComponent::BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate InOnTurboBlowOff)

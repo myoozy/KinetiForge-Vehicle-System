@@ -323,11 +323,14 @@ void UVehicleAxleAssemblyComponent::UpdateIndependentSuspensionPhysics()
 
 void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics()
 {
-	RightWheel->StartUpdateSolidAxlePhysics(SimData.RightWheelSteeringAngle);
-	LeftWheel->StartUpdateSolidAxlePhysics(SimData.LeftWheelSteeringAngle);
+	FVector LeftWorldPos = FVector(0.f);
+	FVector RightWorldPos = FVector(0.f);
 
-	FVector LeftWorldPos = LeftWheel->GetRayCastHitLocation();
-	FVector RightWorldPos = RightWheel->GetRayCastHitLocation();
+	FVehicleSuspensionSimContext LeftCtx;
+	LeftWheel->StartUpdateSolidAxlePhysics(SimData.LeftWheelSteeringAngle, LeftWorldPos, LeftCtx);
+
+	FVehicleSuspensionSimContext RightCtx;
+	RightWheel->StartUpdateSolidAxlePhysics(SimData.RightWheelSteeringAngle, RightWorldPos, RightCtx);
 
 	// get the world direction of the axle
 	FVector AxleDirection = (RightWorldPos - LeftWorldPos).GetSafeNormal();
@@ -350,6 +353,7 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics()
 		SimData.HandbrakeTorque,
 		SimData.SwaybarForce,
 		SimData.ReflectedInertiaOnWheel,
+		LeftCtx,
 		LeftKnuckleWorldPos,
 		AxleDirection);
 	RightWheel->FinalizeUpdateSolidAxlePhysics(
@@ -359,6 +363,7 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics()
 		SimData.HandbrakeTorque,
 		-SimData.SwaybarForce,
 		SimData.ReflectedInertiaOnWheel,
+		RightCtx,
 		RightKnuckleWorldPos,
 		AxleDirection);
 }

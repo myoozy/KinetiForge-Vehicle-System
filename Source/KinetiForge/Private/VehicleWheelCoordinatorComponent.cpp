@@ -139,10 +139,10 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 	RegisteredWheels.RemoveAll([](const TWeakObjectPtr<UVehicleWheelComponent>& W) {return !W.IsValid() || W->IsBeingDestroyed();});
 
 	//get wheel positions
-	TArray<FVector> Positions;
+	TArray<FVector3f> Positions;
 	for (TWeakObjectPtr<UVehicleWheelComponent> Wheel : RegisteredWheels)
 	{
-		FVector RelativePos = Wheel->GetTopMountRelativeLocation();
+		FVector3f RelativePos = Wheel->GetTopMountRelativeLocation();
 		Positions.Add(RelativePos);
 	}
 
@@ -191,7 +191,7 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 
 	//...
 	//check if center of mass changed
-	FVector NewCarbodyLocalCOM = Carbody->GetComponentTransform().InverseTransformPosition(Carbody->GetCenterOfMass());
+	FVector3f NewCarbodyLocalCOM = (FVector3f)Carbody->GetComponentTransform().InverseTransformPosition(Carbody->GetCenterOfMass());
 	if ((CarbodyCOM - NewCarbodyLocalCOM).SquaredLength() > 1.f)
 	{
 		CarbodyCOM = NewCarbodyLocalCOM;
@@ -295,7 +295,7 @@ void UVehicleWheelCoordinatorComponent::RegisterDriveAssembly(UVehicleDriveAssem
 	RegisteredDriveAssemblies.Add(NewVehicleDriveAssemblyComponent);
 }
 
-bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector>& MassSpringPositions, const float TotalMass, TArray<float>& OutSprungMasses)
+bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector3f>& MassSpringPositions, const float TotalMass, TArray<float>& OutSprungMasses)
 {
 	// 1. Validation & Initialization
 	const int32 NumSprings = MassSpringPositions.Num();
@@ -334,8 +334,8 @@ bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector
 		 * based on the inverse distance ratio (Lever Rule).
 		 */
 
-		const FVector& PointA = MassSpringPositions[0];
-		const FVector& PointB = MassSpringPositions[1];
+		const FVector3f& PointA = MassSpringPositions[0];
+		const FVector3f& PointB = MassSpringPositions[1];
 
 		const float DiffX = PointB.X - PointA.X;
 		const float DiffY = PointB.Y - PointA.Y;
@@ -399,7 +399,7 @@ bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector
 	float SumSqY = 0.f; // Sum of Y^2
 	float SumXY = 0.f;  // Sum of X*Y
 
-	for (const FVector& Pos : MassSpringPositions)
+	for (const FVector3f& Pos : MassSpringPositions)
 	{
 		SumX += Pos.X;
 		SumY += Pos.Y;
@@ -476,11 +476,11 @@ bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector
 	return true;
 }
 
-bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector>& LocalSpringPositions, const FVector& LocalCenterOfMass, const float TotalMass, TArray<float>& OutSprungMasses)
+bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector3f>& LocalSpringPositions, const FVector3f& LocalCenterOfMass, const float TotalMass, TArray<float>& OutSprungMasses)
 {
 	// Transform spring positions to be relative to the Center of Mass
 	const int32 Count = LocalSpringPositions.Num();
-	TArray<FVector> RelativePositions;
+	TArray<FVector3f> RelativePositions;
 	RelativePositions.SetNumUninitialized(Count);
 
 	for (int32 i = 0; i < Count; ++i)

@@ -19,7 +19,7 @@ class UVehicleAsyncTickComponent;
 
 
 USTRUCT(BlueprintType)
-struct FAxleAssemblyConfig
+struct KINETIFORGE_API FAxleAssemblyConfig
 {
     GENERATED_USTRUCT_BODY()
 
@@ -158,12 +158,12 @@ protected:
     UFUNCTION(NetMulticast, Reliable, Category = "Input")
     void MultiCastShutVehicleEngine();
     UFUNCTION()
-    void OnRep_ServerVehicleEngineState();
+    void OnRep_ServerVehicleEngineOperationMode();
 
     UPROPERTY(ReplicatedUsing = OnRep_ServerCurrentGear)
     int32 ServerCurrentGear;
-    UPROPERTY(ReplicatedUsing = OnRep_ServerVehicleEngineState)
-    EVehicleEngineState ServerVehicleEngineState;
+    UPROPERTY(ReplicatedUsing = OnRep_ServerVehicleEngineOperationMode)
+    EVehicleEngineOperationMode ServerVehicleEngineOperationMode;
 
     UPROPERTY()
     TArray <TObjectPtr<UVehicleAxleAssemblyComponent>> Axles;
@@ -221,9 +221,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Input")
     void ShiftDown(float InAutoShiftCoolDown = 5.f, bool bImmediate = false);
     UFUNCTION(BlueprintCallable, Category = "Input")
-    EVehicleEngineState StartVehicleEngine();
+    EVehicleEngineOperationMode StartVehicleEngine();
     UFUNCTION(BlueprintCallable, Category = "Input")
-    EVehicleEngineState ShutVehicleEngine();
+    EVehicleEngineOperationMode ShutVehicleEngine();
     UFUNCTION(BlueprintCallable, Category = "Input")
     void RotateCamera(
         USceneComponent* InSpringArm,

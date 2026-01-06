@@ -28,48 +28,49 @@ void UVehicleClutchComponent::BeginPlay()
 
 void UVehicleClutchComponent::UpdateSpringStiffness()
 {
-	float FirstGearTotalInertia = SafeDivide(SimData.EngineInertia * SimData.FirstGearReflectedInertia, SimData.EngineInertia + SimData.FirstGearReflectedInertia);
-	SimData.SpringStiffness = CalculateStiffness(Config.NaturalFrequency, FirstGearTotalInertia);
-	SimData.CriticalDamping = CalculateCriticalDamping(Config.NaturalFrequency, FirstGearTotalInertia);
-	SimData.SpringDamping = SimData.CriticalDamping * Config.Damping;
+	float FirstGearTotalInertia = SafeDivide(State.EngineInertia * State.FirstGearReflectedInertia, State.EngineInertia + State.FirstGearReflectedInertia);
+	State.SpringStiffness = CalculateStiffness(Config.NaturalFrequency, FirstGearTotalInertia);
+	State.CriticalDamping = CalculateCriticalDamping(Config.NaturalFrequency, FirstGearTotalInertia);
+	State.SpringDamping = State.CriticalDamping * Config.Damping;
 }
 
 float UVehicleClutchComponent::GetTorqueSpringModel()
 {
 	UpdateSpringStiffness();
 	
-	float ClutchSlipScaled = SimData.ClutchSlip * SimData.ClutchLock;//ClutchSlip * ClutchLock
-	float CurrentAngleDiff = SimData.AngleDiff;
+	float ClutchSlipScaled = State.ClutchSlip * State.ClutchLock;//ClutchSlip * ClutchLock
+	float CurrentAngleDiff = State.AngleDiff;
 
-	float DontKnowWhatItIs = SimData.SpringStiffness * SimData.PhysicsDeltaTime + SimData.SpringDamping;
-	float TorqueNumerator = SimData.SpringStiffness * CurrentAngleDiff + DontKnowWhatItIs * ClutchSlipScaled;
-	float TorqueDenominator = 1.0f + SafeDivide(DontKnowWhatItIs * SimData.PhysicsDeltaTime, SimData.TotalInertia);
+	float DontKnowWhatItIs = State.SpringStiffness * State.PhysicsDeltaTime + State.SpringDamping;
+	float TorqueNumerator = State.SpringStiffness * CurrentAngleDiff + DontKnowWhatItIs * ClutchSlipScaled;
+	float TorqueDenominator = 1.0f + SafeDivide(DontKnowWhatItIs * State.PhysicsDeltaTime, State.TotalInertia);
 
 	float SpringModelTorque = TorqueNumerator / TorqueDenominator;
 
-	float DampingModelTorque = SimData.ClutchLock * FMath::Clamp(SimData.CriticalDamping * SimData.ClutchSlip, -SimData.MaxClutchTorque, SimData.MaxClutchTorque);
+	float DampingModelTorque = State.ClutchLock * FMath::Clamp(State.CriticalDamping * State.ClutchSlip, -State.MaxClutchTorque, State.MaxClutchTorque);
 	
-	if (FMath::Abs(SpringModelTorque) > SimData.MaxClutchTorque)
+	if (FMath::Abs(SpringModelTorque) > State.MaxClutchTorque)
 	{
-		SpringModelTorque = FMath::Sign(SpringModelTorque) * SimData.MaxClutchTorque;
+		SpringModelTorque = FMath::Sign(SpringModelTorque) * State.MaxClutchTorque;
 	}
 	else
 	{
-		SimData.AngleDiff = SimData.ClutchLock * (SimData.AngleDiff + ClutchSlipScaled * SimData.PhysicsDeltaTime);
+		State.AngleDiff = State.ClutchLock * (State.AngleDiff + ClutchSlipScaled * State.PhysicsDeltaTime);
 	}
 
-	return FMath::Lerp(DampingModelTorque, SpringModelTorque, SimData.ClutchLock);
+	return FMath::Lerp(DampingModelTorque, SpringModelTorque, State.ClutchLock);
 }
 
 float UVehicleClutchComponent::GetTorqueDampingModel()
 {
-	SimData.AngleDiff = 0;
+	State.AngleDiff = 0.f;
 
-	SimData.CriticalDamping = 2 * SimData.TotalInertia * SimData.MaxNaturalFrequency;
+	float GameFrequency = SafeDivide(1.f, State.PhysicsDeltaTime);
+	State.CriticalDamping = 2.f * State.TotalInertia * GameFrequency;
 
-	float UnSmoothenedTorque = FMath::Clamp(SimData.ClutchSlip * SimData.CriticalDamping, -SimData.MaxClutchTorque, SimData.MaxClutchTorque);
-	SimData.SmoothenedTorque += FMath::Clamp(1 - Config.Damping, 0, 1) * (UnSmoothenedTorque - SimData.SmoothenedTorque);
-	return SimData.SmoothenedTorque * SimData.ClutchLock;
+	float UnSmoothenedTorque = FMath::Clamp(State.ClutchSlip * State.CriticalDamping, -State.MaxClutchTorque, State.MaxClutchTorque);
+	State.SmoothenedTorque += FMath::Clamp(1 - Config.Damping, 0, 1) * (UnSmoothenedTorque - State.SmoothenedTorque);
+	return State.SmoothenedTorque * State.ClutchLock;
 }
 
 // Called every frame
@@ -82,12 +83,12 @@ void UVehicleClutchComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 void UVehicleClutchComponent::UpdatePhysics(float InDeltaTime, float InClutchValue, float InGearboxInputShaftVelocity, float InReflectedInertia, float InCurrentGearRatio, float InFirstGearReflectedInertia, UVehicleEngineComponent* TargetEngine)
 {
-	SimData.PhysicsDeltaTime = InDeltaTime;
+	State.PhysicsDeltaTime = InDeltaTime;
 	InClutchValue = FMath::Clamp(InClutchValue, 0.f, 1.f);
 
 	if (!IsValid(TargetEngine))return;
-	SimData.EngineAngularVelocity = TargetEngine->GetAngularVelocity();
-	SimData.EngineInertia = TargetEngine->NAConfig.EngineInertia;
+	State.EngineAngularVelocity = TargetEngine->GetAngularVelocity();
+	State.EngineInertia = TargetEngine->NAConfig.EngineInertia;
 
 	float EngineMaxTorque = TargetEngine->NAConfig.MaxEngineTorque;
 	if (TargetEngine->TurboConfig.MaxBoostPressure > SMALL_NUMBER)
@@ -95,32 +96,31 @@ void UVehicleClutchComponent::UpdatePhysics(float InDeltaTime, float InClutchVal
 		// if turbo charged
 		EngineMaxTorque *= (1.f + TargetEngine->TurboConfig.MaxBoostPressure * TargetEngine->TurboConfig.BoostEfficiency);
 	}
-	SimData.MaxClutchTorque = EngineMaxTorque * Config.Capacity;
+	State.MaxClutchTorque = EngineMaxTorque * Config.Capacity;
 	
-	SimData.ClutchLock = FMath::Clamp((float)(InCurrentGearRatio != 0) - InClutchValue, 0.f, 1.f);
-	SimData.GearboxAngularVelocity = InGearboxInputShaftVelocity;
-	SimData.ClutchSlip = SimData.EngineAngularVelocity - SimData.GearboxAngularVelocity;
+	State.ClutchLock = FMath::Clamp((float)(InCurrentGearRatio != 0) - InClutchValue, 0.f, 1.f);
+	State.GearboxAngularVelocity = InGearboxInputShaftVelocity;
+	State.ClutchSlip = State.EngineAngularVelocity - State.GearboxAngularVelocity;
 
-	SimData.ReflectedInertia = InReflectedInertia;
-	SimData.FirstGearReflectedInertia = InFirstGearReflectedInertia;
+	State.ReflectedInertia = InReflectedInertia;
+	State.FirstGearReflectedInertia = InFirstGearReflectedInertia;
 
-	SimData.MaxNaturalFrequency = SafeDivide(1, SimData.PhysicsDeltaTime);
-	SimData.TotalInertia = SafeDivide(SimData.EngineInertia * SimData.ReflectedInertia, SimData.EngineInertia + SimData.ReflectedInertia);
+	State.TotalInertia = SafeDivide(State.EngineInertia * State.ReflectedInertia, State.EngineInertia + State.ReflectedInertia);
 
 	switch (Config.SimMode)
 	{
-	case EClutchSimMode::SpringModel:SimData.ClutchTorque = GetTorqueSpringModel();
+	case EClutchSimMode::SpringModel:State.ClutchTorque = GetTorqueSpringModel();
 		break;
-	case EClutchSimMode::DampingModel:SimData.ClutchTorque = GetTorqueDampingModel();
+	case EClutchSimMode::DampingModel:State.ClutchTorque = GetTorqueDampingModel();
 		break;
-	default:SimData.ClutchTorque = GetTorqueDampingModel();
+	default:State.ClutchTorque = GetTorqueDampingModel();
 		break;
 	}
 }
 
 float UVehicleClutchComponent::GetCluchTorque()
 {
-	return SimData.ClutchTorque;
+	return State.ClutchTorque;
 }
 
 float UVehicleClutchComponent::SafeDivide(float a, float b)

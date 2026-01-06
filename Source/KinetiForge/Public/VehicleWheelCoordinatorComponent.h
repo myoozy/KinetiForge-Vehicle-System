@@ -32,7 +32,7 @@ protected:
 	
 	UPROPERTY()
 	UPrimitiveComponent* Carbody;
-	FVector CarbodyCOM;		//local position
+	FVector3f CarbodyCOM;		//local position
 
 
 	UPROPERTY()
@@ -68,8 +68,8 @@ public:
 	void RegisterWheel(UVehicleWheelComponent* NewWheel);
 	void RegisterAxle(UVehicleAxleAssemblyComponent* NewAxle);
 	void RegisterDriveAssembly(UVehicleDriveAssemblyComponent* NewDriveAssembly);
-	static bool ComputeSprungMasses(const TArray<FVector>& MassSpringPositions, const float TotalMass, TArray<float>& OutSprungMasses);
-	static bool ComputeSprungMasses(const TArray<FVector>& LocalSpringPositions, const FVector& LocalCenterOfMass, const float TotalMass, TArray<float>& OutSprungMasses);
+	static bool ComputeSprungMasses(const TArray<FVector3f>& MassSpringPositions, const float TotalMass, TArray<float>& OutSprungMasses);
+	static bool ComputeSprungMasses(const TArray<FVector3f>& LocalSpringPositions, const FVector3f& LocalCenterOfMass, const float TotalMass, TArray<float>& OutSprungMasses);
 
 		
 };

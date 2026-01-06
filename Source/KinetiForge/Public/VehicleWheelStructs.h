@@ -16,7 +16,7 @@ enum class ETireFrictionCombineMode : uint8
 };
 
 USTRUCT(BlueprintType)
-struct FVehicleWheelConfig
+struct KINETIFORGE_API FVehicleWheelConfig
 {
 	GENERATED_BODY()
 
@@ -32,7 +32,7 @@ struct FVehicleWheelConfig
 };
 
 USTRUCT(BlueprintType)
-struct FVehicleTireConfig
+struct KINETIFORGE_API FVehicleTireConfig
 {
 	GENERATED_BODY()
 
@@ -41,7 +41,7 @@ struct FVehicleTireConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	ETireFrictionCombineMode TireFrictionCombineMode = ETireFrictionCombineMode::Average;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Higher value makes the wheel softer. If the vahicle is not stable at low physics sim frequency/low vehicle weight, try to set this higher."))
-	FVector2D RelaxationLength = FVector2D(0.1f, 0.2f);
+	FVector2f RelaxationLength = FVector2f(0.1f, 0.2f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This value determines the length of the semi-axis of the friction ellipse. The larger this value, the greater the longitudinal force that the tire can provide."))
 	float MaxFx = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "This value determines the length of the semi-axis of the friction ellipse. The larger this value, the greater the lateral force that the tire can provide."))
@@ -59,7 +59,7 @@ struct FVehicleTireConfig
 };
 
 USTRUCT(BlueprintType)
-struct FVehicleABSConfig
+struct KINETIFORGE_API FVehicleABSConfig
 {
 	GENERATED_BODY()
 
@@ -74,9 +74,15 @@ struct FVehicleABSConfig
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "wheel state in simulation"))
-struct FVehicleWheelSimData
+struct KINETIFORGE_API FVehicleWheelSimState
 {
 	GENERATED_BODY()
+	
+	//Physics
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
+	float PhysicsDeltaTime = 0.008333;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
+	float PhysicsDeltaTimeInv = 120;		//1/Deltatime
 
 	//WheelMovement
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -100,11 +106,7 @@ struct FVehicleWheelSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float DynFrictionMultiplier = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	bool bIsLocked = false;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AntiBrake")
-	bool bABSTriggered = false;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	FVector2D LocalLinearVelocity = FVector2D(0.f, 0.f);
+	FVector2f LocalLinearVelocity = FVector2f(0.f, 0.f);
 
 	//Force
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Force")
@@ -119,20 +121,21 @@ struct FVehicleWheelSimData
 	float BrakeTorqueFromHandbrake = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float BrakeTorqueFromESP = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	bool bIsLocked = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AntiBrake")
+	bool bABSTriggered = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float TorqueFromGroundInteraction = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	FVector2D MFTireForce2D = FVector2D(0.f);
+	FVector2f MFTireForce2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	FVector2D GravityCompensationForce = FVector2D(0.f);
+	FVector2f GravityCompensationForce = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	FVector2D TireForce2D = FVector2D(0.f);
+	FVector2f TireForce2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	FVector TireForce = FVector(0.f, 0.f, 0.f);
+	FVector3f TireForce = FVector3f(0.f, 0.f, 0.f);
 
-	//Physics
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
-	float PhysicsDeltaTime = 0.008333;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
-	float PhysicsDeltaTimeInv = 120;		//1/Deltatime
+	// maybe helpful to performance
+	float Padding1;
 };
