@@ -17,13 +17,20 @@ class KINETIFORGE_API UVehicleAsyncTickComponent : public UAsyncTickActorCompone
 	GENERATED_BODY()
 	
 public:
+	virtual void BeginPlay() override;
 	virtual void NativeAsyncTick(float DeltaTime) override;
+	virtual void AsyncPhysicsTickComponent(float DeltaTime, float SimTime) override;
 
 	static UVehicleAsyncTickComponent* FindVehicleAsyncTickComponent(AActor* VehicleActor);
 
 	void Register(UVehicleDriveAssemblyComponent* newDriveAssembly);
 	void UnRegister(UVehicleDriveAssemblyComponent* targetDriveAssembly);
 
+	bool bUpdatePhysicsOnGameThread = true;
+
 protected:
 	TArray<TWeakObjectPtr<UVehicleDriveAssemblyComponent>> DriveAssemblies;
+
+private:
+	void UpdateVehiclePhysics(float DeltaTime);
 };

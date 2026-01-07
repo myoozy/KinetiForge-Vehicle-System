@@ -101,8 +101,6 @@ struct FVehicleAxleSimData
 {
 	GENERATED_BODY()
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "TractionControll")
-	bool bTCSTriggered = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	int32 NumOfWheels = 2;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -140,9 +138,11 @@ struct FVehicleAxleSimData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float WheelBase = 0.1;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	FVector WorldLinearVelocity = FVector(0.f);
+	FVector3f WorldLinearVelocity = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	FVector LocalLinearVelocity = FVector(0.f);
+	FVector3f LocalLinearVelocity = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	FVector CachedAxleCenter = FVector(0.f);
+	FVector3f CachedAxleCenter = FVector3f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "TractionControl")
+	bool bTCSTriggered = false;
 };

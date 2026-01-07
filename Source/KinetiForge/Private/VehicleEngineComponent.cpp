@@ -32,6 +32,8 @@ void UVehicleEngineComponent::BeginPlay()
 
 	// ...
 	Initialize();
+
+	TimeSinceLastConfigSync = FMath::FRandRange(0.f, ConfigSyncInterval);
 }
 
 
@@ -47,16 +49,9 @@ void UVehicleEngineComponent::EngineAcceleration()
 	bool bCombustion = State.bFuelInjection && State.bSpark;
 
 	// torque generated inside of the engine
-	float IndicatedTorque = 0.f;
-	if (NAConfig.EngineTorqueCurve)
-	{
-		IndicatedTorque = State.RealThrottle* (FrictionTorque + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(AbsolutRPM));
-	}
-	else
-	{
-		IndicatedTorque = State.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque);
-	}
-
+	float IndicatedTorque = 
+		State.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque * CachedTorqueCurve.Eval(AbsolutRPM));
+	
 	// no combustion, no torque
 	IndicatedTorque *= bCombustion;
 
@@ -293,25 +288,29 @@ void UVehicleEngineComponent::UpdateExhaust()
 	State.ExhaustHeat = FMath::Clamp(State.ExhaustHeat, 0.f, 1.f);
 }
 
-float UVehicleEngineComponent::SafeDivide(float a, float b)
-{
-	return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
-}
-
 // Called every frame
 void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	// ...
-	if (CachedEngineIdleRPM != NAConfig.EngineIdleRPM || 
-		CachedStartFriction != NAConfig.StartFriction ||
-		CachedFrictionCoefficient != NAConfig.FrictionCoefficient ||
-		CachedMaxEngineTorque != NAConfig.MaxEngineTorque)
-	{
-		Initialize();
-	}
 
+	TimeSinceLastConfigSync += DeltaTime;
+	if (TimeSinceLastConfigSync > ConfigSyncInterval)
+	{
+		TimeSinceLastConfigSync -= ConfigSyncInterval;
+
+		UpdateCachedRichCurve();
+
+		if (CachedEngineIdleRPM != NAConfig.EngineIdleRPM ||
+			CachedStartFriction != NAConfig.StartFriction ||
+			CachedFrictionCoefficient != NAConfig.FrictionCoefficient ||
+			CachedMaxEngineTorque != NAConfig.MaxEngineTorque)
+		{
+			Initialize();
+		}
+	}
+	
 	if (bShouldTriggerTurboBlowOffCallback)
 	{
 		bShouldTriggerTurboBlowOffCallback = false;
@@ -467,20 +466,14 @@ void UVehicleEngineComponent::Initialize()
 	NAConfig.StartFriction = FMath::Max(NAConfig.StartFriction, SMALL_NUMBER);
 	NAConfig.FrictionCoefficient = FMath::Max(NAConfig.FrictionCoefficient, SMALL_NUMBER);
 	State.TorqueRequiredToStartEngine = NAConfig.StartFriction + NAConfig.EngineIdleRPM * NAConfig.FrictionCoefficient;
+	
+	UpdateCachedRichCurve();
+
 	//get idle throttle
-	if (NAConfig.EngineTorqueCurve)
-	{
-		State.IdleThrottle = FMath::Clamp(
-			SafeDivide(State.TorqueRequiredToStartEngine,
-				State.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque * NAConfig.EngineTorqueCurve->GetFloatValue(NAConfig.EngineIdleRPM)),
-			0.f, 1.f);
-	}
-	else
-	{
-		State.IdleThrottle = FMath::Clamp(
-			SafeDivide(State.TorqueRequiredToStartEngine,
-				State.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque), 0.f, 1.f);
-	}
+	State.IdleThrottle = FMath::Clamp(
+		SafeDivide(State.TorqueRequiredToStartEngine,
+			State.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque * CachedTorqueCurve.Eval(NAConfig.EngineIdleRPM)),
+		0.f, 1.f);
 
 	//check if idle rpm is valid
 	if (NAConfig.EngineIdleRPM > 0)
@@ -495,6 +488,18 @@ void UVehicleEngineComponent::Initialize()
 
 	// reset rev-limiter
 	State.RevLimiterTimer = NAConfig.RevLimiterTime;
+}
+
+void UVehicleEngineComponent::UpdateCachedRichCurve()
+{
+	if (IsValid(NAConfig.EngineTorqueCurve))
+	{
+		CachedTorqueCurve = NAConfig.EngineTorqueCurve->FloatCurve;
+	}
+	else
+	{
+		CachedTorqueCurve.Reset();
+	}
 }
 
 EVehicleEngineOperationMode UVehicleEngineComponent::StartVehicleEngine()

@@ -188,12 +188,12 @@ protected:
     int32 NumOfWheelsOnGround;
     int32 NumOfDriveAxles;
     bool bIsInAir;
-    FVector AbsoluteWorldLinearVelocity;
-    FVector LocalLinearVelocity;//relative to ground
-    FVector WorldLinearVelocity;//relative to ground
-    FVector LocalVelocityClamped;
-    FVector WorldAcceleration;
-    FVector LocalAcceleration;
+    FVector3f AbsoluteWorldLinearVelocity;
+    FVector3f LocalLinearVelocity;//relative to ground
+    FVector3f WorldLinearVelocity;//relative to ground
+    FVector3f LocalVelocityClamped;
+    FVector3f WorldAcceleration;
+    FVector3f LocalAcceleration;
     TArray<FVector2D> SpeedRangeOfEachGear;
 
     FVehicleInputPipeline InputValues;
@@ -254,9 +254,9 @@ public:
     void DestroyTargetAxle(UVehicleAxleAssemblyComponent* InTargetAxle);
     UFUNCTION(BlueprintCallable, Category = "Physics")
     void GetVehicleSpeed(
-        FVector& OutAbsoluteWorldLinearVelocity, 
-        FVector& OutWorldLinearVelocity,
-        FVector& OutLocalLinearVelocity,
+        FVector3f& OutAbsoluteWorldLinearVelocity, 
+        FVector3f& OutWorldLinearVelocity,
+        FVector3f& OutLocalLinearVelocity,
         float& OutKph, 
         float& OutMph)
     {
@@ -268,8 +268,8 @@ public:
     }
     UFUNCTION(BlueprintCallable, Category = "Physics")
     void GetVehicleAcceleration(
-        FVector& OutWorldAcceleration, 
-        FVector& OutLocalAcceleration)
+        FVector3f& OutWorldAcceleration, 
+        FVector3f& OutLocalAcceleration)
     {
         OutWorldAcceleration = WorldAcceleration; 
         OutLocalAcceleration = LocalAcceleration;
@@ -279,8 +279,4 @@ private:
     bool GeneratePowerUnit();
     int GenerateAxles();    //-1: no owner actor; -2: no valid Carbody; -3: there're already axles
     int SearchExistingAxles();
-    float SafeDivide(float a, float b);
-    FVector SafeDivide(FVector a, float b);
-    float ClampToZero(float a, float Tolerance);
-    FVector ClampToZero(FVector v, float Tolerance);
 };

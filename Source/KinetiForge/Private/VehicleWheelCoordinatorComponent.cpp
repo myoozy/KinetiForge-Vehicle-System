@@ -27,6 +27,8 @@ void UVehicleWheelCoordinatorComponent::BeginPlay()
 
 	// ...
 	//FindCarbody();
+
+	TimeSinceLastRefresh = FMath::FRandRange(0.f, RefreshInterval);
 }
 
 void UVehicleWheelCoordinatorComponent::OnRegister()
@@ -171,7 +173,7 @@ void UVehicleWheelCoordinatorComponent::UpdateWheelBase()
 	RegisteredAxles.RemoveAll([](const TWeakObjectPtr<UVehicleAxleAssemblyComponent>& A) {return !A.IsValid() || A->IsBeingDestroyed();});
 
 	//find the center of all axles
-	FVector AveragePos = FVector(0);
+	FVector3f AveragePos = FVector3f(0.f);
 	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> Axle : RegisteredAxles)
 	{
 		AveragePos += Axle->GetAxleCenter();
@@ -180,7 +182,7 @@ void UVehicleWheelCoordinatorComponent::UpdateWheelBase()
 	AveragePos = AveragePos / NumOfAxles;
 	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> Axle : RegisteredAxles)
 	{
-		Axle->SetWheelBase((AveragePos - Axle->GetRelativeLocation()).Length() * 2);
+		Axle->SetWheelBase((AveragePos - (FVector3f)Axle->GetRelativeLocation()).Length() * 2);
 	}
 }
 
@@ -190,21 +192,28 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	//...
-	//check if center of mass changed
-	FVector3f NewCarbodyLocalCOM = (FVector3f)Carbody->GetComponentTransform().InverseTransformPosition(Carbody->GetCenterOfMass());
-	if ((CarbodyCOM - NewCarbodyLocalCOM).SquaredLength() > 1.f)
+	
+	TimeSinceLastRefresh += DeltaTime;
+	if (TimeSinceLastRefresh > RefreshInterval)
 	{
-		CarbodyCOM = NewCarbodyLocalCOM;
-		bMassMatrixDirty = true;
+		TimeSinceLastRefresh -= RefreshInterval;
+		//check if center of mass changed
+		FVector3f NewCarbodyLocalCOM = (FVector3f)Carbody->GetComponentTransform().InverseTransformPosition(Carbody->GetCenterOfMass());
+		if ((CarbodyCOM - NewCarbodyLocalCOM).SquaredLength() > 1.f)
+		{
+			CarbodyCOM = NewCarbodyLocalCOM;
+			bMassMatrixDirty = true;
+		}
 	}
 
-	//check if wheel state changed last frame
+	// check if sprungmass changed
 	if (bMassMatrixDirty)
 	{
 		bMassMatrixDirty = false;
 		UpdateWheelSprungMass();
 	}
 
+	// check if wheel base changed
 	if (bWheelBaseDataDirty)
 	{
 		bWheelBaseDataDirty = false;

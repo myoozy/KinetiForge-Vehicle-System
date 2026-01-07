@@ -11,6 +11,7 @@
 #include "VehicleClutchComponent.h"
 #include "VehicleGearboxComponent.h"
 #include "VehicleAsyncTickComponent.h"
+#include "VehicleUtil.h"
 #include "AsyncTickFunctions.h"
 #include "Net/UnrealNetwork.h" 
 
@@ -165,7 +166,7 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 	else if(Gearbox->GetShouldRevMatch() && FMath::Abs(LocalLinearVelocity.X) > 0.5 && InputAssistConfig.bRevMatching)
 	{
 		float Rate = 5.f;
-		InputValues.Smoothened.Throttle += SafeDivide(InDeltaTime * Rate, Gearbox->Config.ShiftDelay);
+		InputValues.Smoothened.Throttle += VehicleUtil::SafeDivide(InDeltaTime * Rate, Gearbox->Config.ShiftDelay);
 		InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
 	}
 	//if not in gear and no rev-matching
@@ -232,15 +233,15 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 		float TargetClutchValue = (InputValues.Raw.Handbrake > 0.9 || bNotInGearAndNotSequential) ? 1.f : InputValues.Raw.Clutch;
 
 		//take engine rpm into account
-		float Bias = FMath::GetMappedRangeValueClamped(InputAssistConfig.AutoClutchRange, FVector2D(1, 0), Engine->GetRPM());
+		float Bias = FMath::GetMappedRangeValueClamped(InputAssistConfig.AutoClutchRange, FVector2f(1, 0), Engine->GetRPM());
 		TargetClutchValue = FMath::Clamp(TargetClutchValue + Bias, 0.f, 1.f);
 		InputValues.Smoothened.Clutch = FMath::Min(InputValues.Smoothened.Clutch + Bias, TargetClutchValue);
 
 		//get interp speed, when changing gear, clutch should engage faster than gear changes
-		FVector2D FinalInterpSpeed;
+		FVector2f FinalInterpSpeed;
 		float Rate = 10.f;
 		FinalInterpSpeed.Y = InputConfig.Clutch.InterpSpeed.Y;
-		FinalInterpSpeed.X = bNotInGearAndNotSequential ? SafeDivide(Rate, Gearbox->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
+		FinalInterpSpeed.X = bNotInGearAndNotSequential ? VehicleUtil::SafeDivide(Rate, Gearbox->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
 
 		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, TargetClutchValue, InDeltaTime, FinalInterpSpeed);
 	}
@@ -371,7 +372,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	}
 
 	// should shift down if rpm is too low
-	float MinShiftUpFactor = SafeDivide(Engine->NAConfig.EngineIdleRPM, Engine->NAConfig.EngineMaxRPM);
+	float MinShiftUpFactor = VehicleUtil::SafeDivide(Engine->NAConfig.EngineIdleRPM, Engine->NAConfig.EngineMaxRPM);
 	ShiftFactor = FMath::Max(MinShiftUpFactor, ShiftFactor);
 
 	int32 UnsignedCurrentGear = FMath::Abs(Gearbox->GetCurrentGear());
@@ -661,31 +662,32 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 
 	//get velocity
 	NumOfWheelsOnGround = 0;
-	FVector SumLocalLinVel = FVector(0.f);
-	FVector SumWorldLinVel = FVector(0.f);
+	FVector3f SumLocalLinVel = FVector3f(0.f);
+	FVector3f SumWorldLinVel = FVector3f(0.f);
 	for (UVehicleAxleAssemblyComponent* Axle : Axles)
 	{
 		if (!IsValid(Axle))continue;
 
 		//calculate linear velocity
-		FVector LocalVel;
-		FVector WorldVel;
+		FVector3f LocalVel;
+		FVector3f WorldVel;
 		NumOfWheelsOnGround += Axle->GetNumOfWheelsOnGround();
 		Axle->GetLinearVelocity(LocalVel, WorldVel);
 		SumLocalLinVel += LocalVel;
 		SumWorldLinVel += WorldVel;
 	}
 	bIsInAir = !NumOfWheelsOnGround;
-	float NumGroundedWheelsInv = SafeDivide(1.f, (float)NumOfWheelsOnGround);
+	float NumGroundedWheelsInv = VehicleUtil::SafeDivide(1.f, (float)NumOfWheelsOnGround);
 	LocalLinearVelocity = SumLocalLinVel * 2.f * NumGroundedWheelsInv;
 	WorldLinearVelocity = SumWorldLinVel * 2.f * NumGroundedWheelsInv;
-	LocalVelocityClamped = ClampToZero(LocalLinearVelocity, 0.1);
+	LocalVelocityClamped = LocalLinearVelocity.SquaredLength() > 0.01f ? LocalLinearVelocity : FVector3f(0.f);
 
 	//get acceleration
-	FVector LastAbsVelocity = AbsoluteWorldLinearVelocity;
-	AbsoluteWorldLinearVelocity = 0.01 * UAsyncTickFunctions::ATP_GetLinearVelocity(Carbody);
-	WorldAcceleration = SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, PhysicsDeltaTime);
-	LocalAcceleration = UAsyncTickFunctions::ATP_GetTransform(Carbody).InverseTransformVectorNoScale(WorldAcceleration);
+	FVector3f LastAbsVelocity = AbsoluteWorldLinearVelocity;
+	AbsoluteWorldLinearVelocity = 0.01f * (FVector3f)UAsyncTickFunctions::ATP_GetLinearVelocity(Carbody);
+	WorldAcceleration = VehicleUtil::SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, PhysicsDeltaTime);
+	FQuat4f CarbodyRot = (FQuat4f)UAsyncTickFunctions::ATP_GetTransform(Carbody).GetRotation();
+	LocalAcceleration = CarbodyRot.UnrotateVector(WorldAcceleration);
 }
 
 void UVehicleDriveAssemblyComponent::InputThrottle(float InValue)
@@ -792,7 +794,7 @@ void UVehicleDriveAssemblyComponent::CameraLookAtVelocity(USceneComponent* InSpr
 	{
 		FRotator CurrentCamRot = InSpringArm->GetRelativeRotation();
 
-		FVector ScaledLinearVelocity = LocalVelocityClamped;
+		FVector ScaledLinearVelocity = (FVector)LocalVelocityClamped;
 		ScaledLinearVelocity.Y *= InDriftCamRate;
 
 		FRotator TargetRotator = FRotationMatrix::MakeFromX(ScaledLinearVelocity).Rotator();
@@ -1083,27 +1085,3 @@ int UVehicleDriveAssemblyComponent::SearchExistingAxles()
 	return n;
 }
 
-float UVehicleDriveAssemblyComponent::SafeDivide(float a, float b)
-{
-	return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
-}
-
-FVector UVehicleDriveAssemblyComponent::SafeDivide(FVector a, float b)
-{
-	return (FMath::IsNearlyZero(b)) ? FVector(0.f) : a / b;
-}
-
-float UVehicleDriveAssemblyComponent::ClampToZero(float a, float Tolerance)
-{
-	if (FMath::Abs(a) > Tolerance)return a;
-	return 0.0f;
-}
-
-FVector UVehicleDriveAssemblyComponent::ClampToZero(FVector v, float Tolerance)
-{
-	FVector VReturn;
-	VReturn.X = ClampToZero(v.X, Tolerance);
-	VReturn.Y = ClampToZero(v.Y, Tolerance);
-	VReturn.Z = ClampToZero(v.Z, Tolerance);
-	return VReturn;
-}

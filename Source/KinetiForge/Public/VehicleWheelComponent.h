@@ -20,6 +20,9 @@ public:
 	// Sets default values for this component's properties
 	UVehicleWheelComponent();
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	float ConfigSyncInterval = 1.f;
+
 	// Physics Setup
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -90,16 +93,11 @@ protected:
 
 	//cache
 	FVector CachedComponentRelativeLocation;
+	float TimeSinceLastConfigSync;
 
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
-	static Chaos::FRigidBodyHandle_Internal* GetInternalHandle(
-		UPrimitiveComponent* Component,
-		FName BoneName = NAME_None);
-
-	FVector GetRayCastHitLocation(FVehicleSuspensionSimContext& Ctx);
 
 	UFUNCTION(BlueprintCallable, Category = "Initialization")
 	static void CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target, bool bReInitialize = false);
@@ -138,7 +136,7 @@ public:
 	float GetTotalInertia() { return Wheel.State.TotalInertia; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Wheel")
-	FVector GetWorldLinaerVelocity() { return FVector(Suspension.State.ImpactPointWorldVelocity); }
+	FVector3f GetWorldLinearVelocity() { return Suspension.State.ImpactPointWorldVelocity; }
 
 	UFUNCTION(BlueprintCallable, Category = "Physics", meta = (ToolTip = "Update the independent suspension and wheel physics"))
 	void UpdatePhysics(
@@ -204,6 +202,7 @@ public:
 	UPrimitiveComponent* GetCarbody() { return Carbody; }
 
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	bool GetRayCastResult(FVehicleSuspensionHitResult& Out) { Out = Suspension.RayCastResult; return Suspension.State.bHitGround; }
 	bool GetRayCastResult() { return Suspension.State.bHitGround; }
 
 	UFUNCTION(BlueprintCallable, Category = "Suspension")

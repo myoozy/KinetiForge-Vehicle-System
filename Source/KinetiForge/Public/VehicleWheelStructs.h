@@ -73,6 +73,17 @@ struct KINETIFORGE_API FVehicleABSConfig
 	float Sensitivity = 5.f;
 };
 
+USTRUCT()
+struct KINETIFORGE_API FVehicleWheelCachedRichCurves
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FRichCurve Fx;
+	UPROPERTY()
+	FRichCurve Fy;
+};
+
 USTRUCT(BlueprintType, meta = (ToolTip = "wheel state in simulation"))
 struct KINETIFORGE_API FVehicleWheelSimState
 {
@@ -80,15 +91,15 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	
 	//Physics
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
-	float PhysicsDeltaTime = 0.008333;
+	float PhysicsDeltaTime = 0.008333f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
-	float PhysicsDeltaTimeInv = 120;		//1/Deltatime
+	float PhysicsDeltaTimeInv = 120.f;
 
 	//WheelMovement
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float R = 0.33;				//Radius in meter
+	float R = 0.33f;				//Radius in meter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float RInv = 3.030303;			//1/R
+	float RInv = 3.0303f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float ReflectedInertia = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -121,10 +132,6 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	float BrakeTorqueFromHandbrake = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float BrakeTorqueFromESP = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	bool bIsLocked = false;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AntiBrake")
-	bool bABSTriggered = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float TorqueFromGroundInteraction = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
@@ -135,7 +142,8 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	FVector2f TireForce2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	FVector3f TireForce = FVector3f(0.f, 0.f, 0.f);
-
-	// maybe helpful to performance
-	float Padding1;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	bool bIsLocked = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AntiBrake")
+	bool bABSTriggered = false;
 };

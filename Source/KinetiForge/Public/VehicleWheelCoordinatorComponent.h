@@ -21,8 +21,8 @@ public:
 	// Sets default values for this component's properties
 	UVehicleWheelCoordinatorComponent();
 	
-	//I tried to use convex instead of sphere trace, but I failed :(
-	int32 NumSegments = 8;
+	// avoid refreshing in every frame
+	float RefreshInterval = 1.f;
 
 protected:
 	// Called when the game starts
@@ -30,6 +30,8 @@ protected:
 	virtual void OnRegister() override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 	
+	float TimeSinceLastRefresh = 0.f;
+
 	UPROPERTY()
 	UPrimitiveComponent* Carbody;
 	FVector3f CarbodyCOM;		//local position

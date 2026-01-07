@@ -22,7 +22,8 @@ public:
 	// Sets default values for this component's properties
 	UVehicleEngineComponent();
 
-
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	float ConfigSyncInterval = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleNaturallyAspiratedEngineConfig NAConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -39,10 +40,11 @@ protected:
 	TArray<FOnTurboBlowOffDelegate> TurboBlowOffCallbacks;
 	TArray<FOnBackfiringDelegate> BackfiringCallbacks;
 	FVehicleEngineSimState State;
+	FRichCurve CachedTorqueCurve;
+	float TimeSinceLastConfigSync = 0.f;
 
 	void EngineAcceleration();
 	void UpdateExhaust();
-	float SafeDivide(float a, float b);
 
 public:	
 	// Called every frame
@@ -62,6 +64,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Initialize")
 	void Initialize();
+
+	UFUNCTION(BlueprintCallable, Category = "Initialize")
+	void UpdateCachedRichCurve();
 
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	EVehicleEngineOperationMode StartVehicleEngine();
@@ -119,4 +124,10 @@ private:
 	float CachedTurboWasteGateLag;
 	float CachedTurboNegPressure;
 	float CachedTurboMaxPressure;
+
+
+	auto SafeDivide(auto a, auto b)
+	{
+		return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
+	}
 };

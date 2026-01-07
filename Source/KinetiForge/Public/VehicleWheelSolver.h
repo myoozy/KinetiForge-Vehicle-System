@@ -36,11 +36,13 @@ public:
 		bool bDrawSlip = true,
 		bool bDrawInertia = true);
 	void SmoothenSlip(float InDeltaTime, float InInterpSpeed);
+	void UpdateCachedRichCurves();
 
-	static float GetTangentAtOrigin(const UCurveFloat* Curve);
+	static float GetTangentAtOrigin(const FRichCurve& Curve);
 
 	// all data during simulation
 	FVehicleWheelSimState State;
+	FVehicleWheelCachedRichCurves CachedCurves;
 
 	// e.g. for skid mark / sound
 	float SmoothenedSlipRatio = 0.f;
@@ -79,5 +81,4 @@ private:
 		bool bHitGround,
 		const FVector3f& LongForceDirUnNorm,
 		const FVector3f& LatForceDirUnNorm);
-	float SafeDivide(float a, float b);
 };

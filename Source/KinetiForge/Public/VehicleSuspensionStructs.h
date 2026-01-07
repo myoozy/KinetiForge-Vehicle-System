@@ -42,6 +42,8 @@ struct KINETIFORGE_API FVehicleSuspensionKinematicsConfig
 	ESuspensionRayCastMode RayCastMode = ESuspensionRayCastMode::LineTrace;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TEnumAsByte<ECollisionChannel> TraceChannel = ECollisionChannel::ECC_WorldDynamic;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	EPositionToApplyForce PositionToApplyForce = EPositionToApplyForce::ImpactPoint;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "The location of the top mount relative to the pivot of the arm. It is under the coordinate of the wheel component, not car body."))
 	FVector3f TopMountPosition = FVector3f(0.f, 40.f, 35.f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The traveling distance of the strut"))
@@ -62,8 +64,6 @@ struct KINETIFORGE_API FVehicleSuspensionKinematicsConfig
 	UCurveFloat* ToeCurve = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone", EditConditionHides, ToolTip = "X: SuspensionCompressionRatio; Y:Caster; Only enabled when the suspension type is double-wishbone"))
 	UCurveFloat* CasterCurve = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	EPositionToApplyForce PositionToApplyForce = EPositionToApplyForce::ImpactPoint;
 };
 
 USTRUCT(BlueprintType)
@@ -83,6 +83,42 @@ struct KINETIFORGE_API FVehicleSuspensionSpringConfig
 	float BottomOutStiffness = 0.8f;
 };
 
+USTRUCT()
+struct KINETIFORGE_API FVehicleSuspensionCachedRichCurves
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FRichCurve CamberCurve;
+	UPROPERTY()
+	FRichCurve ToeCurve;
+	UPROPERTY()
+	FRichCurve CasterCurve;
+};
+
+USTRUCT(BlueprintType, meta = (ToolTip = "A simplified HitResult"))
+struct KINETIFORGE_API FVehicleSuspensionHitResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TWeakObjectPtr<UPhysicalMaterial> PhysMaterial;
+	UPROPERTY()
+	TWeakObjectPtr<UPrimitiveComponent> Component;
+	UPROPERTY()
+	FName BoneName;
+	UPROPERTY()
+	bool bBlockingHit;
+	UPROPERTY()
+	FVector_NetQuantize TraceStart;
+	UPROPERTY()
+	FVector_NetQuantize TraceEnd;
+	UPROPERTY()
+	FVector_NetQuantize Location;
+	UPROPERTY()
+	FQuat4f TraceRot;
+};
+
 USTRUCT(BlueprintType, meta = (ToolTip = "suspension state in simulation"))
 struct KINETIFORGE_API FVehicleSuspensionSimState
 {
@@ -98,8 +134,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	float SprungMass = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float ForceAlongImpactNormal = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	float ImpactFriction = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector2f KnucklePos2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
@@ -112,12 +146,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	FVector3f TopMountRelativePos = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
 	FVector3f StrutDirection = FVector3f(0.f);	// strut direction in world space
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Position")
-	bool bIsRightWheel = true;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	bool bHitGround = true;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	TWeakObjectPtr<UPrimitiveComponent> ImpactComponent = nullptr;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	FVector3f ImpactPointWorldVelocity = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
@@ -128,6 +156,14 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	FVector WheelWorldPos = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FQuat4f WheelRelativeRotation = FQuat4f(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	float ImpactFriction = 1.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Position")
+	bool bIsRightWheel = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	bool bHitGround = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	TWeakObjectPtr<UPrimitiveComponent> ImpactComponent = nullptr;
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "suspension context in simulation"))

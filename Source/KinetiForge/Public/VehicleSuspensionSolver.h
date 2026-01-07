@@ -53,6 +53,8 @@ public:
 
 	bool CheckIsDampingDirty();
 
+	void UpdateCachedRichCurves();
+
 	bool CheckAndFixTriangle();//Abandoned
 
 	static float GetVector2dAngleDegrees(FVector2D V2D);//Abandoned
@@ -91,28 +93,7 @@ public:
 		return FVector2f(V3D.Z, V3D.Y * WheelYPosSign);
 	}
 
-	static FORCEINLINE FVector3f GetCamberToeCasterFromCurve(
-		float CompressionRatio, 
-		float WheelYPosSign, 
-		FVehicleSuspensionKinematicsConfig& Config)
-	{
-		FVector3f v;
-		v.X = 0.f;
-		v.Y = Config.BaseToe;
-		v.Z = Config.BaseCamber;
-
-		if (Config.ToeCurve)v.Y += Config.ToeCurve->GetFloatValue(CompressionRatio);
-		if (Config.CamberCurve)v.Z += Config.CamberCurve->GetFloatValue(CompressionRatio);
-
-		// flip the caster and toe if necessary
-		v *= WheelYPosSign;
-
-		if (Config.CasterCurve) v.X = Config.CasterCurve->GetFloatValue(CompressionRatio);
-
-		return v;
-	}
-
-	static FORCEINLINE void CopyContextToState(FVehicleSuspensionSimState& State, const FVehicleSuspensionSimContext& Context)
+	FORCEINLINE void CopyContextToState(const FVehicleSuspensionSimContext& Context)
 	{
 		State.bIsRightWheel = Context.WheelPos >= 0.f;
 		State.bHitGround = Context.bHitGround;
@@ -133,21 +114,35 @@ public:
 
 		State.ImpactFriction = 1.f;
 		State.ImpactComponent = nullptr;
-
-		const FHitResult& Hit = Context.HitStruct;
-		if (Hit.bBlockingHit)
+		if (Context.bHitGround)
 		{
-			UPhysicalMaterial* HitPhysMat = Hit.PhysMaterial.Get();
+			UPhysicalMaterial* HitPhysMat = Context.HitStruct.PhysMaterial.Get();
 			if (IsValid(HitPhysMat))
 			{
 				State.ImpactFriction = HitPhysMat->Friction;
 			}
 
-			State.ImpactComponent = Hit.GetComponent();
+			UPrimitiveComponent* HitComp = Context.HitStruct.GetComponent();
+			if (IsValid(HitComp))
+			{
+				State.ImpactComponent = HitComp;
+			}
 		}
+		
+		// copy hitresult
+		RayCastResult = FVehicleSuspensionHitResult(
+			Context.HitStruct.PhysMaterial,
+			Context.HitStruct.Component,
+			Context.HitStruct.BoneName,
+			Context.HitStruct.bBlockingHit,
+			Context.HitStruct.TraceStart,
+			Context.HitStruct.TraceEnd,
+			Context.HitStruct.Location,
+			(FQuat4f)Context.RayCastTransform.GetRotation()
+		);
 	}
 
-	static FORCEINLINE void CopyStateToContext(FVehicleSuspensionSimContext& Context, const FVehicleSuspensionSimState& State)
+	FORCEINLINE void CopyStateToContext(FVehicleSuspensionSimContext& Context)
 	{
 		Context.SuspensionCurrentLength = State.SuspensionCurrentLength;
 		Context.CriticalDamping = State.CriticalDamping;
@@ -158,7 +153,33 @@ public:
 		Context.WheelRelativeTransform.SetLocation(State.WheelCenterToKnuckle + State.KnuckleRelativePos);
 	}
 
+	static FORCEINLINE FVector3f GetCamberToeCasterFromCurve(
+		const FVehicleSuspensionCachedRichCurves& Curves,
+		float CompressionRatio,
+		float WheelYPosSign,
+		float BaseCamber = 0.f,
+		float BaseToe = 0.f,
+		float BaseCaster = 0.f)
+	{
+		FVector3f v;
+		v.X = BaseCaster;
+		v.Y = BaseToe;
+		v.Z = BaseCamber;
+
+		v.Y += Curves.ToeCurve.Eval(CompressionRatio);
+		v.Z += Curves.CamberCurve.Eval(CompressionRatio);
+
+		// flip the caster and toe if necessary
+		v *= WheelYPosSign;
+
+		v.X += Curves.CasterCurve.Eval(CompressionRatio);
+
+		return v;
+	}
+
 	FVehicleSuspensionSimState State;
+	FVehicleSuspensionCachedRichCurves CachedCurves;
+	FVehicleSuspensionHitResult RayCastResult;
 
 protected:
 	UVehicleWheelComponent* TargetWheelComponent;
@@ -166,7 +187,6 @@ protected:
 	FCollisionQueryParams QueryParams = FCollisionQueryParams::DefaultQueryParam;
 
 private:
-
 	//cache
 	float CachedSpringStiffness = -1;
 };

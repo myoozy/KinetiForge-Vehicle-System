@@ -84,6 +84,8 @@ void UVehicleWheelComponent::OnRegister()
 
 	//...
 	InitializeWheel();
+
+	TimeSinceLastConfigSync = FMath::FRandRange(0.f, ConfigSyncInterval);
 }
 
 void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
@@ -208,16 +210,26 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	// ...
 
-	// check if sprungmass should be updated
-	FVector NewRelativeLocation = GetRelativeLocation();
-	if ((CachedComponentRelativeLocation - NewRelativeLocation).SquaredLength() > 1.f)
+	TimeSinceLastConfigSync += DeltaTime;
+	if (TimeSinceLastConfigSync > ConfigSyncInterval)
 	{
-		if (IsValid(WheelCoordinator))WheelCoordinator->NotifyWheelMoved();
+		TimeSinceLastConfigSync -= ConfigSyncInterval;
+
+		// update cached curves
+		Suspension.UpdateCachedRichCurves();
+		Wheel.UpdateCachedRichCurves();
+
+		// check if sprungmass should be updated
+		FVector NewRelativeLocation = GetRelativeLocation();
+		if ((CachedComponentRelativeLocation - NewRelativeLocation).SquaredLength() > 1.f)
+		{
+			if (IsValid(WheelCoordinator))WheelCoordinator->NotifyWheelMoved();
+		}
+
+		// check if suspension damping need to be updated
+		Suspension.CheckIsDampingDirty();
 	}
-
-	// check if suspension damping need to be updated
-	Suspension.CheckIsDampingDirty();
-
+	
 	// update animation
 	if (bUpdateAnimAutomatically)
 	{
@@ -230,24 +242,6 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	* get the smoothend slip:
 	* Wheel.SmoothendSlipRatio; Wheel.SmoothendSlipAngle;
 	*/
-}
-
-Chaos::FRigidBodyHandle_Internal* UVehicleWheelComponent::GetInternalHandle(UPrimitiveComponent* Component, FName BoneName)
-{
-	if (IsValid(Component))
-	{
-		if (const FBodyInstance* BodyInstance = Component->GetBodyInstance(BoneName))
-		{
-			if (const auto Handle = BodyInstance->ActorHandle)
-			{
-				if (Chaos::FRigidBodyHandle_Internal* RigidHandle = Handle->GetPhysicsThreadAPI())
-				{
-					return RigidHandle;
-				}
-			}
-		}
-	}
-	return nullptr;
 }
 
 void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target, bool bReInitialize)
@@ -551,8 +545,12 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 	}
 
 	float WheelPos = Suspension.State.bIsRightWheel ? 1.f : -1.f;
-	WheelKnuckleComponent->SetRelativeLocation((FVector)Suspension.SuspensionPlaneToZYPlane(AnimKnucklePos2D, WheelPos));
-	WheelKnuckleComponent->SetRelativeRotation(GetRelativeTransform().InverseTransformRotation((FQuat)AnimWheelRelativeRot));
+	FTransform T = FTransform(
+		GetRelativeTransform().InverseTransformRotation((FQuat)AnimWheelRelativeRot),
+		(FVector)Suspension.SuspensionPlaneToZYPlane(AnimKnucklePos2D, WheelPos),
+		FVector(1.f)
+	);
+	WheelKnuckleComponent->SetRelativeTransform(T);
 	
 	if (IsValid(WheelMeshComponent))
 	{

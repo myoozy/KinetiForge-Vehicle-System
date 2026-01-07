@@ -98,6 +98,15 @@ struct KINETIFORGE_API FVehicleEngineExhaustConfig
 };
 
 USTRUCT(BlueprintType, Blueprintable)
+struct KINETIFORGE_API FVehicleEngineCachedRichCurves
+{
+	GENERATED_USTRUCT_BODY()
+
+	UPROPERTY()
+	FRichCurve EngineTorqueCurve;
+};
+
+USTRUCT(BlueprintType, Blueprintable)
 struct KINETIFORGE_API FVehicleEngineSimState
 {
 	GENERATED_USTRUCT_BODY()

@@ -4,6 +4,7 @@
 #include "VehicleWheelSolver.h"
 #include "VehicleWheelComponent.h"
 #include "AsyncTickFunctions.h"
+#include "VehicleUtil.h"
 
 FVehicleWheelSolver::FVehicleWheelSolver()
 {
@@ -16,6 +17,7 @@ FVehicleWheelSolver::~FVehicleWheelSolver()
 bool FVehicleWheelSolver::Initialize(UVehicleWheelComponent* InTargetWheelComponent)
 {
 	TargetWheelComponent = InTargetWheelComponent;
+	UpdateCachedRichCurves();
 	return IsValid(TargetWheelComponent);
 }
 
@@ -35,12 +37,12 @@ void FVehicleWheelSolver::UpdateWheel(
 
 	//divide something...	to avoid 0
 	State.PhysicsDeltaTime = InPhysicsDeltaTime;
-	State.PhysicsDeltaTimeInv = SafeDivide(1, State.PhysicsDeltaTime);
+	State.PhysicsDeltaTimeInv = VehicleUtil::SafeDivide(1.f, State.PhysicsDeltaTime);
 	State.R = Config.Radius * 0.01;
-	State.RInv = SafeDivide(1, State.R);
+	State.RInv = VehicleUtil::SafeDivide(1.f, State.R);
 	State.ReflectedInertia = InReflectedInertia;
 	State.TotalInertia = Config.Inertia + State.ReflectedInertia;
-	State.TotalInertiaInv = SafeDivide(1, State.TotalInertia);
+	State.TotalInertiaInv = VehicleUtil::SafeDivide(1.f, State.TotalInertia);
 	State.DriveTorque = InDriveTorque + State.P4MotorTorque;
 	
 	// get target brake torque
@@ -189,13 +191,36 @@ void FVehicleWheelSolver::SmoothenSlip(float InDeltaTime, float InInterpSpeed)
 	);
 }
 
-float FVehicleWheelSolver::GetTangentAtOrigin(const UCurveFloat* Curve)
+void FVehicleWheelSolver::UpdateCachedRichCurves()
 {
-	if (!Curve || Curve->FloatCurve.Keys.Num() == 0) return 10.f;
+	if (!IsValid(TargetWheelComponent))return;
 
-	const auto& Key0 = Curve->FloatCurve.Keys[0];
+	const FVehicleTireConfig& Config = TargetWheelComponent->TireConfig;
+	if (IsValid(Config.Fx))
+	{
+		CachedCurves.Fx = Config.Fx->FloatCurve;
+	}
+	else
+	{
+		CachedCurves.Fx.Reset();
+	}
+	if (IsValid(Config.Fy))
+	{
+		CachedCurves.Fy = Config.Fy->FloatCurve;
+	}
+	else
+	{
+		CachedCurves.Fy.Reset();
+	}
+}
 
-	return Key0.LeaveTangent;
+float FVehicleWheelSolver::GetTangentAtOrigin(const FRichCurve& Curve)
+{
+	if (Curve.Keys.Num() == 0) return 10.f;
+
+	const auto& Key0 = Curve.Keys[0];
+
+	return FMath::IsNearlyZero(Key0.Time) ? Key0.LeaveTangent : 0.f;
 }
 
 void FVehicleWheelSolver::UpdateABS(float TargetBrakeTorque, bool bHitGround)
@@ -419,7 +444,7 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 float FVehicleWheelSolver::CalculateScaledWheelLoad(float SprungMass, float WheelLoad, float Saturation)
 {
 	float NormWheelLoad = SprungMass * 9.8;
-	float LoadRatio = SafeDivide(WheelLoad, NormWheelLoad);
+	float LoadRatio = VehicleUtil::SafeDivide(WheelLoad, NormWheelLoad);
 	float b = (1.f - Saturation) / (2.f + 2.f * Saturation);
 	float LoadScale = LoadRatio / (1.f + b * LoadRatio);
 	return LoadScale * NormWheelLoad;
@@ -457,16 +482,16 @@ void FVehicleWheelSolver::UpdateTireForce(
 
 	// get combined slip
 	FVector2f WeightXY = FVector2f(1.f - TireConfig.CombiendSlipBias, TireConfig.CombiendSlipBias);
-	WeightXY *= FVector2f(SafeDivide(1.f, TireConfig.MaxFx), SafeDivide(1.f, TireConfig.MaxFy));
+	WeightXY *= FVector2f(VehicleUtil::SafeDivide(1.f, TireConfig.MaxFx), VehicleUtil::SafeDivide(1.f, TireConfig.MaxFy));
 	float NormalizedSlipAngle = State.SlipAngle / 90.f;
 	FVector2f NormalizedSc = (FVector2f(State.SlipRatio, NormalizedSlipAngle) * WeightXY).GetSafeNormal().GetAbs();
 
 	// the tangent of the linear region should not be changed, if the vehicle is driving on a surface with high friction multiplier
-	float SlipInputScale = SafeDivide(TireConfig.FrictionMultiplier, State.DynFrictionMultiplier);
+	float SlipInputScale = VehicleUtil::SafeDivide(TireConfig.FrictionMultiplier, State.DynFrictionMultiplier);
 	
 	// if the user has only setup one of the Fx or Fy curve, the Constraint force on the other direction should be cut, before computing combined slip
-	bool bUseFxCurve = (TireConfig.Fx != nullptr);
-	bool bUseFyCurve = (TireConfig.Fy != nullptr);
+	bool bUseFxCurve = TireConfig.Fx != nullptr;
+	bool bUseFyCurve = TireConfig.Fy != nullptr;
 
 	// magic formula
 	float MaxFx = TireConfig.MaxFx * AvailableGrip;
@@ -482,10 +507,10 @@ void FVehicleWheelSolver::UpdateTireForce(
 		float InputX = FMath::Sqrt(FMath::Square(State.SlipRatio) + FMath::Square(NormalizedSlipAngle * TireConfig.CombinedSlipInterference));
 		InputX *= SlipInputScale;
 
-		float MuX = TireConfig.Fx->GetFloatValue(InputX);
+		float MuX = CachedCurves.Fx.Eval(InputX);
 
 		// get the tangent of the linear region
-		float k = GetTangentAtOrigin(TireConfig.Fx);
+		float k = GetTangentAtOrigin(CachedCurves.Fx);
 
 		// lerp between linear and non-linear region
 		// If directly use Fx * NormalizedSc.X, 
@@ -507,10 +532,10 @@ void FVehicleWheelSolver::UpdateTireForce(
 		InputY *= 90.f;
 		InputY *= SlipInputScale;
 
-		float MuY = TireConfig.Fy->GetFloatValue(InputY);
+		float MuY = CachedCurves.Fy.Eval(InputY);
 
 		// get the tangent of the linear region
-		float k = GetTangentAtOrigin(TireConfig.Fy);
+		float k = GetTangentAtOrigin(CachedCurves.Fy);
 
 		// lerp between linear and non-linear region
 		// If directly use Fy * NormalizedSc.Y, 
@@ -554,7 +579,7 @@ void FVehicleWheelSolver::UpdateTireForce(
 	State.TireForce2D = State.MFTireForce2D + State.GravityCompensationForce;
 
 	// cut with friction ellipse again to prevent overshoot
-	FVector2f MaxForceInv = FVector2f(SafeDivide(1.f, MaxFx), SafeDivide(1.f, MaxFy));
+	FVector2f MaxForceInv = FVector2f(VehicleUtil::SafeDivide(1.f, MaxFx), VehicleUtil::SafeDivide(1.f, MaxFy));
 	FVector2f NormalizedForce = State.TireForce2D * MaxForceInv;
 	if (NormalizedForce.SquaredLength() > 1.f)
 	{
@@ -564,9 +589,4 @@ void FVehicleWheelSolver::UpdateTireForce(
 	}
 
 	State.TireForce = State.TireForce2D.X * LongForceDirUnNorm + State.TireForce2D.Y * LatForceDirUnNorm;
-}
-
-float FVehicleWheelSolver::SafeDivide(float a, float b)
-{
-	return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
 }

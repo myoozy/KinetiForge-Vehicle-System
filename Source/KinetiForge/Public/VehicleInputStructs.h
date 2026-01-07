@@ -11,12 +11,12 @@ struct FVehicleInputAxisConfig
     GENERATED_USTRUCT_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector2D InterpSpeed = FVector2D(5.f, 5.f);
+    FVector2f InterpSpeed = FVector2f(5.f, 5.f);
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     UCurveFloat* ResponseCurve = nullptr;
 
     FVehicleInputAxisConfig(
-        FVector2D newInterpSpeed = FVector2D(5.f, 5.f),
+        FVector2f newInterpSpeed = FVector2f(5.f, 5.f),
         UCurveFloat* newResponseCurve = nullptr)
     {
         InterpSpeed = newInterpSpeed;
@@ -27,7 +27,7 @@ struct FVehicleInputAxisConfig
         float Current,
         float Target,
         float DeltaTime,
-        FVector2D Speed
+        FVector2f Speed
     )
     {
         float s = (Target < SMALL_NUMBER) ? Speed.Y : Speed.X;
@@ -38,7 +38,7 @@ struct FVehicleInputAxisConfig
         float Current,
         float Target,
         float DeltaTime,
-        FVector2D Speed
+        FVector2f Speed
     )
     {
         float s = (Target < SMALL_NUMBER) ? Speed.Y : Speed.X;
@@ -58,9 +58,9 @@ struct FVehiclInputConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FVehicleInputAxisConfig Clutch;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVehicleInputAxisConfig Handbrake = FVehicleInputAxisConfig(FVector2D(15.f, 15.f));
+    FVehicleInputAxisConfig Handbrake = FVehicleInputAxisConfig(FVector2f(15.f, 15.f));
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVehicleInputAxisConfig Steering = FVehicleInputAxisConfig(FVector2D(2.5f, 2.5f));
+    FVehicleInputAxisConfig Steering = FVehicleInputAxisConfig(FVector2f(2.5f, 2.5f));
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     UCurveFloat* HighSpeedSteeringScale = nullptr;
 };
@@ -75,7 +75,7 @@ struct FVehicleInputAssistConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "disable AutomaticClutch, and disable throttle when in N gear"))
     bool bEVClutchLogic = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "at which rpm the clutch should be (gradually) released"))
-    FVector2D AutoClutchRange = FVector2D(1200, 2500);
+    FVector2f AutoClutchRange = FVector2f(1200, 2500);
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool bRevMatching = true;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0"))

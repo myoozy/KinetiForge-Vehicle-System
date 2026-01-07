@@ -5,7 +5,6 @@
 #include "VehicleWheelComponent.h"
 #include "VehicleDifferentialComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
-#include "AsyncTickFunctions.h"
 
 // Sets default values for this component's properties
 UVehicleAxleAssemblyComponent::UVehicleAxleAssemblyComponent()
@@ -262,11 +261,20 @@ void UVehicleAxleAssemblyComponent::UpdateSteeringAssist(float InSteeringInput)
 
 void UVehicleAxleAssemblyComponent::CalculateLinearVelocity()
 {
-	FVector LeftWorldVel, RightWorldVel = FVector(0.f);
-	if (IsValid(LeftWheel))LeftWorldVel = LeftWheel->GetWorldLinaerVelocity();
-	if (IsValid(RightWheel))RightWorldVel = RightWheel->GetWorldLinaerVelocity();
-	SimData.WorldLinearVelocity = (LeftWorldVel + RightWorldVel) / SimData.NumOfWheels;
-	SimData.LocalLinearVelocity = UAsyncTickFunctions::ATP_GetTransform(Carbody).InverseTransformVectorNoScale(SimData.WorldLinearVelocity);
+	FVector3f LeftWorldVel, RightWorldVel = FVector3f(0.f);
+	FQuat4f CarbodyRot = FQuat4f();
+	if (IsValid(LeftWheel))
+	{
+		LeftWorldVel = LeftWheel->GetWorldLinearVelocity();
+		CarbodyRot = (FQuat4f)LeftWheel->GetCarbodyAsyncWorldTransform().GetRotation();
+	}
+	if (IsValid(RightWheel))
+	{
+		RightWorldVel = RightWheel->GetWorldLinearVelocity();
+		CarbodyRot = (FQuat4f)RightWheel->GetCarbodyAsyncWorldTransform().GetRotation();
+	}
+	SimData.WorldLinearVelocity = FVector3f(LeftWorldVel + RightWorldVel) / SimData.NumOfWheels;
+	SimData.LocalLinearVelocity = CarbodyRot.UnrotateVector(SimData.WorldLinearVelocity);
 }
 
 void UVehicleAxleAssemblyComponent::UpdateSwaybarForce()
@@ -580,25 +588,25 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxleAnim(USceneComponent* InSolid
 	}
 }
 
-void UVehicleAxleAssemblyComponent::GetLinearVelocity(FVector& OutLocalVelocity, FVector& OutWorldVelocity)
+void UVehicleAxleAssemblyComponent::GetLinearVelocity(FVector3f& OutLocalVelocity, FVector3f& OutWorldVelocity)
 {
 	OutLocalVelocity = SimData.LocalLinearVelocity;
 	OutWorldVelocity = SimData.WorldLinearVelocity;
 }
 
-FVector UVehicleAxleAssemblyComponent::GetAxleCenter()
+FVector3f UVehicleAxleAssemblyComponent::GetAxleCenter()
 {
 	int32 n = IsValid(LeftWheel) + IsValid(RightWheel);
 
 	if (n == 2)
 	{
-		return 0.5 * (LeftWheel->GetRelativeLocation() + RightWheel->GetRelativeLocation());
+		return 0.5f * (FVector3f)(LeftWheel->GetRelativeLocation() + RightWheel->GetRelativeLocation());
 	}
 	else
 	{
-		if (IsValid(LeftWheel))return LeftWheel->GetRelativeLocation();
-		if (IsValid(RightWheel))return RightWheel->GetRelativeLocation();
-		return FVector(0.f);
+		if (IsValid(LeftWheel))return (FVector3f)LeftWheel->GetRelativeLocation();
+		if (IsValid(RightWheel))return (FVector3f)RightWheel->GetRelativeLocation();
+		return FVector3f(0.f);
 	}
 }
 

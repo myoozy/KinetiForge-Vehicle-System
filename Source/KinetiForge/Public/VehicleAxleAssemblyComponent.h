@@ -120,11 +120,11 @@ public:
 	);
 
 	void SetWheelBase(float NewWheelBase) { SimData.WheelBase = NewWheelBase; }
-	void GetLinearVelocity(FVector& OutLocalVelocity, FVector& OutWorldVelocity);
+	void GetLinearVelocity(FVector3f& OutLocalVelocity, FVector3f& OutWorldVelocity);
 	float GetAngularVelocity() { return SimData.AxleAngularVelocity; }
 	float GetTotalAxleInertia() { return SimData.AxleTotalInertia; }
 	int32 GetNumOfWheelsOnGround() { return SimData.NumOfWheelOnGround; }
-	FVector GetAxleCenter();
+	FVector3f GetAxleCenter();
 
 private:
 	bool GenerateWheels();
