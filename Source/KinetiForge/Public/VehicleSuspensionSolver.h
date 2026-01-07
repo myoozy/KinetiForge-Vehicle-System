@@ -113,19 +113,12 @@ public:
 		State.WheelRelativeRotation = FQuat4f(Context.WheelRelativeTransform.GetRotation());
 
 		State.ImpactFriction = 1.f;
-		State.ImpactComponent = nullptr;
 		if (Context.bHitGround)
 		{
 			UPhysicalMaterial* HitPhysMat = Context.HitStruct.PhysMaterial.Get();
 			if (IsValid(HitPhysMat))
 			{
 				State.ImpactFriction = HitPhysMat->Friction;
-			}
-
-			UPrimitiveComponent* HitComp = Context.HitStruct.GetComponent();
-			if (IsValid(HitComp))
-			{
-				State.ImpactComponent = HitComp;
 			}
 		}
 		

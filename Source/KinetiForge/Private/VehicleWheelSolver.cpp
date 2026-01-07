@@ -40,36 +40,34 @@ void FVehicleWheelSolver::UpdateWheel(
 	State.PhysicsDeltaTimeInv = VehicleUtil::SafeDivide(1.f, State.PhysicsDeltaTime);
 	State.R = Config.Radius * 0.01;
 	State.RInv = VehicleUtil::SafeDivide(1.f, State.R);
-	State.ReflectedInertia = InReflectedInertia;
-	State.TotalInertia = Config.Inertia + State.ReflectedInertia;
+	State.TotalInertia = Config.Inertia + InReflectedInertia;
 	State.TotalInertiaInv = VehicleUtil::SafeDivide(1.f, State.TotalInertia);
 	State.DriveTorque = InDriveTorque + State.P4MotorTorque;
-	
+
+	// get the direction of longitudinal and lateral force in world space
+	// if the vectors are not normalized, the force can be affected by camber
+	const FVector3f WheelRightVec = SuspensionState.WheelRightVector;
+	const FVector3f ImpactNormal = SuspensionState.ImpactNormal;
+	FVector3f LongForceDirUnNorm = FVector3f::CrossProduct(WheelRightVec, ImpactNormal);
+	FVector3f LatForceDirUnNorm = FVector3f::VectorPlaneProject(WheelRightVec, ImpactNormal);
+	FVector3f LongForceDir = LongForceDirUnNorm.GetSafeNormal();
+	FVector3f LatForceDir = LatForceDirUnNorm.GetSafeNormal();
+
+	UpdateLinearVelocity(LongForceDir, LatForceDir, SuspensionState.ImpactPointWorldVelocity);
+
 	// get target brake torque
 	// brake torque from esp can be negative (which means to reduce brake torque)
 	// but the target total brake torque should not be negative (the brake should not accelerate the wheel)
 	float TargetBrakeTorque = FMath::Max(0.f, FMath::Abs(InBrakeTorque) + State.BrakeTorqueFromESP);	
 	
 	// update abs
-	UpdateABS(TargetBrakeTorque, SuspensionState.bHitGround);
+	PredictSlipAndUpdateABS(TargetBrakeTorque, SuspensionState.bHitGround);
 
 	// get total brake torque
 	State.BrakeTorqueFromHandbrake = FMath::Abs(InHandbrakeTorque);
 	State.BrakeTorque = State.BrakeTorqueFromBrake + Config.RollingRisistance + State.BrakeTorqueFromHandbrake;
 
 	UpdateDynamicFrictionMultiplier(SuspensionState.ImpactFriction);
-
-	//get the direction of longitudinal and lateral force in world space
-	//if the vectors are not normalized, the force can be affected by camber
-	const FVector3f WheelRightVec = SuspensionState.WheelRightVector;
-	const FVector3f ImpactNormal = SuspensionState.ImpactNormal;
-	FVector3f LongForceDirUnNorm = FVector3f::CrossProduct(WheelRightVec, ImpactNormal);
-	FVector3f LatForceDirUnNorm = FVector3f::VectorPlaneProject(WheelRightVec, ImpactNormal);
-
-	FVector3f LongForceDir = LongForceDirUnNorm.GetSafeNormal();
-	FVector3f LatForceDir = LatForceDirUnNorm.GetSafeNormal();
-
-	UpdateLinearVelocity(LongForceDir, LatForceDir, SuspensionState.ImpactPointWorldVelocity);
 
 	WheelAcceleration(LongForceDir);
 
@@ -223,11 +221,18 @@ float FVehicleWheelSolver::GetTangentAtOrigin(const FRichCurve& Curve)
 	return FMath::IsNearlyZero(Key0.Time) ? Key0.LeaveTangent : 0.f;
 }
 
-void FVehicleWheelSolver::UpdateABS(float TargetBrakeTorque, bool bHitGround)
+void FVehicleWheelSolver::PredictSlipAndUpdateABS(float TargetBrakeTorque, bool bHitGround)
 {
 	FVehicleABSConfig& ABSConfig = TargetWheelComponent->ABSConfig;
 
-	float AbsolutSlip = FMath::Abs(State.SlipRatio);
+	// predict angular velocity
+	float PredictedOmega = State.AngularVelocity + State.AngularAcceleration * State.PhysicsDeltaTime;
+	float PredictedVSlip = PredictedOmega * State.R - State.LocalLinearVelocity.X;
+	PredictedVSlip *= bHitGround;
+	float Denominator = FMath::Max(FMath::Max(FMath::Abs(State.LocalLinearVelocity.X), FMath::Abs(PredictedOmega * State.R)), 1.f);
+	State.PredictedSlipRatio = PredictedVSlip / Denominator;
+
+	float AbsolutSlip = FMath::Abs(State.PredictedSlipRatio);
 
 	State.bABSTriggered = 
 		ABSConfig.bAntiBrakeSystemEnabled
@@ -289,6 +294,8 @@ void FVehicleWheelSolver::WheelAcceleration(
 	const FVector3f& LongForceDir,
 	float AccelerationTolerance)
 {
+	float LastAngularVelocity = State.AngularVelocity;
+
 	//friction torque should not flip the sign of the relative rotation to the ground
 	//but there should be tolerance, because even when there is no drive torque or brake torque, the wheel should not always be completely sticked to the road
 	//allow small angular acceleration tolerance to prevent sticky behavior when slip ~ 0 (empirical value)
@@ -326,6 +333,9 @@ void FVehicleWheelSolver::WheelAcceleration(
 	//if the wheel is locked, the angular velocity should be 0
 	State.bIsLocked = AngVelSignIfNotBraking != FMath::Sign(State.AngularVelocity);
 	State.AngularVelocity *= !State.bIsLocked;
+
+	// get angular acceleration
+	State.AngularAcceleration = (State.AngularVelocity - LastAngularVelocity) * State.PhysicsDeltaTimeInv;
 }
 
 void FVehicleWheelSolver::UpdateSlipAngle(bool bHitGround)
@@ -359,7 +369,6 @@ void FVehicleWheelSolver::UpdateSlipRatio(bool bHitGround)
 	//calculate slip ratio
 	float Denominator = FMath::Max(FMath::Max(FMath::Abs(State.LocalLinearVelocity.X), FMath::Abs(State.AngularVelocity * State.R)), 1.f);
 	State.SlipRatio = State.LongSlipVelocity / Denominator;
-	State.SlipRatio = FMath::Clamp(State.SlipRatio, -1.f, 1.f);
 }
 
 float FVehicleWheelSolver::CalculateConstraintLongForce(float SprungMass)

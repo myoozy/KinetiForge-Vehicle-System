@@ -162,8 +162,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	bool bIsRightWheel = true;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	bool bHitGround = true;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	TWeakObjectPtr<UPrimitiveComponent> ImpactComponent = nullptr;
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "suspension context in simulation"))

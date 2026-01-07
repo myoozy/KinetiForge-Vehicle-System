@@ -183,23 +183,25 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	// so that the car will not move by itself when parked
 	FVector3f SuspensionForceProj = ImpactNormal * Suspension.State.ForceAlongImpactNormal;
 	FVector Impulse = (FVector)(Wheel.State.TireForce + SuspensionForceProj + AntiPitchForce) * Wheel.State.PhysicsDeltaTime;
-	
+	Impulse *= 100.;
+
 	// add impulse at carbody
 	UAsyncTickFunctions::ATP_AddImpulseAtPosition(
 		Carbody,
 		PosToApplyImpulse,
-		Impulse * 100.f
+		Impulse
 	);
 
 	// also add force to the contacted component
-	if (Suspension.State.ImpactComponent.IsValid() &&
-		Suspension.State.ImpactComponent.Get()->IsSimulatingPhysics())
+	if (Suspension.RayCastResult.Component.IsValid() &&
+		Suspension.RayCastResult.Component.Get()->IsSimulatingPhysics())
 	{
 		UAsyncTickFunctions::ATP_AddImpulseAtPosition(
-			Suspension.State.ImpactComponent.Get(),
+			Suspension.RayCastResult.Component.Get(),
 			Suspension.State.ImpactPoint,
-			Impulse * -100.f	// don't add impulse against gravity
-			);
+			-Impulse,
+			Suspension.RayCastResult.BoneName
+		);
 	}
 }
 

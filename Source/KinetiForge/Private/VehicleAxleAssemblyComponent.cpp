@@ -285,8 +285,8 @@ void UVehicleAxleAssemblyComponent::UpdateSwaybarForce()
 void UVehicleAxleAssemblyComponent::UpdateTCS(float TargetDriveTorque)
 {
 	float SumSlipRatio = 0.f;
-	if (IsValid(LeftWheel))SumSlipRatio += FMath::Abs(LeftWheel->GetSlipRatio());
-	if (IsValid(RightWheel))SumSlipRatio += FMath::Abs(RightWheel->GetSlipRatio());
+	if (IsValid(LeftWheel))SumSlipRatio += FMath::Abs(LeftWheel->GetPredictedSlipRatio());
+	if (IsValid(RightWheel))SumSlipRatio += FMath::Abs(RightWheel->GetPredictedSlipRatio());
 	float AvrgSlipRatio = SumSlipRatio / SimData.NumOfWheels;
 
 	SimData.bTCSTriggered =

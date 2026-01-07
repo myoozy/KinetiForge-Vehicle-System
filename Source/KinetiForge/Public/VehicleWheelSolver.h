@@ -53,7 +53,7 @@ protected:
 	UVehicleWheelComponent* TargetWheelComponent;
 
 private:
-	void UpdateABS(float TargetBrakeTorque, bool bHitGround);
+	void PredictSlipAndUpdateABS(float TargetBrakeTorque, bool bHitGround);
 	void UpdateDynamicFrictionMultiplier(float ImpactFriction);
 	void UpdateLinearVelocity(
 		const FVector3f& LongForceDir,
