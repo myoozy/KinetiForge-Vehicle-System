@@ -479,6 +479,9 @@ bool UVehicleWheelComponent::SetMesh(
 {
 	if (!IsValid(WheelKnuckleComponent) || !IsValid(WheelMeshComponent) || !IsValid(BrakeMeshComponent))return false;
 
+	WheelKnuckleComponent->PrimaryComponentTick.bCanEverTick = false;
+	WheelKnuckleComponent->PrimaryComponentTick.bStartWithTickEnabled = false;
+
 	WheelMeshRelatvieTransform.SetLocation(WheelMeshRelatvieTransform.GetLocation() + FVector(0, AxialHubOffset, 0));
 	BrakeMeshRelativeTransform.SetLocation(BrakeMeshRelativeTransform.GetLocation() + FVector(0, AxialHubOffset, 0));
 
@@ -501,13 +504,21 @@ bool UVehicleWheelComponent::SetMesh(
 		WheelMeshComponent->SetStaticMesh(NewWheelMesh);
 	}
 	WheelMeshComponent->SetRelativeTransform(WheelMeshRelatvieTransform);
+	WheelMeshComponent->SetGenerateOverlapEvents(false);
 	WheelMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	WheelMeshComponent->SetCanEverAffectNavigation(false);
+	WheelMeshComponent->PrimaryComponentTick.bCanEverTick = false;
+	WheelMeshComponent->PrimaryComponentTick.bStartWithTickEnabled = false;
 	if (NewBrakeMesh)
 	{
 		BrakeMeshComponent->SetStaticMesh(NewBrakeMesh);
 	}
 	BrakeMeshComponent->SetRelativeTransform(BrakeMeshRelativeTransform);
+	BrakeMeshComponent->SetGenerateOverlapEvents(false);
 	BrakeMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	BrakeMeshComponent->SetCanEverAffectNavigation(false);
+	BrakeMeshComponent->PrimaryComponentTick.bCanEverTick = false;
+	BrakeMeshComponent->PrimaryComponentTick.bStartWithTickEnabled = false;
 
 	return WheelMeshComponent->GetStaticMesh() && BrakeMeshComponent->GetStaticMesh();
 }
@@ -525,6 +536,8 @@ bool UVehicleWheelComponent::RefreshWheelMesh()
 void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngularVelocity)
 {
 	if (!IsValid(WheelKnuckleComponent) || !IsValid(WheelMeshComponent))return;
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelAnimation);
 
 	if (DeltaTime > 0)
 	{
@@ -552,7 +565,12 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 		(FVector)Suspension.SuspensionPlaneToZYPlane(AnimKnucklePos2D, WheelPos),
 		FVector(1.f)
 	);
-	WheelKnuckleComponent->SetRelativeTransform(T);
+	WheelKnuckleComponent->SetRelativeTransform(
+		T,
+		false,
+		nullptr,
+		ETeleportType::TeleportPhysics
+	);
 	
 	if (IsValid(WheelMeshComponent))
 	{
