@@ -18,8 +18,12 @@ class KINETIFORGE_API UVehicleAsyncTickComponent : public UAsyncTickActorCompone
 	
 public:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void BeginDestroy() override;
+	virtual void OnUnregister() override;
 	virtual void NativeAsyncTick(float DeltaTime) override;
 	virtual void AsyncPhysicsTickComponent(float DeltaTime, float SimTime) override;
+
 
 	static UVehicleAsyncTickComponent* FindVehicleAsyncTickComponent(AActor* VehicleActor);
 

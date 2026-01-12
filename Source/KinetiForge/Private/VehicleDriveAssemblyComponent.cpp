@@ -14,6 +14,7 @@
 #include "VehicleUtil.h"
 #include "AsyncTickFunctions.h"
 #include "Net/UnrealNetwork.h" 
+#include "GameFramework/SpringArmComponent.h"
 
 // Sets default values for this component's properties
 UVehicleDriveAssemblyComponent::UVehicleDriveAssemblyComponent()
@@ -788,35 +789,48 @@ EVehicleEngineOperationMode UVehicleDriveAssemblyComponent::ShutVehicleEngine()
 	}
 }
 
-void UVehicleDriveAssemblyComponent::CameraLookAtVelocity(USceneComponent* InSpringArm, float InPitch, float InDriftCamRate, float InDriftCamInterpSpeed, float InDriftCamStartSpeed_mps)
+void UVehicleDriveAssemblyComponent::RotateCamera(USceneComponent* InSpringArm, FVector2D InMouseInput, bool bInvertYAxis, float InMaxPitch)
 {
-	if (LocalLinearVelocity.SquaredLength() > FMath::Square(InDriftCamStartSpeed_mps))
+	if (IsValid(InSpringArm))
 	{
-		FRotator CurrentCamRot = InSpringArm->GetRelativeRotation();
+		FRotator Rot = InSpringArm->GetRelativeRotation();
+		FRotator NewRot;
 
-		FVector ScaledLinearVelocity = (FVector)LocalVelocityClamped;
-		ScaledLinearVelocity.Y *= InDriftCamRate;
-
-		FRotator TargetRotator = FRotationMatrix::MakeFromX(ScaledLinearVelocity).Rotator();
-		TargetRotator.Pitch = InPitch;
-
-		FRotator NewRot = FMath::RInterpTo(CurrentCamRot, TargetRotator, GetWorld()->DeltaTimeSeconds, InDriftCamInterpSpeed);
 		NewRot.Roll = 0;
+		NewRot.Pitch = FMath::Clamp(Rot.Pitch + InMouseInput.Y, -InMaxPitch, InMaxPitch);
+		NewRot.Yaw = Rot.Yaw + InMouseInput.X;
 
 		InSpringArm->SetRelativeRotation(NewRot);
 	}
 }
 
-void UVehicleDriveAssemblyComponent::RotateCamera(USceneComponent* InSpringArm, FVector2D InMouseInput, bool bInvertYAxis, float InMaxPitch)
+void UVehicleDriveAssemblyComponent::StretchSpringArmBySpeed(USpringArmComponent* InSpringArm, float InInitialSpringArmLength, UCurveFloat* InScaleCurve)
 {
-	FRotator Rot = InSpringArm->GetRelativeRotation();
-	FRotator NewRot;
+	if (IsValid(InSpringArm) && IsValid(InScaleCurve))
+	{
+		float Scale = InScaleCurve->GetFloatValue(FMath::Abs(LocalVelocityClamped.X));
+		float L = InInitialSpringArmLength * Scale;
+		InSpringArm->TargetArmLength = L;
+	}
+}
 
-	NewRot.Roll = 0;
-	NewRot.Pitch = FMath::Clamp(Rot.Pitch + InMouseInput.Y, -InMaxPitch, InMaxPitch);
-	NewRot.Yaw = Rot.Yaw + InMouseInput.X;
+void UVehicleDriveAssemblyComponent::CameraLookAtVelocity(USceneComponent* InSpringArm, float InPitch, float InSensitivity, float InInterpSpeed, float InStartSpeed_mps)
+{
+	if (IsValid(InSpringArm) && LocalLinearVelocity.SquaredLength() > FMath::Square(InStartSpeed_mps))
+	{
+		FRotator CurrentCamRot = InSpringArm->GetRelativeRotation();
 
-	InSpringArm->SetRelativeRotation(NewRot);
+		FVector ScaledLinearVelocity = (FVector)LocalVelocityClamped;
+		ScaledLinearVelocity.Y *= InSensitivity;
+
+		FRotator TargetRotator = FRotationMatrix::MakeFromX(ScaledLinearVelocity).Rotator();
+		TargetRotator.Pitch = InPitch;
+
+		FRotator NewRot = FMath::RInterpTo(CurrentCamRot, TargetRotator, GetWorld()->DeltaTimeSeconds, InInterpSpeed);
+		NewRot.Roll = 0;
+
+		InSpringArm->SetRelativeRotation(NewRot);
+	}
 }
 
 TArray<UVehicleWheelComponent*> UVehicleDriveAssemblyComponent::GetWheels()

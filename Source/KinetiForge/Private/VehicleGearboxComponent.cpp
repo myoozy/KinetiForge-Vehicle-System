@@ -2,6 +2,7 @@
 
 
 #include "VehicleGearboxComponent.h"
+#include "VehicleUtil.h"
 
 // Sets default values for this component's properties
 UVehicleGearboxComponent::UVehicleGearboxComponent()
@@ -124,9 +125,9 @@ void UVehicleGearboxComponent::UpdateInputShaft(
 )
 {
 	OutClutchVelocity = InAxleVelocity * CurrentGearRatio;
-	OutReflectedInertia = Config.InputShaftInertia + SafeDivide(InAxleInertia, CurrentGearRatio * CurrentGearRatio);
+	OutReflectedInertia = Config.InputShaftInertia + VehicleUtil::SafeDivide(InAxleInertia, CurrentGearRatio * CurrentGearRatio);
 	OutCurrentGearRatio = CurrentGearRatio;
-	OutFirstGearInertia = Config.InputShaftInertia + SafeDivide(InAxleInertia, FMath::Square(GearRatios[0]));	//tip: do not use the variant FirstGear, because the user can change it any time
+	OutFirstGearInertia = Config.InputShaftInertia + VehicleUtil::SafeDivide(InAxleInertia, FMath::Square(GearRatios[0]));	//tip: do not use the variant FirstGear, because the user can change it any time
 }
 
 float UVehicleGearboxComponent::GetGearRatio(int InTarget)
@@ -158,8 +159,8 @@ void UVehicleGearboxComponent::CalculateSpeedRangeOfEachGear(
 	{
 		FVector2D SpeedRangeOfCurrentGear;
 		float GearRatio = GetGearRatio(i);
-		SpeedRangeOfCurrentGear.X = SafeDivide(InEngineIdleRPM * avgRPM, GearRatio);
-		SpeedRangeOfCurrentGear.Y = SafeDivide(InEngineMaxRPM * avgRPM, GearRatio);
+		SpeedRangeOfCurrentGear.X = VehicleUtil::SafeDivide(InEngineIdleRPM * avgRPM, GearRatio);
+		SpeedRangeOfCurrentGear.Y = VehicleUtil::SafeDivide(InEngineMaxRPM * avgRPM, GearRatio);
 
 		OutSpeedRanges[i] = SpeedRangeOfCurrentGear;
 	}
@@ -244,9 +245,4 @@ bool UVehicleGearboxComponent::IsGearDataDirty()
 	{
 		return false;
 	}
-}
-
-float UVehicleGearboxComponent::SafeDivide(float a, float b)
-{
-	return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
 }

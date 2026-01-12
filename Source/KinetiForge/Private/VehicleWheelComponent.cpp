@@ -3,6 +3,7 @@
 
 #include "VehicleWheelComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
+#include "VehicleUtil.h"
 #include "AsyncTickFunctions.h"
 
 // Sets default values for this component's properties
@@ -185,15 +186,19 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	FVector Impulse = (FVector)(Wheel.State.TireForce + SuspensionForceProj + AntiPitchForce) * Wheel.State.PhysicsDeltaTime;
 	Impulse *= 100.;
 
-	// add impulse at carbody
-	UAsyncTickFunctions::ATP_AddImpulseAtPosition(
-		Carbody,
-		PosToApplyImpulse,
-		Impulse
-	);
+	if (IsValid(Carbody) && Carbody->IsPhysicsStateCreated())
+	{
+		// add impulse at carbody
+		UAsyncTickFunctions::ATP_AddImpulseAtPosition(
+			Carbody,
+			PosToApplyImpulse,
+			Impulse
+		);
+	}
 
 	// also add force to the contacted component
 	if (Suspension.RayCastResult.Component.IsValid() &&
+		Suspension.RayCastResult.Component.Get()->IsPhysicsStateCreated() &&
 		Suspension.RayCastResult.Component.Get()->IsSimulatingPhysics())
 	{
 		UAsyncTickFunctions::ATP_AddImpulseAtPosition(
@@ -665,7 +670,7 @@ FTransform3f UVehicleWheelComponent::UpdateSuspensionSpringAnim(
 	float InitialLength = (SpringMeshRelativePos - OffsetInitialJointPos).Length();
 	float CurrentLength = AnimStrut.Length();
 
-	float Scale = SafeDivide(CurrentLength, InitialLength);
+	float Scale = VehicleUtil::SafeDivide(CurrentLength, InitialLength);
 	FVector3f Scale3D = FVector3f(1.f) + (FVector3f)InScaleAxis * (Scale - 1.f);
 	Scale3D *= (FVector3f)InInitialScale;
 

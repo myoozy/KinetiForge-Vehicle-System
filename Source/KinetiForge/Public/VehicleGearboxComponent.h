@@ -107,7 +107,4 @@ public:
 
 	bool IsGearDataDirty();
 	bool GetShouldRevMatch() { return bShouldRevMatch; }
-
-private:
-	float SafeDivide(float a, float b);
 };

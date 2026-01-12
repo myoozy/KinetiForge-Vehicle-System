@@ -13,8 +13,33 @@ void UVehicleAsyncTickComponent::BeginPlay()
 	SetActive(true);
 	if (IsRegistered() && IsActive())
 	{
-		SetAsyncPhysicsTickEnabled(true);
+		SetAsyncPhysicsTickEnabled(bUpdatePhysicsOnGameThread);
 	}
+}
+
+void UVehicleAsyncTickComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	SetAsyncPhysicsTickEnabled(false);
+
+	Super::EndPlay(EndPlayReason);
+
+	// ...
+}
+
+void  UVehicleAsyncTickComponent::OnUnregister()
+{
+	SetAsyncPhysicsTickEnabled(false);
+
+	Super::OnUnregister();
+
+	// ...
+}
+
+void  UVehicleAsyncTickComponent::BeginDestroy()
+{
+	SetAsyncPhysicsTickEnabled(false);
+
+	Super::BeginDestroy();
 }
 
 void UVehicleAsyncTickComponent::NativeAsyncTick(float DeltaTime)
@@ -63,6 +88,8 @@ void UVehicleAsyncTickComponent::UnRegister(UVehicleDriveAssemblyComponent* targ
 
 void UVehicleAsyncTickComponent::UpdateVehiclePhysics(float DeltaTime)
 {
+	if (!IsValid(this) || IsBeingDestroyed()) return;
+
 	//update physics
 	for (TWeakObjectPtr<UVehicleDriveAssemblyComponent> DriveAssemblyPtr : DriveAssemblies)
 	{

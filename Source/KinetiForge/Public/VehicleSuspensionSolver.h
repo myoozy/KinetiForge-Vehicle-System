@@ -112,15 +112,7 @@ public:
 		State.WheelWorldPos = Context.WheelWorldPos;
 		State.WheelRelativeRotation = FQuat4f(Context.WheelRelativeTransform.GetRotation());
 
-		State.ImpactFriction = 1.f;
-		if (Context.bHitGround)
-		{
-			UPhysicalMaterial* HitPhysMat = Context.HitStruct.PhysMaterial.Get();
-			if (IsValid(HitPhysMat))
-			{
-				State.ImpactFriction = HitPhysMat->Friction;
-			}
-		}
+		State.ImpactFriction = Context.ImpactFriction;
 		
 		// copy hitresult
 		RayCastResult = FVehicleSuspensionHitResult(
@@ -178,6 +170,7 @@ protected:
 	UVehicleWheelComponent* TargetWheelComponent;
 
 	FCollisionQueryParams QueryParams = FCollisionQueryParams::DefaultQueryParam;
+	FCollisionResponseParams ResponseParams = FCollisionResponseParams::DefaultResponseParam;
 
 private:
 	//cache

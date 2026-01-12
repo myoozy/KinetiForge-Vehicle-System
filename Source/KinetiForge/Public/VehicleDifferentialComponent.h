@@ -91,6 +91,4 @@ public:
 	void GetOpenDiffOutputTorque(float InTorque, float& OutTorqueLeft, float& OutTorqueRight);
 
 	float GetInputShaftVelocity(float OutputShaftAngularVelocityLeft, float OutputShaftAngularVelocityRight);
-		
-	float SafeDivide(float a, float b);
 };

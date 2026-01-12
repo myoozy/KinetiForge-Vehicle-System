@@ -4,6 +4,7 @@
 #include "VehicleClutchComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
 #include "VehicleEngineComponent.h"
+#include "VehicleUtil.h"
 
 // Sets default values for this component's properties
 UVehicleClutchComponent::UVehicleClutchComponent()
@@ -28,7 +29,7 @@ void UVehicleClutchComponent::BeginPlay()
 
 void UVehicleClutchComponent::UpdateSpringStiffness()
 {
-	float FirstGearTotalInertia = SafeDivide(State.EngineInertia * State.FirstGearReflectedInertia, State.EngineInertia + State.FirstGearReflectedInertia);
+	float FirstGearTotalInertia = VehicleUtil::SafeDivide(State.EngineInertia * State.FirstGearReflectedInertia, State.EngineInertia + State.FirstGearReflectedInertia);
 	State.SpringStiffness = CalculateStiffness(Config.NaturalFrequency, FirstGearTotalInertia);
 	State.CriticalDamping = CalculateCriticalDamping(Config.NaturalFrequency, FirstGearTotalInertia);
 	State.SpringDamping = State.CriticalDamping * Config.Damping;
@@ -43,7 +44,7 @@ float UVehicleClutchComponent::GetTorqueSpringModel()
 
 	float DontKnowWhatItIs = State.SpringStiffness * State.PhysicsDeltaTime + State.SpringDamping;
 	float TorqueNumerator = State.SpringStiffness * CurrentAngleDiff + DontKnowWhatItIs * ClutchSlipScaled;
-	float TorqueDenominator = 1.0f + SafeDivide(DontKnowWhatItIs * State.PhysicsDeltaTime, State.TotalInertia);
+	float TorqueDenominator = 1.0f + VehicleUtil::SafeDivide(DontKnowWhatItIs * State.PhysicsDeltaTime, State.TotalInertia);
 
 	float SpringModelTorque = TorqueNumerator / TorqueDenominator;
 
@@ -65,7 +66,7 @@ float UVehicleClutchComponent::GetTorqueDampingModel()
 {
 	State.AngleDiff = 0.f;
 
-	float GameFrequency = SafeDivide(1.f, State.PhysicsDeltaTime);
+	float GameFrequency = VehicleUtil::SafeDivide(1.f, State.PhysicsDeltaTime);
 	State.CriticalDamping = 2.f * State.TotalInertia * GameFrequency;
 
 	float UnSmoothenedTorque = FMath::Clamp(State.ClutchSlip * State.CriticalDamping, -State.MaxClutchTorque, State.MaxClutchTorque);
@@ -105,7 +106,7 @@ void UVehicleClutchComponent::UpdatePhysics(float InDeltaTime, float InClutchVal
 	State.ReflectedInertia = InReflectedInertia;
 	State.FirstGearReflectedInertia = InFirstGearReflectedInertia;
 
-	State.TotalInertia = SafeDivide(State.EngineInertia * State.ReflectedInertia, State.EngineInertia + State.ReflectedInertia);
+	State.TotalInertia = VehicleUtil::SafeDivide(State.EngineInertia * State.ReflectedInertia, State.EngineInertia + State.ReflectedInertia);
 
 	switch (Config.SimMode)
 	{
@@ -121,11 +122,6 @@ void UVehicleClutchComponent::UpdatePhysics(float InDeltaTime, float InClutchVal
 float UVehicleClutchComponent::GetCluchTorque()
 {
 	return State.ClutchTorque;
-}
-
-float UVehicleClutchComponent::SafeDivide(float a, float b)
-{
-	return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
 }
 
 float UVehicleClutchComponent::CalculateStiffness(float InFrequency, float InInertia)

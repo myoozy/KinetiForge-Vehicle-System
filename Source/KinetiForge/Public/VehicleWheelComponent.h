@@ -292,9 +292,4 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Animation")
 	void AttachComponentToKnuckle(USceneComponent* InComponent, FTransform InTransform);
 
-private:
-	static FORCEINLINE auto SafeDivide(auto a, auto b)
-	{
-		return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
-	}
 };

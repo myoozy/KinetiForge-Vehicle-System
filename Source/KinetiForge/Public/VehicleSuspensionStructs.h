@@ -234,6 +234,8 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	bool bRayCastRefined = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	float ImpactFriction = 1.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FTransform RayCastTransform = FTransform(FQuat(0.f));
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FTransform CarbodyWorldTransform = FTransform(FQuat(0.f));

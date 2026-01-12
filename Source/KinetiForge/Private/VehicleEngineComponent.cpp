@@ -2,6 +2,7 @@
 
 
 #include "VehicleEngineComponent.h"
+#include "VehicleUtil.h"
 
 // Sets default values for this component's properties
 UVehicleEngineComponent::UVehicleEngineComponent()
@@ -175,12 +176,12 @@ void UVehicleEngineComponent::EngineAcceleration()
 	IndicatedTorque += State.P1MotorTorque;
 
 	// accelerate engine
-	State.EngineAngularVelocity += SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * (IndicatedTorque - State.LoadTorque + State.StarterMotorTorque);
+	State.EngineAngularVelocity += VehicleUtil::SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * (IndicatedTorque - State.LoadTorque + State.StarterMotorTorque);
 	
 	// get the direction of friction torque
 	float AngVelSignWithoutFriction = FMath::Sign(State.EngineAngularVelocity);
 	FrictionTorque = FrictionTorque * AngVelSignWithoutFriction;
-	State.EngineAngularVelocity -= SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * FrictionTorque;
+	State.EngineAngularVelocity -= VehicleUtil::SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * FrictionTorque;
 	
 	// zero cross check
 	bool bCrossZero = FMath::Sign(State.EngineAngularVelocity) != AngVelSignWithoutFriction;
@@ -199,7 +200,7 @@ void UVehicleEngineComponent::UpdateExhaust()
 	float AbsolutRPM = FMath::Abs(State.EngineRPM);
 
 	// normalized rpm
-	float NormalizedRPM = SafeDivide(AbsolutRPM, NAConfig.EngineMaxRPM);
+	float NormalizedRPM = VehicleUtil::SafeDivide(AbsolutRPM, NAConfig.EngineMaxRPM);
 
 	// check if engine is slowing down (and not idling)
 	bool bIsDecelerating =
@@ -471,7 +472,7 @@ void UVehicleEngineComponent::Initialize()
 
 	//get idle throttle
 	State.IdleThrottle = FMath::Clamp(
-		SafeDivide(State.TorqueRequiredToStartEngine,
+		VehicleUtil::SafeDivide(State.TorqueRequiredToStartEngine,
 			State.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque * CachedTorqueCurve.Eval(NAConfig.EngineIdleRPM)),
 		0.f, 1.f);
 

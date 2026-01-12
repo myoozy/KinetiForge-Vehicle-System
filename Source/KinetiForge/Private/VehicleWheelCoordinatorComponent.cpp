@@ -197,12 +197,15 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 	if (TimeSinceLastRefresh > RefreshInterval)
 	{
 		TimeSinceLastRefresh -= RefreshInterval;
-		//check if center of mass changed
-		FVector3f NewCarbodyLocalCOM = (FVector3f)Carbody->GetComponentTransform().InverseTransformPosition(Carbody->GetCenterOfMass());
-		if ((CarbodyCOM - NewCarbodyLocalCOM).SquaredLength() > 1.f)
+		if (IsValid(Carbody) && Carbody->IsPhysicsStateCreated())
 		{
-			CarbodyCOM = NewCarbodyLocalCOM;
-			bMassMatrixDirty = true;
+			//check if center of mass changed
+			FVector3f NewCarbodyLocalCOM = (FVector3f)Carbody->GetComponentTransform().InverseTransformPosition(Carbody->GetCenterOfMass());
+			if ((CarbodyCOM - NewCarbodyLocalCOM).SquaredLength() > 1.f)
+			{
+				CarbodyCOM = NewCarbodyLocalCOM;
+				bMassMatrixDirty = true;
+			}
 		}
 	}
 

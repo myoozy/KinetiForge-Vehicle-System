@@ -124,10 +124,4 @@ private:
 	float CachedTurboWasteGateLag;
 	float CachedTurboNegPressure;
 	float CachedTurboMaxPressure;
-
-
-	auto SafeDivide(auto a, auto b)
-	{
-		return (FMath::IsNearlyZero(b)) ? 0.0f : a / b;
-	}
 };

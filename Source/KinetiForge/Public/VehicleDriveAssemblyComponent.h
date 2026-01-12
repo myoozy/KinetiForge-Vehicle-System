@@ -17,7 +17,6 @@ class UVehicleClutchComponent;
 class UVehicleGearboxComponent;
 class UVehicleAsyncTickComponent;
 
-
 USTRUCT(BlueprintType)
 struct KINETIFORGE_API FAxleAssemblyConfig
 {
@@ -225,18 +224,23 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Input")
     EVehicleEngineOperationMode ShutVehicleEngine();
     UFUNCTION(BlueprintCallable, Category = "Input")
-    void RotateCamera(
+    static void RotateCamera(
         USceneComponent* InSpringArm,
         FVector2D InMouseInput,
         bool bInvertYAxis = false, 
         float InMaxPitch = 80);
+    UFUNCTION(BlueprintCallable, Category = "Input", meta = (ToolTip = "Unit of speed: m/s"))
+    void StretchSpringArmBySpeed(
+        USpringArmComponent* InSpringArm,
+        float InInitialSpringArmLength = 500.f,
+        UCurveFloat* InScaleCurve = nullptr);
     UFUNCTION(BlueprintCallable, Category = "Input")
     void CameraLookAtVelocity(
         USceneComponent* InSpringArm, 
         float InPitch, 
-        float InDriftCamRate = 1.f,
-        float InDriftCamInterpSpeed = 5.f, 
-        float InDriftCamStartSpeed_mps = 5.f);
+        float InSensitivity = 1.f,
+        float InInterpSpeed = 5.f, 
+        float InStartSpeed_mps = 5.f);
     UFUNCTION(BlueprintCallable, Category = "Input")
     void GetInputValues(FVehicleInputPipeline& Out) { Out = InputValues; }
     UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator; }

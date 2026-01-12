@@ -49,7 +49,6 @@ public:
 	void GetClutchMovement(FVehicleClutchSimState& Out) { Out = State; }
 
 private:
-	float SafeDivide(float a, float b);
 	float CalculateStiffness(float InFrequency, float InInertia);
 	float CalculateCriticalDamping(float InFrequency, float InInertia);
 };
