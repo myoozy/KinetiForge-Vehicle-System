@@ -292,7 +292,7 @@ void UVehicleAxleAssemblyComponent::UpdateTCS(float TargetDriveTorque)
 	SimData.bTCSTriggered =
 		TCSConfig.bTractionControlSystemEnabled
 		&& SimData.NumOfWheelOnGround
-		&& !FMath::IsNearlyZero(TargetDriveTorque)
+		&& SimData.LocalLinearVelocity.X * TargetDriveTorque > SMALL_NUMBER
 		&& FMath::Abs(SimData.LocalLinearVelocity.X) > TCSConfig.ActivationSpeed
 		&& AvrgSlipRatio > TCSConfig.OptimalSlip;
 

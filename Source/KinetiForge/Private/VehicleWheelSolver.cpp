@@ -438,9 +438,9 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 	// in the lateral direction, the wheel can be treated as it is always braking
 
 	// then do some smoothing
-	const float Scale = 1.f;
+	const float Scale = 100.f;
 	FVector2f Smoothing = FVector2f(FMath::Abs(State.LongSlipVelocity), FMath::Abs(State.LocalLinearVelocity.Y));
-	Smoothing *= Scale;
+	Smoothing *= Scale * FMath::Min(State.PhysicsDeltaTime, 0.01666666f);
 
 	// clamp between 0 to 1
 	Smoothing.X = FMath::Clamp(Smoothing.X, 0.f, 1.f);
@@ -489,14 +489,27 @@ void FVehicleWheelSolver::UpdateTireForce(
 	float ScaledWheelLoad = CalculateScaledWheelLoad(SprungMass, WheelLoad, TireConfig.WheelLoadInfluenceFactor);
 	float AvailableGrip = State.DynFrictionMultiplier * ScaledWheelLoad;
 
-	// get combined slip
-	FVector2f WeightXY = FVector2f(1.f - TireConfig.CombiendSlipBias, TireConfig.CombiendSlipBias);
+	// get stiffness(tangent) of linear region
+	FVector2f LinearRegionStiffness = FVector2f(GetTangentAtOrigin(CachedCurves.Fx), GetTangentAtOrigin(CachedCurves.Fy));
+
+	// get absolut slip ratio and slip angle
+	FVector2f AbsolutSlip = FVector2f(FMath::Abs(State.SlipRatio), FMath::Abs(State.SlipAngle));
+
+	// normalize slip ratio and slip angle
+	FVector2f NormalizedSlip = AbsolutSlip * LinearRegionStiffness;
+	float ScalarNormSlip = NormalizedSlip.Length();
+
+	// get optimal slip
+	FVector2f OptimalSlip = LinearRegionStiffness.SquaredLength() > SMALL_NUMBER ? FVector2f(1.f) / LinearRegionStiffness : FVector2f(1.f);
+	
+	// get combined slip direction
+	FVector2f WeightXY = FVector2f(1.f - TireConfig.CombinedSlipBias, TireConfig.CombinedSlipBias);
 	WeightXY *= FVector2f(VehicleUtil::SafeDivide(1.f, TireConfig.MaxFx), VehicleUtil::SafeDivide(1.f, TireConfig.MaxFy));
-	float NormalizedSlipAngle = State.SlipAngle / 90.f;
-	FVector2f NormalizedSc = (FVector2f(State.SlipRatio, NormalizedSlipAngle) * WeightXY).GetSafeNormal().GetAbs();
+	FVector2f ScDirection = (NormalizedSlip * WeightXY).GetSafeNormal();
 
 	// the tangent of the linear region should not be changed, if the vehicle is driving on a surface with high friction multiplier
 	float SlipInputScale = VehicleUtil::SafeDivide(TireConfig.FrictionMultiplier, State.DynFrictionMultiplier);
+	FVector2f SlipInput = SlipInputScale * ScalarNormSlip * OptimalSlip;
 	
 	// if the user has only setup one of the Fx or Fy curve, the Constraint force on the other direction should be cut, before computing combined slip
 	bool bUseFxCurve = TireConfig.Fx != nullptr;
@@ -508,51 +521,16 @@ void FVehicleWheelSolver::UpdateTireForce(
 	FVector2f MFTireForce = ConstraintTireForce;
 	if (bUseFxCurve)
 	{
-		// the input of magic formula should be ajusted. 
-		// Since the combined slip logci is similar to TMeasy (a tire model), 
-		// the input should theoretically be the combined slip.
-		// But here we are using a pacejka-style curve (Fx and Fy),
-		// so it also make sense to seperately use slip ratio and slip angle as input
-		float InputX = FMath::Sqrt(FMath::Square(State.SlipRatio) + FMath::Square(NormalizedSlipAngle * TireConfig.CombinedSlipInterference));
-		InputX *= SlipInputScale;
-
-		float MuX = CachedCurves.Fx.Eval(InputX);
-
-		// get the tangent of the linear region
-		float k = GetTangentAtOrigin(CachedCurves.Fx);
-
-		// lerp between linear and non-linear region
-		// If directly use Fx * NormalizedSc.X, 
-		// it will produce a singularity when the slip ratio is very low and the slip angle is high.
-		// at that singularity, Fx is scaled to almost 0
-		MuX = FMath::Lerp(MuX, MuX * NormalizedSc.X, FMath::Min(FMath::Abs(InputX * k), 1.f));
-
-		float Fx = MuX * MaxFx;
+		float FxPure = CachedCurves.Fx.Eval(AbsolutSlip.X);
+		float FxCoupled = CachedCurves.Fx.Eval(SlipInput.X) * ScDirection.X;
+		float Fx = FMath::Abs(MaxFx * FMath::Lerp(FxPure, FxCoupled, TireConfig.LateralToLongitudinalInterference));
 		MFTireForce.X = FMath::Clamp(ConstraintTireForce.X, -Fx, Fx);
 	}
 	if (bUseFyCurve)
 	{
-		// the input of magic formula should be ajusted. 
-		// Since the combined slip logci is similar to TMeasy (a tire model), 
-		// the input should theoretically be the combined slip.
-		// But here we are using a pacejka-style curve (Fx and Fy),
-		// so it also make sense to seperately use slip ratio and slip angle as input
-		float InputY = FMath::Sqrt(FMath::Square(NormalizedSlipAngle) + FMath::Square(State.SlipRatio * TireConfig.CombinedSlipInterference));
-		InputY *= 90.f;
-		InputY *= SlipInputScale;
-
-		float MuY = CachedCurves.Fy.Eval(InputY);
-
-		// get the tangent of the linear region
-		float k = GetTangentAtOrigin(CachedCurves.Fy);
-
-		// lerp between linear and non-linear region
-		// If directly use Fy * NormalizedSc.Y, 
-		// it will produce a singularity when the slip angle is very low and the slip ratio is high.
-		// at that singularity, Fy is scaled to almost 0
-		MuY = FMath::Lerp(MuY, MuY * NormalizedSc.Y, FMath::Min(FMath::Abs(InputY * k), 1.f));
-
-		float Fy = MuY * MaxFy;
+		float FyPure = CachedCurves.Fy.Eval(AbsolutSlip.Y);
+		float FyCoupled = CachedCurves.Fy.Eval(SlipInput.Y) * ScDirection.Y;
+		float Fy = FMath::Abs(MaxFy * FMath::Lerp(FyPure, FyCoupled, TireConfig.LongitudinalToLateralInterference));
 		MFTireForce.Y = FMath::Clamp(ConstraintTireForce.Y, -Fy, Fy);
 	}
 	if (bUseFxCurve != bUseFyCurve) {
@@ -561,11 +539,13 @@ void FVehicleWheelSolver::UpdateTireForce(
 	}
 
 	// lerp between constraint force (more stable at low speed) and MF force (more accurate at high speed)
+	// it is not necessary to use constraint force at low speed, since the MF force is also stable at low speed
+	// but to burn out in place, constraint force is necessary
 	FVector2f V = FVector2f(0.f);
 	V.X = FMath::Max(FMath::Abs(State.LocalLinearVelocity.X), FMath::Abs(State.AngularVelocity * State.R));
 	V.Y = FMath::Abs(State.LocalLinearVelocity.Y);
 	float ScalarV = V.Length();
-	float Alpha = FMath::Clamp(ScalarV, 0.f, 1.f);
+	float Alpha = FMath::Clamp(ScalarV, 0.f, 1.f);	// Alpha = 1 when V = 1 m/s
 	FVector2f TargetTireForce = FMath::Lerp(ConstraintTireForce, MFTireForce, Alpha);
 
 	// relaxation length
@@ -574,8 +554,8 @@ void FVehicleWheelSolver::UpdateTireForce(
 
 	// smoothing factor under stiction condition (low speed)
 	FVector2f StictionSmoothing = FVector2f(FMath::Abs(State.LongSlipVelocity), FMath::Abs(State.LocalLinearVelocity.Y));
-	const float Scale = 1.f;
-	StictionSmoothing *= Scale;
+	const float Scale = 100.f;
+	StictionSmoothing *= Scale * FMath::Min(State.PhysicsDeltaTime, 0.01666666f);
 
 	// lerp and smoothen
 	FVector2f SmoothingFactor = FMath::Lerp(StictionSmoothing, RelaxationLengthSmoothing, Alpha);
