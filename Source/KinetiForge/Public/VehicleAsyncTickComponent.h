@@ -30,7 +30,7 @@ public:
 	void Register(UVehicleDriveAssemblyComponent* newDriveAssembly);
 	void UnRegister(UVehicleDriveAssemblyComponent* targetDriveAssembly);
 
-	bool bUpdatePhysicsOnGameThread = false;
+	bool bUpdatePhysicsOnGameThread = true;
 
 protected:
 	TArray<TWeakObjectPtr<UVehicleDriveAssemblyComponent>> DriveAssemblies;
