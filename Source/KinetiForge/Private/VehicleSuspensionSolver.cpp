@@ -451,6 +451,44 @@ static void ComputeDoubleWishbone(
 	Ctx.WheelWorldPos = Ctx.CarbodyWorldTransform.TransformPositionNoScale(FVector(Ctx.WheelRelativeTransform.GetLocation()));
 }
 
+static void ComputeSolidAxle(
+	FVehicleSuspensionSimContext& Ctx,
+	const float WheelRadius,
+	const FVehicleSuspensionKinematicsConfig& Config,
+	const FVector& InKnuckleWorldPos,
+	const FVector& InAxleWorldDirection)
+{
+	// get relative position of the ball joint
+	Ctx.KnuckleRelativePos = (FVector3f)Ctx.CarbodyWorldTransform.InverseTransformPositionNoScale(InKnuckleWorldPos);
+
+	// the relative direction of the axle, which is also the right vector of the wheel
+	// because solid axle usually does not have camber/toe
+	FVector3f AxleDirection = (FVector3f)Ctx.CarbodyWorldTransform.InverseTransformVectorNoScale(InAxleWorldDirection);
+	Ctx.WheelCenterToKnuckle = Config.AxialHubOffset * Ctx.WheelPos * AxleDirection;
+
+	// get relative position of the wheel
+	FVector3f WheelRelativePos = Ctx.KnuckleRelativePos + Ctx.WheelCenterToKnuckle;
+
+	// get the relative rotation of the wheel
+	FVector3f DefaultRight = FVector3f(0.f, 1.f, 0.f);
+	FQuat4f AxleRotation = FQuat4f::FindBetweenNormals(DefaultRight, AxleDirection);
+	FVector3f SteeringAxle = FVector3f::CrossProduct(Ctx.ComponentRelativeForwardVector, AxleDirection);
+	FQuat4f SteeringBiasRotation = FQuat4f(SteeringAxle, FMath::DegreesToRadians(Ctx.SteeringAngle));
+
+	Ctx.WheelRelativeTransform = FTransform3f(SteeringBiasRotation * AxleRotation, WheelRelativePos);
+	FVector3f WheelRelativeRightVec = Ctx.WheelRelativeTransform.GetRotation().GetRightVector();
+	Ctx.WheelRightVector = Ctx.CarbodyWorldTransform.TransformVectorNoScale((FVector)WheelRelativeRightVec);
+
+	Ctx.WheelWorldPos = Ctx.CarbodyWorldTransform.TransformPositionNoScale((FVector)Ctx.WheelRelativeTransform.GetLocation());
+
+	// the relative direction of the strut
+	Ctx.StrutRelativeDirection = (Ctx.TopMountRelativePos - Ctx.KnuckleRelativePos).GetSafeNormal();
+
+	// have to calculate the 2d position of the ball joint, to decide the raycast start for next frame
+	FVector3f KnuckleLocalPos = Ctx.RelativeTransform.InverseTransformPositionNoScale(Ctx.KnuckleRelativePos);
+	Ctx.KnucklePos2D = FVehicleSuspensionSolver::ZYPlaneToSuspensionPlane(KnuckleLocalPos, Ctx.WheelPos);
+}
+
 static void UpdateImpactPointWorldVelocity(
 	FVehicleSuspensionSimContext& Ctx,
 	UVehicleWheelComponent* TargetWheelComponent)
@@ -518,19 +556,19 @@ static void ComputeSuspensionForce(
 	if (Ctx.SuspensionCurrentLength < SMALL_NUMBER)
 	{
 		// try to stop the car immediately
-		float VelocityIntoSurface = FVector::DotProduct(Ctx.HitStruct.ImpactNormal, (FVector)Ctx.ImpactPointWorldVelocity);
+		float VelocityIntoSurface = FVector::DotProduct(Ctx.HitStruct.Normal, (FVector)Ctx.ImpactPointWorldVelocity);
 		float ForceToBringToStop = -VelocityIntoSurface * DeltaTimeInv * Ctx.SprungMass;
 		ForceToHoldCar = ForceToBringToStop * SpringConfig.BottomOutStiffness;
 
 		// the spring system in another direction (normal of impact surface)
 		FVector WheelCenterToImpactPoint = Ctx.WheelWorldPos - Ctx.HitStruct.ImpactPoint;
-		float DistanceToSurface = FVector::DotProduct(Ctx.HitStruct.ImpactNormal, WheelCenterToImpactPoint);
+		float DistanceToSurface = FVector::DotProduct(Ctx.HitStruct.Normal, WheelCenterToImpactPoint);
 		SpringForce = (WheelRadius - DistanceToSurface) * SpringConfig.SpringStiffness;
 		DampingForce = -VelocityIntoSurface * DamperStiffness;
 		ForceToHoldCar += SpringForce + DampingForce;
 	}
 
-	float SuspensionForceProj = FVector::DotProduct(SuspensionForceVector, Ctx.HitStruct.ImpactNormal);
+	float SuspensionForceProj = FVector::DotProduct(SuspensionForceVector, Ctx.HitStruct.Normal);
 	Ctx.ForceAlongImpactNormal = SuspensionForceProj + ForceToHoldCar;
 
 	if (!Ctx.bHitGround)
@@ -698,35 +736,13 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
 	const FVehicleSuspensionSpringConfig& SpringConfig = TargetWheelComponent->SuspensionSpringConfig;
 
-	// get relative position of the ball joint
-	Ctx.KnuckleRelativePos = (FVector3f)Ctx.CarbodyWorldTransform.InverseTransformPositionNoScale(InKnuckleWorldPos);
-	
-	// the relative direction of the axle, which is also the right vector of the wheel
-	// because solid axle usually does not have camber/toe
-	FVector3f AxleDirection = (FVector3f)Ctx.CarbodyWorldTransform.InverseTransformVectorNoScale(InAxleWorldDirection);
-	Ctx.WheelCenterToKnuckle = KineConfig.AxialHubOffset * Ctx.WheelPos * AxleDirection;
-	
-	// get relative position of the wheel
-	FVector3f WheelRelativePos = Ctx.KnuckleRelativePos + Ctx.WheelCenterToKnuckle;
-	
-	// get the relative rotation of the wheel
-	FVector3f DefaultRight = FVector3f(0.f, 1.f, 0.f);
-	FQuat4f AxleRotation = FQuat4f::FindBetweenNormals(DefaultRight, AxleDirection);
-	FVector3f SteeringAxle = FVector3f::CrossProduct(Ctx.ComponentRelativeForwardVector, AxleDirection);
-	FQuat4f SteeringBiasRotation = FQuat4f(SteeringAxle, FMath::DegreesToRadians(Ctx.SteeringAngle));
-
-	Ctx.WheelRelativeTransform = FTransform3f(SteeringBiasRotation * AxleRotation, WheelRelativePos);
-	FVector3f WheelRelativeRightVec = Ctx.WheelRelativeTransform.GetRotation().GetRightVector();
-	Ctx.WheelRightVector = Ctx.CarbodyWorldTransform.TransformVectorNoScale((FVector)WheelRelativeRightVec);
-
-	Ctx.WheelWorldPos = Ctx.CarbodyWorldTransform.TransformPositionNoScale((FVector)Ctx.WheelRelativeTransform.GetLocation());
-
-	// the relative direction of the strut
-	Ctx.StrutRelativeDirection = (Ctx.TopMountRelativePos - Ctx.KnuckleRelativePos).GetSafeNormal();
-
-	// have to calculate the 2d position of the ball joint, to decide the raycast start for next frame
-	FVector3f KnuckleLocalPos = Ctx.RelativeTransform.InverseTransformPositionNoScale(Ctx.KnuckleRelativePos);
-	Ctx.KnucklePos2D = ZYPlaneToSuspensionPlane(KnuckleLocalPos, Ctx.WheelPos);
+	ComputeSolidAxle(
+		Ctx,
+		WheelRadius,
+		KineConfig,
+		InKnuckleWorldPos,
+		InAxleWorldDirection
+	);
 
 	// update velocity
 	UpdateImpactPointWorldVelocity(Ctx, TargetWheelComponent);
@@ -771,6 +787,47 @@ void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio
 		break;
 	}
 
+	CopyContextToState(Ctx);
+}
+
+void FVehicleSuspensionSolver::StartApplySolidAxleStateDirect(
+	float InExtensionRatio, 
+	float InSteeringAngle, 
+	FVector& OutApporximatedWheelWorldPos, 
+	FVehicleSuspensionSimContext& Ctx)
+{
+	if (!IsValid(TargetWheelComponent))return;
+
+	CopyStateToContext(Ctx);
+	Ctx.SuspensionExtensionRatio = InExtensionRatio;
+	Ctx.SteeringAngle = InSteeringAngle;
+
+	const float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
+	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
+	const FVehicleSuspensionCachedRichCurves& CachedKineCurves = CachedCurves;
+
+	PrepareSimulation(Ctx, TargetWheelComponent, KineConfig);
+	ComputeRayCastLocation(Ctx, KineConfig);
+
+	Ctx.HitDistance = InExtensionRatio * Ctx.RayCastLength + TargetWheelComponent->WheelConfig.Radius;
+	float DistanceToRayCastStart = FMath::Max(0.f, Ctx.HitDistance - TargetWheelComponent->WheelConfig.Radius);
+	FVector OffsetToRayCastStart = Ctx.ComponentUpVector * DistanceToRayCastStart;
+	OutApporximatedWheelWorldPos = Ctx.RayCastStartPos - OffsetToRayCastStart;
+}
+
+void FVehicleSuspensionSolver::FinalizeApplySolidAxleStateDirect(FVehicleSuspensionSimContext& Ctx, const FVector& InKnuckleWorldPos, const FVector& InAxleWorldDirection)
+{
+	if (!IsValid(TargetWheelComponent))return;
+
+	const float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
+	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
+	ComputeSolidAxle(
+		Ctx,
+		WheelRadius,
+		KineConfig,
+		InKnuckleWorldPos,
+		InAxleWorldDirection
+	);
 	CopyContextToState(Ctx);
 }
 

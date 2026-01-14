@@ -588,6 +588,65 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxleAnim(USceneComponent* InSolid
 	}
 }
 
+void UVehicleAxleAssemblyComponent::ApplySolidAxleStateDirect(float InExtensionRatio, float SteeringAngle)
+{
+	if (!IsValid(LeftWheel) || !IsValid(RightWheel))return;
+
+	const int32 Iteration = 2;
+	for (int32 i = 0; i < Iteration; i++)
+	{
+		FVector LeftWorldPos = FVector(0.f);
+		FVector RightWorldPos = FVector(0.f);
+
+		FVehicleSuspensionSimContext LeftCtx;
+		LeftWheel->StartApplySolidAxleStateDirect(InExtensionRatio, SteeringAngle, LeftWorldPos, LeftCtx);
+
+		FVehicleSuspensionSimContext RightCtx;
+		RightWheel->StartApplySolidAxleStateDirect(InExtensionRatio, SteeringAngle, RightWorldPos, RightCtx);
+
+		// get the world direction of the axle
+		FVector AxleDirection = (RightWorldPos - LeftWorldPos).GetSafeNormal();
+
+		// the center of axle under world coordinate
+		FVector AxleWorldCenter = (RightWorldPos + LeftWorldPos) * 0.5f;
+
+		// the track width
+		float DynTrackWidth = FMath::Abs(LeftWheel->GetRelativeLocation().Y - RightWheel->GetRelativeLocation().Y);
+		DynTrackWidth += LeftWheel->SuspensionKinematicsConfig.ArmLength + RightWheel->SuspensionKinematicsConfig.ArmLength;
+
+		// get the position of the ball joint(connecting the wheel and the suspension) of each wheel
+		FVector LeftKnuckleWorldPos = AxleWorldCenter - AxleDirection * DynTrackWidth * 0.5f;
+		FVector RightKnuckleWorldPos = AxleWorldCenter + AxleDirection * DynTrackWidth * 0.5f;
+
+		LeftWheel->FinalizeApplySolidAxleStateDirect(
+			LeftCtx,
+			LeftKnuckleWorldPos,
+			AxleDirection);
+		RightWheel->FinalizeApplySolidAxleStateDirect(
+			RightCtx,
+			RightKnuckleWorldPos,
+			AxleDirection);
+	}
+}
+
+void UVehicleAxleAssemblyComponent::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
+{
+	switch (SuspensionType)
+	{
+	case EVehicleAxleSuspensionType::Independent:
+		if (IsValid(LeftWheel))LeftWheel->ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle);
+		if (IsValid(RightWheel))RightWheel->ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle);
+		break;
+	case EVehicleAxleSuspensionType::Solid:
+		ApplySolidAxleStateDirect(InExtensionRatio, InSteeringAngle);
+		break;
+	default:
+		if (IsValid(LeftWheel))LeftWheel->ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle);
+		if (IsValid(RightWheel))RightWheel->ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle);
+		break;
+	}
+}
+
 void UVehicleAxleAssemblyComponent::GetLinearVelocity(FVector3f& OutLocalVelocity, FVector3f& OutWorldVelocity)
 {
 	OutLocalVelocity = SimData.LocalLinearVelocity;

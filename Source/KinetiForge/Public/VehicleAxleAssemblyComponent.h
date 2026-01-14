@@ -118,6 +118,16 @@ public:
 		USceneComponent* InSolidAxleMesh,
 		EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint = EVehicleSolidAxleAnimPivot::Center
 	);
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	void ApplySolidAxleStateDirect(
+		float InExtensionRatio = 1.f,
+		float SteeringAngle = 0.f
+	);
+	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	void ApplySuspensionStateDirect(
+		float InExtensionRatio = 1.f,
+		float SteeringAngle = 0.f
+	);
 
 	void SetWheelBase(float NewWheelBase) { SimData.WheelBase = NewWheelBase; }
 	void GetLinearVelocity(FVector3f& OutLocalVelocity, FVector3f& OutWorldVelocity);

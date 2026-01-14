@@ -284,11 +284,14 @@ void UVehicleWheelComponent::InitializeWheel()
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: Carbody Not Found!"));
 	}
 
+	//initialize meshes
+	GenerateMeshComponents();
+
 	Suspension.Initialize(this);
 	Wheel.Initialize(this);
 
-	//initialize meshes
-	GenerateMeshComponents();
+	// initialize animation
+	UpdateWheelAnim();
 }
 
 void UVehicleWheelComponent::SetSprungMass(float NewSprungMass)
@@ -408,6 +411,44 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 		Suspension.State);
 
 	ApplyWheelForce();
+}
+
+void UVehicleWheelComponent::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
+{
+	const int32 Iteration = 2;
+	for (int32 i = 0; i < Iteration; i++)
+	{
+		Suspension.ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle);
+		UpdateWheelAnim();
+	}
+}
+
+void UVehicleWheelComponent::StartApplySolidAxleStateDirect(
+	float InExtensionRatio, 
+	float InSteeringAngle, 
+	FVector& OutApporximatedWheelWorldPos, 
+	FVehicleSuspensionSimContext& Ctx)
+{
+	Suspension.StartApplySolidAxleStateDirect(
+		InExtensionRatio, 
+		InSteeringAngle, 
+		OutApporximatedWheelWorldPos, 
+		Ctx
+	);
+}
+
+void UVehicleWheelComponent::FinalizeApplySolidAxleStateDirect(
+	FVehicleSuspensionSimContext& Ctx, 
+	const FVector& InKnuckleWorldPos, 
+	const FVector& InAxleWorldDirection)
+{
+	Suspension.FinalizeApplySolidAxleStateDirect(
+		Ctx,
+		InKnuckleWorldPos,
+		InAxleWorldDirection
+	);
+
+	UpdateWheelAnim();
 }
 
 void UVehicleWheelComponent::GetWheelCoordinator(UVehicleWheelCoordinatorComponent*& OutWheelCoordinator)

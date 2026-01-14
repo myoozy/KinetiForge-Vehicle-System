@@ -40,6 +40,17 @@ public:
 		float InExtensionRatio = 1.f,
 		float InSteeringAngle = 0.f
 	);
+	void StartApplySolidAxleStateDirect(
+		float InExtensionRatio,
+		float InSteeringAngle,
+		FVector& OutApporximatedWheelWorldPos,
+		FVehicleSuspensionSimContext& Ctx
+	);
+	void FinalizeApplySolidAxleStateDirect(
+		FVehicleSuspensionSimContext& Ctx,
+		const FVector& InKnuckleWorldPos,
+		const FVector& InAxleWorldDirection
+	);
 	void DrawSuspension(
 		float Duration = -1, 
 		float Thickness = 0, 
@@ -107,7 +118,7 @@ public:
 		State.TopMountRelativePos = FVector3f(Context.TopMountRelativePos);
 		State.StrutDirection = FVector3f(Context.StrutDirection);
 		State.ImpactPointWorldVelocity = FVector3f(Context.ImpactPointWorldVelocity);
-		State.ImpactNormal = FVector3f(Context.HitStruct.ImpactNormal);
+		State.ImpactNormal = FVector3f(Context.HitStruct.Normal);
 		State.ImpactPoint = Context.HitStruct.ImpactPoint;
 		State.WheelWorldPos = Context.WheelWorldPos;
 		State.WheelRelativeRotation = FQuat4f(Context.WheelRelativeTransform.GetRotation());

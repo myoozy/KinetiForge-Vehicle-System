@@ -171,8 +171,20 @@ public:
 		const FVector& InAxleWorldDirection);
 
 	UFUNCTION(BlueprintCallable, Category = "Suspension")
-	void ApplySuspensionStateDirect(float InExtensionRatio = 1.f, float InSteeringAngle = 0.f)
-	{ Suspension.ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle); }
+	void ApplySuspensionStateDirect(float InExtensionRatio = 1.f, float InSteeringAngle = 0.f);
+
+	void StartApplySolidAxleStateDirect(
+		float InExtensionRatio,
+		float InSteeringAngle,
+		FVector& OutApporximatedWheelWorldPos,
+		FVehicleSuspensionSimContext& Ctx
+	);
+
+	void FinalizeApplySolidAxleStateDirect(
+		FVehicleSuspensionSimContext& Ctx,
+		const FVector& InKnuckleWorldPos,
+		const FVector& InAxleWorldDirection
+	);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
 	void GetWheelCoordinator(UVehicleWheelCoordinatorComponent*& OutWheelCoordinator);
