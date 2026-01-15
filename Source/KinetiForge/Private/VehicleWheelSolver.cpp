@@ -41,7 +41,6 @@ void FVehicleWheelSolver::UpdateWheel(
 	State.R = Config.Radius * 0.01;
 	State.RInv = VehicleUtil::SafeDivide(1.f, State.R);
 	State.TotalInertia = Config.Inertia + InReflectedInertia;
-	State.TotalInertiaInv = VehicleUtil::SafeDivide(1.f, State.TotalInertia);
 	State.DriveTorque = InDriveTorque + State.P4MotorTorque;
 
 	// get the direction of longitudinal and lateral force in world space
@@ -69,7 +68,8 @@ void FVehicleWheelSolver::UpdateWheel(
 
 	UpdateDynamicFrictionMultiplier(SuspensionState.ImpactFriction);
 
-	WheelAcceleration(LongForceDir);
+	float SlipVelocityTolerance = TargetWheelComponent->TireConfig.Fx == nullptr ? 0.1f : 0.f;
+	WheelAcceleration(LongForceDir, SlipVelocityTolerance);
 
 	float ForceIntoSurface = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
 
@@ -292,14 +292,14 @@ void FVehicleWheelSolver::UpdateLinearVelocity(
 
 void FVehicleWheelSolver::WheelAcceleration(
 	const FVector3f& LongForceDir,
-	float AccelerationTolerance)
+	float SlipVelocityTolerance)
 {
 	float LastAngularVelocity = State.AngularVelocity;
 
 	//friction torque should not flip the sign of the relative rotation to the ground
 	//but there should be tolerance, because even when there is no drive torque or brake torque, the wheel should not always be completely sticked to the road
 	//allow small angular acceleration tolerance to prevent sticky behavior when slip ~ 0 (empirical value)
-	float ToleranceTorque = State.TotalInertia * AccelerationTolerance * State.PhysicsDeltaTimeInv;
+	float ToleranceTorque = State.TotalInertia * SlipVelocityTolerance * State.PhysicsDeltaTimeInv;
 
 	//Get the torque required to flip the sign of relative rotation between ground and wheel
 	float AngularLongSlip = State.AngularVelocity - State.LocalLinearVelocity.X * State.RInv;
@@ -321,13 +321,16 @@ void FVehicleWheelSolver::WheelAcceleration(
 	//and again, the excess friction torque should not be greater than brake torque, since the friction torque should not flip the sign of the relative rotation to the ground
 	float ExcessFrictionTorque = FMath::Clamp(FrictionTorque - ClampedFrictionTorque, -State.BrakeTorque, State.BrakeTorque);
 
+	// avoid divided by 0
+	float TotalInertiaInv = VehicleUtil::SafeDivide(1.f, State.TotalInertia);
+
 	//get the angular velocity without braking
-	State.AngularVelocity += State.PhysicsDeltaTime * State.TotalInertiaInv * (State.DriveTorque - ClampedFrictionTorque);
+	State.AngularVelocity += State.PhysicsDeltaTime * TotalInertiaInv * (State.DriveTorque - ClampedFrictionTorque);
 	float AngVelSignIfNotBraking = FMath::Sign(State.AngularVelocity);
 
 	//finally the sign of brake torque can be defined
 	float ActuralBrakingTorque = State.BrakeTorque * (-AngVelSignIfNotBraking);
-	State.AngularVelocity += State.PhysicsDeltaTime * State.TotalInertiaInv * (ActuralBrakingTorque - ExcessFrictionTorque);
+	State.AngularVelocity += State.PhysicsDeltaTime * TotalInertiaInv * (ActuralBrakingTorque - ExcessFrictionTorque);
 
 	//zero cross check
 	//if the wheel is locked, the angular velocity should be 0
@@ -440,14 +443,12 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 	// then do some smoothing
 	const float Scale = 100.f;
 	FVector2f Smoothing = FVector2f(FMath::Abs(State.LongSlipVelocity), FMath::Abs(State.LocalLinearVelocity.Y));
-	Smoothing *= Scale * FMath::Min(State.PhysicsDeltaTime, 0.01666666f);
+	Smoothing *= Scale * FMath::Min(State.PhysicsDeltaTime, 1.f / 60.f);
 
 	// clamp between 0 to 1
-	Smoothing.X = FMath::Clamp(Smoothing.X, 0.f, 1.f);
-	Smoothing.Y = FMath::Clamp(Smoothing.Y, 0.f, 1.f);
+	Smoothing = Smoothing.ClampAxes(0.f, 1.f);
 
-	State.GravityCompensationForce.X += (GravityComp.X - State.GravityCompensationForce.X) * Smoothing.X;
-	State.GravityCompensationForce.Y += (GravityComp.Y - State.GravityCompensationForce.Y) * Smoothing.Y;
+	State.GravityCompensationForce += (GravityComp - State.GravityCompensationForce) * Smoothing;
 }
 
 float FVehicleWheelSolver::CalculateScaledWheelLoad(float SprungMass, float WheelLoad, float Saturation)
@@ -538,29 +539,40 @@ void FVehicleWheelSolver::UpdateTireForce(
 		if (!bUseFyCurve) MFTireForce.Y = FMath::Clamp(ConstraintTireForce.Y, -MaxFy, MaxFy);
 	}
 
-	// lerp between constraint force (more stable at low speed) and MF force (more accurate at high speed)
-	// it is not necessary to use constraint force at low speed, since the MF force is also stable at low speed
-	// but to burn out in place, constraint force is necessary
+	// get the velocity of the spinning wheel
 	FVector2f V = FVector2f(0.f);
 	V.X = FMath::Max(FMath::Abs(State.LocalLinearVelocity.X), FMath::Abs(State.AngularVelocity * State.R));
 	V.Y = FMath::Abs(State.LocalLinearVelocity.Y);
 	float ScalarV = V.Length();
+	
+	// lerp between constraint force (more stable at low speed) and MF force (more accurate at high speed)
+	// it is not necessary to use constraint force at low speed, since the MF force is also stable at low speed
+	// but to burn out in place, constraint force is necessary
 	float Alpha = FMath::Clamp(ScalarV, 0.f, 1.f);	// Alpha = 1 when V = 1 m/s
 	FVector2f TargetTireForce = FMath::Lerp(ConstraintTireForce, MFTireForce, Alpha);
 
 	// relaxation length
+	const FVector2f RelaxLength = TireConfig.RelaxationLength;
+	bool bIsRelaxLengthValid = RelaxLength.SquaredLength() > SMALL_NUMBER;
+
+	// rolling distance
 	float Distance = State.PhysicsDeltaTime * ScalarV;
-	FVector2f RelaxationLengthSmoothing = FVector2f(Distance) / FVector2f::Max(TireConfig.RelaxationLength, FVector2f(SMALL_NUMBER));
+	FVector2f Dist2D = FVector2f(Distance);
+
+	// smoothing factor for relaxation length (implicit)
+	FVector2f ImplicitSmoothing = Dist2D / (RelaxLength + Dist2D);
+	// it will never reach 1.f but I still want to clamp lol
+	ImplicitSmoothing = ImplicitSmoothing.ClampAxes(0.f, 1.f);
 
 	// smoothing factor under stiction condition (low speed)
 	FVector2f StictionSmoothing = FVector2f(FMath::Abs(State.LongSlipVelocity), FMath::Abs(State.LocalLinearVelocity.Y));
 	const float Scale = 100.f;
-	StictionSmoothing *= Scale * FMath::Min(State.PhysicsDeltaTime, 0.01666666f);
+	StictionSmoothing *= Scale * FMath::Min(State.PhysicsDeltaTime, 1.f / 60.f);
+	StictionSmoothing = StictionSmoothing.ClampAxes(0.f, 1.f);
 
 	// lerp and smoothen
-	FVector2f SmoothingFactor = FMath::Lerp(StictionSmoothing, RelaxationLengthSmoothing, Alpha);
-	SmoothingFactor.X = FMath::Clamp(SmoothingFactor.X, 0.f, 1.f);
-	SmoothingFactor.Y = FMath::Clamp(SmoothingFactor.Y, 0.f, 1.f);
+	FVector2f SmoothingFactor = FMath::Lerp(StictionSmoothing, ImplicitSmoothing, Alpha * bIsRelaxLengthValid);
+	SmoothingFactor = SmoothingFactor.ClampAxes(0.f, 1.f);
 
 	State.MFTireForce2D += (TargetTireForce - State.MFTireForce2D) * SmoothingFactor;
 

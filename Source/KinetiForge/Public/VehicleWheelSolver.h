@@ -61,7 +61,7 @@ private:
 		const FVector3f& ImpactPointWorldVelocity);
 	void WheelAcceleration(
 		const FVector3f& LongForceDir,
-		float AccelerationTolerance = 0.1f);
+		float SlipVelocityTolerance = 0.1f);
 	void UpdateSlipAngle(bool bHitGround);
 	void UpdateSlipRatio(bool bHitGround);
 	float CalculateConstraintLongForce(float SprungMass);

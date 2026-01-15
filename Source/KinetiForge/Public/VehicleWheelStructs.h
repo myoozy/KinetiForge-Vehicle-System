@@ -105,8 +105,6 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float TotalInertia = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float TotalInertiaInv = 1.f;	//1/TotalInertia
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float AngularVelocity = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float AngularAcceleration = 0.f;
