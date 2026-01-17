@@ -309,13 +309,30 @@ FTransform3f UVehicleWheelComponent::GetWheelRelativeTransform()
 
 float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float LateralScale)
 {
+	const FRichCurve& FxCurve = Wheel.CachedCurves.Fx;
+	const FRichCurve& FyCurve = Wheel.CachedCurves.Fy;
+
+	// get tire stiffness
+	float Cx = FVehicleWheelSolver::GetTangentAtOrigin(FxCurve);
+	float Cy = FVehicleWheelSolver::GetTangentAtOrigin(FyCurve) * 90.f;
+
+	Cx = Cx > SMALL_NUMBER ? Cx : 1.f;
+	Cy = Cy > SMALL_NUMBER ? Cy : 1.f;
+
+	// get weight
+	const float Bias = TireConfig.CombinedSlipBias;
+	float Wx = (1.f - Bias) * Cx;
+	float Wy = (Bias) * Cy;
+
+	float NormFactor = 1.f / FMath::Max(FMath::Max(Wx, Wy), SMALL_NUMBER);
+
 	// if the slip velocity is too low, should scale the affection of slip ratio, 0.5 is just magic number
 	float SpeedScaleX = FMath::Clamp(0.5f * Wheel.State.LongSlipVelocity, -1.f, 1.f);
-	float NormalizedSx = Wheel.SmoothenedSlipRatio * LongitudinalScale * SpeedScaleX;
+	float NormalizedSx = Wheel.SmoothenedSlipRatio * LongitudinalScale * SpeedScaleX * Wx * NormFactor;
 
 	// also if the lateral velocity is too low, should scale the affection of slip angle
 	float SpeedScaleY = FMath::Clamp(0.5f * Wheel.State.LocalLinearVelocity.Y, -1.f, 1.f);
-	float NormalizedSy = 0.011111f * Wheel.SmoothenedSlipAngle * LateralScale * SpeedScaleY;
+	float NormalizedSy = Wheel.SmoothenedSlipAngle / 90.f * LateralScale * SpeedScaleY * Wy * NormFactor;
 
 	// combined slip
 	float NormalizedSc = FMath::Sqrt(NormalizedSx * NormalizedSx + NormalizedSy * NormalizedSy);

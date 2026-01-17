@@ -87,7 +87,7 @@ public:
 
 	void InitializeWheels();
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void UpdatePhysics(
 		float InPhysicsDeltaTime,
 		float InDriveTorque,
@@ -97,33 +97,33 @@ public:
 		float InReflectedInertia,
 		float& OutAxleTotalInertia, 
 		float& OutAngularVelocity);
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Component")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	void GetWheels(UVehicleWheelComponent*& OutLeftWheel, UVehicleWheelComponent*& OutRightWheel)
 	{ OutLeftWheel = LeftWheel; OutRightWheel = RightWheel; }
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Component")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	void GetDifferential(UVehicleDifferentialComponent*& OutDifferential)
 	{ OutDifferential = Differential; }
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void GetAxleMovement(FVehicleAxleSimData& Out) { Out = SimData; }
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void SetP3MotorTorque(float NewTorque) { SimData.P3MotorTorque = NewTorque; }
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	float GetP3MotorTorque() { return SimData.P3MotorTorque; }
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void SetWheelPosition(float NewTrackWidth);
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void UpdateTrackWidth();
-	UFUNCTION(BlueprintCallable, Category = "Animation")
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void UpdateSolidAxleAnim(
 		USceneComponent* InSolidAxleMesh,
 		EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint = EVehicleSolidAxleAnimPivot::Center
 	);
-	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void ApplySolidAxleStateDirect(
 		float InExtensionRatio = 1.f,
 		float SteeringAngle = 0.f
 	);
-	UFUNCTION(BlueprintCallable, Category = "Suspension")
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void ApplySuspensionStateDirect(
 		float InExtensionRatio = 1.f,
 		float SteeringAngle = 0.f

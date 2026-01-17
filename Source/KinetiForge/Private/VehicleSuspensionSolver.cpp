@@ -592,7 +592,7 @@ bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* InTargetWheelC
 
 	UpdateCachedRichCurves();
 
-	if (IsValid(TargetWheelComponent))
+	if (TargetWheelComponent.IsValid())
 	{
 		QueryParams.AddIgnoredActor(TargetWheelComponent->GetOwner());
 		QueryParams.bReturnPhysicalMaterial = true;
@@ -626,22 +626,23 @@ void FVehicleSuspensionSolver::SetSprungMass(float NewSprungMass)
 		State.SprungMass = NewSprungMass;
 	}
 
-	ComputeCriticalDamping();
+	UpdateCriticalDamping();
 }
 
-float FVehicleSuspensionSolver::ComputeCriticalDamping()
+void FVehicleSuspensionSolver::UpdateCriticalDamping()
 {
+	if (!TargetWheelComponent.IsValid())return;
 	if (State.SprungMass <= 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("VehicleSuspensionSolver: SprungMass not valid!"));
 		State.CriticalDamping = 0.1 * TargetWheelComponent->SuspensionSpringConfig.SpringStiffness;
-		return State.CriticalDamping;
+		return;
 	}
 	else
 	{
 		float NaturalFrequency = FMath::Sqrt(TargetWheelComponent->SuspensionSpringConfig.SpringStiffness * 100 / State.SprungMass);
 		State.CriticalDamping = 0.02 * State.SprungMass * NaturalFrequency;
-		return State.CriticalDamping;
+		return;
 	}
 }
 
@@ -652,7 +653,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleSuspensionSolver);
 
-	if (!IsValid(TargetWheelComponent))return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	FVehicleSuspensionSimContext Ctx;
 
@@ -668,7 +669,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
 	const FVehicleSuspensionSpringConfig& SpringConfig = TargetWheelComponent->SuspensionSpringConfig;
 
-	PrepareSimulation(Ctx, TargetWheelComponent, KineConfig);
+	PrepareSimulation(Ctx, TargetWheelComponent.Get(), KineConfig);
 	ComputeRayCastLocation(Ctx, KineConfig);
 	SuspensionRayCast(Ctx, CurrentWorld, WheelRadius, WheelWidth * 0.5f, QueryParams, ResponseParams, KineConfig);
 
@@ -688,7 +689,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 		break;
 	}
 
-	UpdateImpactPointWorldVelocity(Ctx, TargetWheelComponent);
+	UpdateImpactPointWorldVelocity(Ctx, TargetWheelComponent.Get());
 	ComputeSuspensionForce(Ctx, WheelRadius, SpringConfig, KineConfig);
 	CopyContextToState(Ctx);
 }
@@ -698,7 +699,7 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 	FVector& OutApporximatedWheelWorldPos,
 	FVehicleSuspensionSimContext& Ctx)
 {
-	if (!IsValid(TargetWheelComponent))return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	CopyStateToContext(Ctx);
 
@@ -709,7 +710,7 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 	const float WheelWidth = TargetWheelComponent->WheelConfig.Width;
 	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
 
-	PrepareSimulation(Ctx, TargetWheelComponent, KineConfig);
+	PrepareSimulation(Ctx, TargetWheelComponent.Get(), KineConfig);
 	ComputeRayCastLocation(Ctx, KineConfig);
 	SuspensionRayCast(Ctx, CurrentWorld, WheelRadius, WheelWidth * 0.5f, QueryParams, ResponseParams, KineConfig);
 
@@ -727,7 +728,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	const FVector& InKnuckleWorldPos,
 	const FVector& InAxleWorldDirection)
 {
-	if (!IsValid(TargetWheelComponent))return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	Ctx.PhysicsDelatTime = InDeltaTime;
 	Ctx.SwaybarForce = InSwaybarForce;
@@ -745,7 +746,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	);
 
 	// update velocity
-	UpdateImpactPointWorldVelocity(Ctx, TargetWheelComponent);
+	UpdateImpactPointWorldVelocity(Ctx, TargetWheelComponent.Get());
 
 	// get suspension force
 	ComputeSuspensionForce(Ctx, WheelRadius, SpringConfig, KineConfig);
@@ -755,7 +756,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 
 void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
 {
-	if (!IsValid(TargetWheelComponent))return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	FVehicleSuspensionSimContext Ctx;
 	CopyStateToContext(Ctx);
@@ -766,7 +767,7 @@ void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio
 	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
 	const FVehicleSuspensionCachedRichCurves& CachedKineCurves = CachedCurves;
 
-	PrepareSimulation(Ctx, TargetWheelComponent, KineConfig);
+	PrepareSimulation(Ctx, TargetWheelComponent.Get(), KineConfig);
 	ComputeRayCastLocation(Ctx, KineConfig);
 
 	Ctx.HitDistance = InExtensionRatio * Ctx.RayCastLength + TargetWheelComponent->WheelConfig.Radius;
@@ -796,7 +797,7 @@ void FVehicleSuspensionSolver::StartApplySolidAxleStateDirect(
 	FVector& OutApporximatedWheelWorldPos, 
 	FVehicleSuspensionSimContext& Ctx)
 {
-	if (!IsValid(TargetWheelComponent))return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	CopyStateToContext(Ctx);
 	Ctx.SuspensionExtensionRatio = InExtensionRatio;
@@ -806,7 +807,7 @@ void FVehicleSuspensionSolver::StartApplySolidAxleStateDirect(
 	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
 	const FVehicleSuspensionCachedRichCurves& CachedKineCurves = CachedCurves;
 
-	PrepareSimulation(Ctx, TargetWheelComponent, KineConfig);
+	PrepareSimulation(Ctx, TargetWheelComponent.Get(), KineConfig);
 	ComputeRayCastLocation(Ctx, KineConfig);
 
 	Ctx.HitDistance = InExtensionRatio * Ctx.RayCastLength + TargetWheelComponent->WheelConfig.Radius;
@@ -817,7 +818,7 @@ void FVehicleSuspensionSolver::StartApplySolidAxleStateDirect(
 
 void FVehicleSuspensionSolver::FinalizeApplySolidAxleStateDirect(FVehicleSuspensionSimContext& Ctx, const FVector& InKnuckleWorldPos, const FVector& InAxleWorldDirection)
 {
-	if (!IsValid(TargetWheelComponent))return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	const float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
 	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
@@ -833,7 +834,7 @@ void FVehicleSuspensionSolver::FinalizeApplySolidAxleStateDirect(FVehicleSuspens
 
 void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)
 {
-	if (!IsValid(TargetWheelComponent))return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	UWorld* TempWorld = TargetWheelComponent->GetWorld();
 	if (!IsValid(TempWorld))return;
@@ -912,7 +913,7 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 
 void FVehicleSuspensionSolver::DrawSuspensionForce(float Duration, float Thickness, float Length)
 {
-	if (!IsValid(TargetWheelComponent))return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	UWorld* TempWorld = TargetWheelComponent->GetWorld();
 	if (!IsValid(TempWorld))return;
@@ -929,14 +930,14 @@ void FVehicleSuspensionSolver::DrawSuspensionForce(float Duration, float Thickne
 
 bool FVehicleSuspensionSolver::CheckIsDampingDirty()
 {
-	if (!IsValid(TargetWheelComponent))return false;
+	if (!TargetWheelComponent.IsValid())return false;
 
 	float Stiffness = TargetWheelComponent->SuspensionSpringConfig.SpringStiffness;
 
 	if (CachedSpringStiffness != Stiffness)
 	{
 		CachedSpringStiffness = Stiffness;
-		ComputeCriticalDamping();
+		UpdateCriticalDamping();
 		return true;
 	}
 	else
@@ -947,7 +948,7 @@ bool FVehicleSuspensionSolver::CheckIsDampingDirty()
 
 void FVehicleSuspensionSolver::UpdateCachedRichCurves()
 {
-	if (!IsValid(TargetWheelComponent))return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	const FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
 
@@ -979,7 +980,7 @@ void FVehicleSuspensionSolver::UpdateCachedRichCurves()
 
 bool FVehicleSuspensionSolver::CheckAndFixTriangle()
 {
-	if(!IsValid(TargetWheelComponent))return false;
+	if(!TargetWheelComponent.IsValid())return false;
 	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
 
 	bool valid = true;

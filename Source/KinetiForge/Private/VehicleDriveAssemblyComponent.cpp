@@ -409,78 +409,128 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 }
 
 //RPC
-void UVehicleDriveAssemblyComponent::ServerInputThrottle_Implementation(float InValue)
+void UVehicleDriveAssemblyComponent::ServerInputThrottle_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Throttle = InValue;
-	MultiCastInputThrottle(InValue);
+	if (bDirectInput)
+	{
+		InputValues.Smoothened.Throttle = InValue;
+		InputValues.Final.Throttle = InValue;
+	}
+	MultiCastInputThrottle(InValue, bDirectInput);
 }
 
-void UVehicleDriveAssemblyComponent::MultiCastInputThrottle_Implementation(float InValue)
+void UVehicleDriveAssemblyComponent::MultiCastInputThrottle_Implementation(float InValue, bool bDirectInput)
 {
 	APawn* p = Cast<APawn>(GetOwner());
-	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Throttle = InValue;
+		if (bDirectInput)
+		{
+			InputValues.Smoothened.Throttle = InValue;
+			InputValues.Final.Throttle = InValue;
+		}
 	}
 }
 
-void UVehicleDriveAssemblyComponent::ServerInputBrake_Implementation(float InValue)
+void UVehicleDriveAssemblyComponent::ServerInputBrake_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Brake = InValue;
-	MultiCastInputBrake(InValue);
+	if (bDirectInput)
+	{
+		InputValues.Smoothened.Brake = InValue;
+		InputValues.Final.Brake = InValue;
+	}
+	MultiCastInputBrake(InValue, bDirectInput);
 }
 
-void UVehicleDriveAssemblyComponent::MultiCastInputBrake_Implementation(float InValue)
+void UVehicleDriveAssemblyComponent::MultiCastInputBrake_Implementation(float InValue, bool bDirectInput)
 {
 	APawn* p = Cast<APawn>(GetOwner());
-	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Brake = InValue;
+		if (bDirectInput)
+		{
+			InputValues.Smoothened.Brake = InValue;
+			InputValues.Final.Brake = InValue;
+		}
 	}
 }
 
-void UVehicleDriveAssemblyComponent::ServerInputClutch_Implementation(float InValue)
+void UVehicleDriveAssemblyComponent::ServerInputClutch_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Clutch = InValue;
-	MultiCastInputClutch(InValue);
+	if (bDirectInput)
+	{
+		InputValues.Smoothened.Clutch = InValue;
+		InputValues.Final.Clutch = InValue;
+	}
+	MultiCastInputClutch(InValue, bDirectInput);
 }
 
-void UVehicleDriveAssemblyComponent::MultiCastInputClutch_Implementation(float InValue)
+void UVehicleDriveAssemblyComponent::MultiCastInputClutch_Implementation(float InValue, bool bDirectInput)
 {
 	APawn* p = Cast<APawn>(GetOwner());
-	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Clutch = InValue;
+		if (bDirectInput)
+		{
+			InputValues.Smoothened.Clutch = InValue;
+			InputValues.Final.Clutch = InValue;
+		}
 	}
 }
 
-void UVehicleDriveAssemblyComponent::ServerInputSteering_Implementation(float InValue)
+void UVehicleDriveAssemblyComponent::ServerInputSteering_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Steering = InValue;
-	MultiCastInputSteering(InValue);
+	if (bDirectInput)
+	{
+		InputValues.Smoothened.Steering = InValue;
+		InputValues.Final.Steering = InValue;
+	}
+	MultiCastInputSteering(InValue, bDirectInput);
 }
 
-void UVehicleDriveAssemblyComponent::MultiCastInputSteering_Implementation(float InValue)
+void UVehicleDriveAssemblyComponent::MultiCastInputSteering_Implementation(float InValue, bool bDirectInput)
 {
 	APawn* p = Cast<APawn>(GetOwner());
-	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Steering = InValue;
+		if (bDirectInput)
+		{
+			InputValues.Smoothened.Steering = InValue;
+			InputValues.Final.Steering = InValue;
+		}
 	}
 }
 
-void UVehicleDriveAssemblyComponent::ServerInputHandbrake_Implementation(float InValue)
+void UVehicleDriveAssemblyComponent::ServerInputHandbrake_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Handbrake = InValue;
-	MultiCastInputHandbrake(InValue);
+	if (bDirectInput)
+	{
+		InputValues.Smoothened.Handbrake = InValue;
+		InputValues.Final.Handbrake = InValue;
+	}
+	MultiCastInputHandbrake(InValue, bDirectInput);
 }
 
-void UVehicleDriveAssemblyComponent::MultiCastInputHandbrake_Implementation(float InValue)
+void UVehicleDriveAssemblyComponent::MultiCastInputHandbrake_Implementation(float InValue, bool bDirectInput)
 {
 	APawn* p = Cast<APawn>(GetOwner());
-	if (!p->IsLocallyControlled() && !p->HasAuthority())
+	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Handbrake = InValue;
+		if (bDirectInput)
+		{
+			InputValues.Smoothened.Handbrake = InValue;
+			InputValues.Final.Handbrake = InValue;
+		}
 	}
 }
 
@@ -691,34 +741,74 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 	LocalAcceleration = CarbodyRot.UnrotateVector(WorldAcceleration);
 }
 
-void UVehicleDriveAssemblyComponent::InputThrottle(float InValue)
+void UVehicleDriveAssemblyComponent::InputThrottle(float InValue, bool bDirectInput)
 {
-	if (!GetOwner()->HasAuthority())InputValues.Raw.Throttle = InValue;
-	ServerInputThrottle(InValue);
+	if (!GetOwner()->HasAuthority())
+	{
+		InputValues.Raw.Throttle = InValue;
+		if (bDirectInput)
+		{
+			InputValues.Smoothened.Throttle = InValue;
+			InputValues.Final.Throttle = InValue;
+		}
+	}
+	ServerInputThrottle(InValue, bDirectInput);
 }
 
-void UVehicleDriveAssemblyComponent::InputBrake(float InValue)
+void UVehicleDriveAssemblyComponent::InputBrake(float InValue, bool bDirectInput)
 {
-	if (!GetOwner()->HasAuthority())InputValues.Raw.Brake = InValue;
-	ServerInputBrake(InValue);
+	if (!GetOwner()->HasAuthority())
+	{
+		InputValues.Raw.Brake = InValue;
+		if (bDirectInput)
+		{
+			InputValues.Smoothened.Brake = InValue;
+			InputValues.Final.Brake = InValue;
+		}
+	}
+	ServerInputBrake(InValue, bDirectInput);
 }
 
-void UVehicleDriveAssemblyComponent::InputClutch(float InValue)
+void UVehicleDriveAssemblyComponent::InputClutch(float InValue, bool bDirectInput)
 {
-	if (!GetOwner()->HasAuthority())InputValues.Raw.Clutch = InValue;
-	ServerInputClutch(InValue);
+	if (!GetOwner()->HasAuthority())
+	{
+		InputValues.Raw.Clutch = InValue;
+		if (bDirectInput)
+		{
+			InputValues.Smoothened.Clutch = InValue;
+			InputValues.Final.Clutch = InValue;
+		}
+	}
+	ServerInputClutch(InValue, bDirectInput);
 }
 
-void UVehicleDriveAssemblyComponent::InputSteering(float InValue)
+void UVehicleDriveAssemblyComponent::InputSteering(float InValue, bool bDirectInput)
 {
-	if (!GetOwner()->HasAuthority())InputValues.Raw.Steering = InValue;
-	ServerInputSteering(InValue);
+	if (!GetOwner()->HasAuthority())
+	{
+		InputValues.Raw.Steering = InValue;
+		if (bDirectInput)
+		{
+			InputValues.Smoothened.Steering = InValue;
+			InputValues.Final.Steering = InValue;
+		}
+	}
+	ServerInputSteering(InValue, bDirectInput);
 }
 
-void UVehicleDriveAssemblyComponent::InputHandbrake(float InValue)
+void UVehicleDriveAssemblyComponent::InputHandbrake(float InValue, bool bDirectInput)
 {
-	if (!GetOwner()->HasAuthority())InputValues.Raw.Handbrake = InValue;
-	ServerInputHandbrake(InValue);
+	if (!GetOwner()->HasAuthority())
+	{
+		InputValues.Raw.Handbrake = InValue;
+		if (bDirectInput)
+		{
+			InputValues.Smoothened.Handbrake = InValue;
+			InputValues.Final.Handbrake = InValue;
+		}
+	}
+	ServerInputHandbrake(InValue, bDirectInput);
 }
 
 void UVehicleDriveAssemblyComponent::ShiftToTargetGear(int32 InTargetGear, float InAutoShiftCoolDown, bool bImmediate)
@@ -856,6 +946,11 @@ void UVehicleDriveAssemblyComponent::DestroyTargetAxle(UVehicleAxleAssemblyCompo
 {
 	Axles.Remove(InTargetAxle);
 	InTargetAxle->DestroyComponent();
+}
+
+int32 UVehicleDriveAssemblyComponent::GetCurrentGear()
+{
+	return IsValid(Gearbox) ? Gearbox->GetCurrentGear() : 0;
 }
 
 bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()

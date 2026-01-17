@@ -50,7 +50,7 @@ public:
 	float SmoothenedSlipAngle = 0.f;
 
 protected:
-	UVehicleWheelComponent* TargetWheelComponent;
+	TWeakObjectPtr<UVehicleWheelComponent> TargetWheelComponent;
 
 private:
 	void PredictSlipAndUpdateABS(float TargetBrakeTorque, bool bHitGround);
@@ -67,7 +67,7 @@ private:
 	float CalculateConstraintLongForce(float SprungMass);
 	float CalculateConstraintLatForce(float SprungMass);
 	void UpdateGravityCompensationOnSlope(
-		float ForceIntoSurface,
+		float PositiveForceIntoSurface,
 		bool bHitGround,
 		const FVector3f& LongForceDir,
 		const FVector3f& LatForceDir);
@@ -77,7 +77,7 @@ private:
 		float Saturation);
 	void UpdateTireForce(
 		float SprungMass,
-		float PositiveSuspensionForce,
+		float PositiveForceIntoSurface,
 		bool bHitGround,
 		const FVector3f& LongForceDirUnNorm,
 		const FVector3f& LatForceDirUnNorm);

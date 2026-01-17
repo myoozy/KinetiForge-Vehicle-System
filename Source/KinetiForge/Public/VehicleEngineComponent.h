@@ -50,64 +50,64 @@ public:
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	void UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque);
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	void GetEngineMovement(FVehicleEngineSimState& Out) { Out = State; }
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	void SetP1MotorTorque(float NewTorque) {State.P1MotorTorque = NewTorque; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetP1MotorTorque() { return State.P1MotorTorque; }
 
-	UFUNCTION(BlueprintCallable, Category = "Initialize")
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	void Initialize();
 
-	UFUNCTION(BlueprintCallable, Category = "Initialize")
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	void UpdateCachedRichCurve();
 
-	UFUNCTION(BlueprintCallable, Category = "Input")
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	EVehicleEngineOperationMode StartVehicleEngine();
 
-	UFUNCTION(BlueprintCallable, Category = "Input")
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	EVehicleEngineOperationMode ShutVehicleEngine();
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetEngineTorque() { return State.EffectiveTorque; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	EVehicleEngineOperationMode GetEngineOperationMode() { return State.OperationMode; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetMaxRPM() { return NAConfig.EngineMaxRPM; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetIdleRPM() { return NAConfig.EngineIdleRPM; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetRPM() { return State.EngineRPM; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetAngularVelocity() { return State.EngineAngularVelocity; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetTurboSpool() { return State.TurboSpool; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetTurboPressure() { return State.TurboPressure; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine", meta = (ToolTip = "Intensity < 0: no backfire; 0 <= Intensity < 1: backfiring, but only sound, no flame; Intensity >= 1: backfiring and flame is visible."))
 	float GetBackfireIntensity() { return State.BackfireIntensity; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine", meta = (ToolTip = "Actual throttle valve opening"))
 	float GetRealThrottleValue() { return State.RealThrottle; }
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine", meta = (ToolTip = "Use the function 'GetTurboPressure' and 'GetTurboSpool' to determine the sound effect."))
 	void BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate InOnTurboBlowOff);
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine", meta = (ToolTip = "Use the function 'GetBackfireIntensity' to determine the sound & visual effect."))
 	void BindEventToOnBackfiring(FOnBackfiringDelegate InOnBackfiring);
 
 private:

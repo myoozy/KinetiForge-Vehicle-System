@@ -39,7 +39,7 @@ public:
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	void UpdateOutputShaft(
 		float InDriveTorque,
 		float InLeftAngularVelocity,
@@ -52,7 +52,7 @@ public:
 		float& OutRightTorque,
 		float& OutReflectedInertiaEachWheel
 	);
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	void UpdateInputShaft(
 		float InLeftOutputShaftAngularVelocity,
 		float InRightOutputShaftAngularVelocity,
@@ -61,7 +61,7 @@ public:
 		float& OutInputShaftVelocity,
 		float& OutReflectedInertia
 	);
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	int32 UpdateTransferCase(
 		const TArray<UVehicleAxleAssemblyComponent*>& InAxles,
 		float InDeltaTime,
@@ -73,7 +73,7 @@ public:
 		bool bLineLockActive,
 		float& OutGearboxOutputShaftAngularVelocity,
 		float& OutTotalInertia);
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	float CalculateEffectiveWheelRadius(
 		const TArray<UVehicleAxleAssemblyComponent*>& InAxles
 	);

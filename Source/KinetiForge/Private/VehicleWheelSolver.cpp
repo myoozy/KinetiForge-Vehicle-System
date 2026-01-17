@@ -18,7 +18,7 @@ bool FVehicleWheelSolver::Initialize(UVehicleWheelComponent* InTargetWheelCompon
 {
 	TargetWheelComponent = InTargetWheelComponent;
 	UpdateCachedRichCurves();
-	return IsValid(TargetWheelComponent);
+	return TargetWheelComponent.IsValid();
 }
 
 void FVehicleWheelSolver::UpdateWheel(
@@ -31,7 +31,7 @@ void FVehicleWheelSolver::UpdateWheel(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelSolver);
 
-	if (!IsValid(TargetWheelComponent)) return;
+	if (!TargetWheelComponent.IsValid()) return;
 
 	FVehicleWheelConfig& Config = TargetWheelComponent->WheelConfig;
 
@@ -99,7 +99,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 	bool bDrawSlip, 
 	bool bDrawInertia)
 {
-	if (!InCurrentWorld || !IsValid(TargetWheelComponent))return;
+	if (!InCurrentWorld || !TargetWheelComponent.IsValid())return;
 
 	FVehicleTireConfig& TireConfig = TargetWheelComponent->TireConfig;
 	FVector WheelRightVec = FVector(SuspensionState.WheelRightVector);
@@ -115,11 +115,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 
 	Length *= 0.01;
 	float ForceIntoSurface = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
-	float ScaledWheelLoad = CalculateScaledWheelLoad(
-		SuspensionState.SprungMass,
-		ForceIntoSurface,
-		TireConfig.WheelLoadInfluenceFactor);
-	float AvailableGrip = Length * State.DynFrictionMultiplier * ScaledWheelLoad;
+	float AvailableGrip = Length * State.DynFrictionMultiplier * State.WheelLoad;
 
 	//draw grip circle
 	FColor GripCircleColor = FColor(0, 191, 255);
@@ -191,7 +187,7 @@ void FVehicleWheelSolver::SmoothenSlip(float InDeltaTime, float InInterpSpeed)
 
 void FVehicleWheelSolver::UpdateCachedRichCurves()
 {
-	if (!IsValid(TargetWheelComponent))return;
+	if (!TargetWheelComponent.IsValid())return;
 
 	const FVehicleTireConfig& Config = TargetWheelComponent->TireConfig;
 	if (IsValid(Config.Fx))
@@ -399,7 +395,7 @@ float FVehicleWheelSolver::CalculateConstraintLatForce(float SprungMass)
 }
 
 void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
-	float ForceIntoSurface,
+	float PositiveForceIntoSurface,
 	bool bHitGround,
 	const FVector3f& LongForceDir, 
 	const FVector3f& LatForceDir)
@@ -425,13 +421,13 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 
 	//Lateral:
 	float SlipSign = FMath::Sign(-State.LocalLinearVelocity.Y);
-	GravityComp.Y = (LatForceDir.Z + FMath::Abs(LatForceDir.Z) * SlipSign * Mu) * ForceIntoSurface;
+	GravityComp.Y = (LatForceDir.Z + FMath::Abs(LatForceDir.Z) * SlipSign * Mu) * PositiveForceIntoSurface;
 
 	// longitudinal:
 	if (State.bIsLocked)
 	{
 		SlipSign = FMath::Sign(State.LongSlipVelocity);
-		GravityComp.X = (LongForceDir.Z + FMath::Abs(LongForceDir.Z) * SlipSign * Mu) * ForceIntoSurface;
+		GravityComp.X = (LongForceDir.Z + FMath::Abs(LongForceDir.Z) * SlipSign * Mu) * PositiveForceIntoSurface;
 
 		//consider brake force?
 		float BrakeForce = State.BrakeTorque * State.RInv;	//State.BrakeTorque is always positive
@@ -462,7 +458,7 @@ float FVehicleWheelSolver::CalculateScaledWheelLoad(float SprungMass, float Whee
 
 void FVehicleWheelSolver::UpdateTireForce(
 	float SprungMass, 
-	float WheelLoad,	
+	float PositiveForceIntoSurface,
 	bool bHitGround,
 	const FVector3f& LongForceDirUnNorm,
 	const FVector3f& LatForceDirUnNorm)
@@ -487,8 +483,8 @@ void FVehicleWheelSolver::UpdateTireForce(
 	);
 
 	// get wheel load
-	float ScaledWheelLoad = CalculateScaledWheelLoad(SprungMass, WheelLoad, TireConfig.WheelLoadInfluenceFactor);
-	float AvailableGrip = State.DynFrictionMultiplier * ScaledWheelLoad;
+	State.WheelLoad = CalculateScaledWheelLoad(SprungMass, PositiveForceIntoSurface, TireConfig.WheelLoadInfluenceFactor);
+	float AvailableGrip = State.DynFrictionMultiplier * State.WheelLoad;
 
 	// get stiffness(tangent) of linear region
 	FVector2f LinearRegionStiffness = FVector2f(GetTangentAtOrigin(CachedCurves.Fx), GetTangentAtOrigin(CachedCurves.Fy));

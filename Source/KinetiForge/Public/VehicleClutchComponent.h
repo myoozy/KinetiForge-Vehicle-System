@@ -35,7 +35,7 @@ public:
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleClutch")
 	void UpdatePhysics(float InDeltaTime, 
 		float InClutchValue, 
 		float InGearboxInputShaftVelocity, 
@@ -43,9 +43,9 @@ public:
 		float InCurrentGearRatio, 
 		float InFirstGearReflectedInertia,
 		UVehicleEngineComponent* TargetEngine);
-	UFUNCTION(BlueprintCallable, Category = "Physics")
+	UFUNCTION(BlueprintCallable, Category = "VehicleClutch")
 	float GetCluchTorque();
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Physics")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleClutch")
 	void GetClutchMovement(FVehicleClutchSimState& Out) { Out = State; }
 
 private:

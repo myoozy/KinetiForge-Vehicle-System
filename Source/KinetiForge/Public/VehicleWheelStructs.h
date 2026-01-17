@@ -123,6 +123,8 @@ struct KINETIFORGE_API FVehicleWheelSimState
 
 	//Force
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Force")
+	float WheelLoad = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Force")
 	float P4MotorTorque = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float DriveTorque = 0.f;

@@ -18,7 +18,7 @@ public:
 
 	bool Initialize(UVehicleWheelComponent* InTargetWheelComponent);
 	void SetSprungMass(float NewSprungMass);
-	float ComputeCriticalDamping();
+	void UpdateCriticalDamping();
 	void UpdateSuspension(
 		float InDeltaTime,
 		float InSteeringAngle,
@@ -178,7 +178,7 @@ public:
 	FVehicleSuspensionHitResult RayCastResult;
 
 protected:
-	UVehicleWheelComponent* TargetWheelComponent;
+	TWeakObjectPtr<UVehicleWheelComponent> TargetWheelComponent;
 
 	FCollisionQueryParams QueryParams = FCollisionQueryParams::DefaultQueryParam;
 	FCollisionResponseParams ResponseParams = FCollisionResponseParams::DefaultResponseParam;
