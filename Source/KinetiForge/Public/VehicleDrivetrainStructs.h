@@ -180,7 +180,7 @@ struct KINETIFORGE_API FVehicleClutchConfig
 	float Damping = 0.1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
 	float Capacity = 1.5;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0", ToolTip = "SpringModel: Using a spring to transmit torque. Using this model will cause engine speed fluctuations (especially when shifting gears with a sequential transmission and low damping ratio). It is recommended to use this model when the physical step size is short (because the natural angular frequency of the spring cannot exceed the game's physical simulation frequency). If the physical step size is large, stiffness can be increased by increasing damping ratio; DampingModel: Use critical damping to transfer torque. Critical damping is calculated based on the current rotational inertia and game physics frequency. The torque is then smoothed to avoid numerical jitter. The torque values are very smooth and do not cause speed jitter during gear changes. This model is recommended for electric vehicles (as electric vehicles typically do not have clutches)."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ToolTip = "SpringModel: Using a spring to transmit torque. Using this model will cause engine speed fluctuations (especially when shifting gears with a sequential transmission and low damping ratio). It is recommended to use this model when the physical step size is short (because the natural angular frequency of the spring cannot exceed the game's physical simulation frequency). If the physical step size is large, stiffness can be increased by increasing damping ratio; DampingModel: Use critical damping to transfer torque. Critical damping is calculated based on the current rotational inertia and game physics frequency. The torque is then smoothed to avoid numerical jitter. The torque values are very smooth and do not cause speed jitter during gear changes. This model is recommended for electric vehicles (as electric vehicles typically do not have clutches)."))
 	EClutchSimMode SimMode = EClutchSimMode::SpringModel;
 };
 
@@ -189,22 +189,6 @@ struct KINETIFORGE_API FVehicleClutchSimState
 {
 	GENERATED_USTRUCT_BODY()
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
-	float PhysicsDeltaTime = 0.00833333;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float SpringStiffness = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float SpringDamping = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float CriticalDamping = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float EngineInertia = 0.2;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float EngineAngularVelocity = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float GearboxAngularVelocity = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float ClutchSlip = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float AngleDiff = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -212,15 +196,7 @@ struct KINETIFORGE_API FVehicleClutchSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float MaxClutchTorque = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float SmoothenedTorque = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float ClutchTorque = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float TotalInertia = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float ReflectedInertia = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float FirstGearReflectedInertia = 0.f;
 };
 
 /*******************************GEARBOX********************************/

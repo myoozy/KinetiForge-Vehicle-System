@@ -701,15 +701,31 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 
 	//get gearbox inputshaft angular velocity
 	float GearboxInputShaftVelocity;
-	float SumReflectedInertia;
+	//float GearboxReflectedInertia; // already defined
+	float GearboxInputShaftInertia;
 	float CurrentGearboxRatio;
-	float FirstGearReflectedInertia;
-	Gearbox->UpdateInputShaft(GearboxOutputShaftAngularVelocity, SumAxleInertia,
-		GearboxInputShaftVelocity, SumReflectedInertia, CurrentGearboxRatio, FirstGearReflectedInertia);
+	float HighestGearReflectedInertia;
+	Gearbox->UpdateInputShaft(
+		GearboxOutputShaftAngularVelocity, 
+		SumAxleInertia,
+		GearboxInputShaftVelocity, 
+		GearboxReflectedInertia, 
+		GearboxInputShaftInertia, 
+		CurrentGearboxRatio, 
+		HighestGearReflectedInertia
+	);
 
 	//get clutch torque for next frame
-	Clutch->UpdatePhysics(PhysicsDeltaTime, InputValues.Final.Clutch,
-		GearboxInputShaftVelocity, SumReflectedInertia, CurrentGearboxRatio, FirstGearReflectedInertia, Engine);
+	Clutch->UpdatePhysics(
+		PhysicsDeltaTime, 
+		InputValues.Final.Clutch,
+		GearboxInputShaftVelocity, 
+		GearboxReflectedInertia,
+		GearboxInputShaftInertia,
+		CurrentGearboxRatio, 
+		HighestGearReflectedInertia,
+		Engine
+	);
 
 	//get velocity
 	NumOfWheelsOnGround = 0;

@@ -120,14 +120,20 @@ void UVehicleGearboxComponent::UpdateInputShaft(
 	float InAxleInertia, 
 	float& OutClutchVelocity, 
 	float& OutReflectedInertia,
+	float& OutInputShaftInertia,
 	float& OutCurrentGearRatio,
-	float& OutFirstGearInertia
+	float& GearboxReflectedInertia_HighestGear
 )
 {
 	OutClutchVelocity = InAxleVelocity * CurrentGearRatio;
-	OutReflectedInertia = Config.InputShaftInertia + VehicleUtil::SafeDivide(InAxleInertia, CurrentGearRatio * CurrentGearRatio);
+	OutReflectedInertia = VehicleUtil::SafeDivide(InAxleInertia, CurrentGearRatio * CurrentGearRatio);
+	OutInputShaftInertia = Config.InputShaftInertia;
 	OutCurrentGearRatio = CurrentGearRatio;
-	OutFirstGearInertia = Config.InputShaftInertia + VehicleUtil::SafeDivide(InAxleInertia, FMath::Square(GearRatios[0]));	//tip: do not use the variant FirstGear, because the user can change it any time
+	int32 ForwardGearAmount = GearRatios.Num();
+	int32 BackWardGearAmount = ReverseGearRatios.Num();
+	float HighestGearRatio = ForwardGearAmount > BackWardGearAmount ? 
+		GearRatios[ForwardGearAmount - 1] : ReverseGearRatios[BackWardGearAmount - 1];
+	GearboxReflectedInertia_HighestGear = VehicleUtil::SafeDivide(InAxleInertia, FMath::Square(HighestGearRatio));	
 }
 
 float UVehicleGearboxComponent::GetGearRatio(int InTarget)

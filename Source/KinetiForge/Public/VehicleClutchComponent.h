@@ -27,9 +27,19 @@ protected:
 
 	FVehicleClutchSimState State;
 
-	void UpdateSpringStiffness();
-	float GetTorqueSpringModel();
-	float GetTorqueDampingModel();
+	float GetTorqueSpringModel(
+		float DeltaTime,
+		float ClutchSlip,
+		float EngineInertia,
+		float GearboxReflectedInertia,
+		float GearboxInputShaftInertia,
+		float GearboxReflectedInertia_HighestGear);
+	float GetTorqueDampingModel(
+		float DeltaTime,
+		float ClutchSlip,
+		float EngineInertia,
+		float GearboxReflectedInertia,
+		float GearboxInputShaftInertia);
 
 public:	
 	// Called every frame
@@ -39,9 +49,10 @@ public:
 	void UpdatePhysics(float InDeltaTime, 
 		float InClutchValue, 
 		float InGearboxInputShaftVelocity, 
-		float InReflectedInertia, 
+		float InGearboxReflectedInertia,
+		float InGearboxInputShaftInertia,
 		float InCurrentGearRatio, 
-		float InFirstGearReflectedInertia,
+		float GearboxReflectedInertia_HighestGear,
 		UVehicleEngineComponent* TargetEngine);
 	UFUNCTION(BlueprintCallable, Category = "VehicleClutch")
 	float GetCluchTorque();

@@ -70,9 +70,10 @@ public:
 		float InAxleVelocity, 
 		float InAxleInertia, 
 		float& OutClutchVelocity, 
-		float& OutReflectedInertia, 
+		float& OutReflectedInertia,
+		float& OutInputShaftInertia,
 		float& OutCurrentGearRatio, 
-		float& OutFirstGearInertia
+		float& GearboxReflectedInertia_HighestGear
 	);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleGearbox")
