@@ -68,7 +68,7 @@ void FVehicleWheelSolver::UpdateWheel(
 
 	UpdateDynamicFrictionMultiplier(SuspensionState.ImpactFriction);
 
-	float SlipVelocityTolerance = TargetWheelComponent->TireConfig.Fx == nullptr ? 0.1f : 0.f;
+	const float SlipVelocityTolerance = 0.1f;
 	WheelAcceleration(LongForceDir, SlipVelocityTolerance);
 
 	float ForceIntoSurface = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
@@ -437,7 +437,7 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 	// in the lateral direction, the wheel can be treated as it is always braking
 
 	// then do some smoothing
-	const float Scale = 100.f;
+	const float Scale = 100.f; // magic number
 	FVector2f Smoothing = FVector2f(FMath::Abs(State.LongSlipVelocity), FMath::Abs(State.LocalLinearVelocity.Y));
 	Smoothing *= Scale * FMath::Min(State.PhysicsDeltaTime, 1.f / 60.f);
 
@@ -562,7 +562,7 @@ void FVehicleWheelSolver::UpdateTireForce(
 
 	// smoothing factor under stiction condition (low speed)
 	FVector2f StictionSmoothing = FVector2f(FMath::Abs(State.LongSlipVelocity), FMath::Abs(State.LocalLinearVelocity.Y));
-	const float Scale = 100.f;
+	const float Scale = 250.f;	// magic number
 	StictionSmoothing *= Scale * FMath::Min(State.PhysicsDeltaTime, 1.f / 60.f);
 	StictionSmoothing = StictionSmoothing.ClampAxes(0.f, 1.f);
 
