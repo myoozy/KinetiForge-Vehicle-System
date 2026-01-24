@@ -229,13 +229,16 @@ void FVehicleWheelSolver::PredictSlipAndUpdateABS(float TargetBrakeTorque, bool 
 	State.PredictedSlipRatio = PredictedVSlip / Denominator;
 
 	float AbsolutSlip = FMath::Abs(State.PredictedSlipRatio);
+	// only activate abs when the sign of slip and the sign of velocity is different
+	bool bDifferentSign = State.PredictedSlipRatio * State.LocalLinearVelocity.X < 0.f;
 
 	State.bABSTriggered = 
 		ABSConfig.bAntiBrakeSystemEnabled
 		&& TargetBrakeTorque > SMALL_NUMBER
 		&& bHitGround
 		&& FMath::Abs(State.LocalLinearVelocity.X) > ABSConfig.ActivationSpeed
-		&& AbsolutSlip > ABSConfig.OptimalSlip;
+		&& AbsolutSlip > ABSConfig.OptimalSlip
+		&& bDifferentSign;
 
 	if (State.bABSTriggered)
 	{
@@ -330,7 +333,7 @@ void FVehicleWheelSolver::WheelAcceleration(
 
 	//zero cross check
 	//if the wheel is locked, the angular velocity should be 0
-	State.bIsLocked = AngVelSignIfNotBraking != FMath::Sign(State.AngularVelocity);
+	State.bIsLocked = AngVelSignIfNotBraking * State.AngularVelocity <= 0.f && State.BrakeTorque > SMALL_NUMBER;
 	State.AngularVelocity *= !State.bIsLocked;
 
 	// get angular acceleration
