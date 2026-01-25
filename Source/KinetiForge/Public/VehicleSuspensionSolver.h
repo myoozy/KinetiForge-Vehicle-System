@@ -16,20 +16,39 @@ public:
 	FVehicleSuspensionSolver();
 	~FVehicleSuspensionSolver();
 
-	bool Initialize(UVehicleWheelComponent* InTargetWheelComponent);
-	void SetSprungMass(float NewSprungMass);
-	void UpdateCriticalDamping();
+	bool Initialize(UVehicleWheelComponent* WheelComponent);
+	void SetSprungMass(
+		const FVehicleSuspensionSpringConfig& SpringConfig,
+		const float NewSprungMass);
 	void UpdateSuspension(
+		const float WheelRadius,
+		const float WheelWidth,
+		const FVehicleSuspensionKinematicsConfig& KineConfig,
+		const FVehicleSuspensionSpringConfig& SpringConfig,
+		const FTransform& ComponentRelativeTransform,
+		const FTransform& AsyncCarbodyWorldTransform,
+		const UWorld* CurrentWorld,
+		UPrimitiveComponent* Carbody,
 		float InDeltaTime,
 		float InSteeringAngle,
 		float InSwaybarForce
 	);
 	void StartUpdateSolidAxle(
+		const float WheelRadius,
+		const float WheelWidth,
+		const FVehicleSuspensionKinematicsConfig& KineConfig,
+		const FTransform& ComponentRelativeTransform,
+		const FTransform& AsyncCarbodyWorldTransform,
+		const UWorld* CurrentWorld,
 		float InSteeringAngle,
 		FVector& OutApporximatedWheelWorldPos,
 		FVehicleSuspensionSimContext& Ctx
 	);
 	void FinalizeUpdateSolidAxle(
+		const float WheelRadius,
+		const FVehicleSuspensionKinematicsConfig& KineConfig,
+		const FVehicleSuspensionSpringConfig& SpringConfig,
+		UPrimitiveComponent* Carbody,
 		float InDeltaTime,
 		float InSwaybarForce,
 		FVehicleSuspensionSimContext& Ctx,
@@ -37,36 +56,48 @@ public:
 		const FVector& InAxleWorldDirection
 	);
 	void ApplySuspensionStateDirect(
+		const float WheelRadius,
+		const FVehicleSuspensionKinematicsConfig& KineConfig,
+		const FTransform& ComponentRelativeTransform,
+		const FTransform& AsyncCarbodyWorldTransform,
 		float InExtensionRatio = 1.f,
 		float InSteeringAngle = 0.f
 	);
 	void StartApplySolidAxleStateDirect(
+		const float WheelRadius,
+		const FVehicleSuspensionKinematicsConfig& KineConfig,
+		const FTransform& ComponentRelativeTransform,
+		const FTransform& AsyncCarbodyWorldTransform,
 		float InExtensionRatio,
 		float InSteeringAngle,
 		FVector& OutApporximatedWheelWorldPos,
 		FVehicleSuspensionSimContext& Ctx
 	);
 	void FinalizeApplySolidAxleStateDirect(
+		const float WheelRadius,
+		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		FVehicleSuspensionSimContext& Ctx,
 		const FVector& InKnuckleWorldPos,
 		const FVector& InAxleWorldDirection
 	);
 	void DrawSuspension(
+		UVehicleWheelComponent* WheelComponent,
 		float Duration = -1, 
 		float Thickness = 0, 
 		bool bDrawSuspension = true,
 		bool bDrawWheel = true,
 		bool bDrawRayCast = true);
 	void DrawSuspensionForce(
+		UVehicleWheelComponent* WheelComponent,
 		float Duration = -1,
 		float Thickness = 5, 
 		float Length = 1);
 
-	bool CheckIsDampingDirty();
+	void UpdateCachedRichCurves(
+		FVehicleSuspensionKinematicsConfig& KineConfig);
 
-	void UpdateCachedRichCurves();
-
-	bool CheckAndFixTriangle();//Abandoned
+	bool CheckAndFixTriangle(
+		FVehicleSuspensionKinematicsConfig& KineConfig);//Abandoned
 
 	static float GetVector2dAngleDegrees(FVector2D V2D);//Abandoned
 	static FVector2D ComputeCircleIntersection(FVector2D A, float RA, float R0, bool ReturnX1 = true); //Abandoned //Compute the intersection of the circle on point A and the point on (0, 0)
@@ -136,12 +167,17 @@ public:
 			Context.HitStruct.Location,
 			(FQuat4f)Context.RayCastTransform.GetRotation()
 		);
+
+		// get anti-pitch / anti-roll
+		float Compression = 1.f - Context.SuspensionExtensionRatio;
+		State.AntiDiveRatio = CachedCurves.AntiDiveCurve.Eval(Compression);
+		State.AntiSquatRatio = CachedCurves.AntiSquatCurve.Eval(Compression);
+		State.AntiRollRatio = CachedCurves.AntiRollCurve.Eval(Compression);
 	}
 
 	FORCEINLINE void CopyStateToContext(FVehicleSuspensionSimContext& Context)
 	{
 		Context.SuspensionCurrentLength = State.SuspensionCurrentLength;
-		Context.CriticalDamping = State.CriticalDamping;
 		Context.SprungMass = State.SprungMass;
 		Context.KnucklePos2D = State.KnucklePos2D;
 		Context.WheelCenterToKnuckle = State.WheelCenterToKnuckle;
@@ -178,8 +214,6 @@ public:
 	FVehicleSuspensionHitResult RayCastResult;
 
 protected:
-	TWeakObjectPtr<UVehicleWheelComponent> TargetWheelComponent;
-
 	FCollisionQueryParams QueryParams = FCollisionQueryParams::DefaultQueryParam;
 	FCollisionResponseParams ResponseParams = FCollisionResponseParams::DefaultResponseParam;
 

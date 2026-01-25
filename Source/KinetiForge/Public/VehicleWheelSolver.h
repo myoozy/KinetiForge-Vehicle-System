@@ -18,16 +18,19 @@ public:
 	FVehicleWheelSolver();
 	~FVehicleWheelSolver();
 
-	bool Initialize(UVehicleWheelComponent* InTargetWheelComponent);
+	bool Initialize(UVehicleWheelComponent* WheelComponent);
 	void UpdateWheel(
 		float InPhysicsDeltaTime,
 		float InDriveTorque,
 		float InBrakeTorque,
 		float InHandbrakeTorque,
 		float InReflectedInertia,
+		const FVehicleWheelConfig& WheelConfig,
+		const FVehicleTireConfig& TireConfig,
+		const FVehicleABSConfig& ABSConfig,
 		const FVehicleSuspensionSimState& SuspensionState);
 	void DrawWheelForce(
-		UWorld* InCurrentWorld,
+		UVehicleWheelComponent* WheelComponent,
 		const FVehicleSuspensionSimState& SuspensionState,
 		float Duration = -1,
 		float Thickness = 5,
@@ -36,7 +39,7 @@ public:
 		bool bDrawSlip = true,
 		bool bDrawInertia = true);
 	void SmoothenSlip(float InDeltaTime, float InInterpSpeed);
-	void UpdateCachedRichCurves();
+	void UpdateCachedRichCurves(const FVehicleTireConfig& Config);
 
 	static float GetTangentAtOrigin(const FRichCurve& Curve);
 
@@ -50,11 +53,15 @@ public:
 	float SmoothenedSlipAngle = 0.f;
 
 protected:
-	TWeakObjectPtr<UVehicleWheelComponent> TargetWheelComponent;
 
 private:
-	void PredictSlipAndUpdateABS(float TargetBrakeTorque, bool bHitGround);
-	void UpdateDynamicFrictionMultiplier(float ImpactFriction);
+	void PredictSlipAndUpdateABS(
+		const FVehicleABSConfig& ABSConfig,
+		const float TargetBrakeTorque,
+		const bool bHitGround);
+	void UpdateDynamicFrictionMultiplier(
+		const FVehicleTireConfig& TireConfig,
+		const float ImpactFriction);
 	void UpdateLinearVelocity(
 		const FVector3f& LongForceDir,
 		const FVector3f& LatForceDir,
@@ -80,5 +87,6 @@ private:
 		float PositiveForceIntoSurface,
 		bool bHitGround,
 		const FVector3f& LongForceDirUnNorm,
-		const FVector3f& LatForceDirUnNorm);
+		const FVector3f& LatForceDirUnNorm,
+		const FVehicleTireConfig& TireConfig);
 };

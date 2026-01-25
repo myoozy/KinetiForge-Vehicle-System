@@ -14,11 +14,14 @@ FVehicleWheelSolver::~FVehicleWheelSolver()
 {
 }
 
-bool FVehicleWheelSolver::Initialize(UVehicleWheelComponent* InTargetWheelComponent)
+bool FVehicleWheelSolver::Initialize(UVehicleWheelComponent* WheelComponent)
 {
-	TargetWheelComponent = InTargetWheelComponent;
-	UpdateCachedRichCurves();
-	return TargetWheelComponent.IsValid();
+	if (WheelComponent != nullptr)
+	{
+		UpdateCachedRichCurves(WheelComponent->TireConfig);
+		return true;
+	}
+	return false;
 }
 
 void FVehicleWheelSolver::UpdateWheel(
@@ -27,13 +30,14 @@ void FVehicleWheelSolver::UpdateWheel(
 	float InBrakeTorque,
 	float InHandbrakeTorque,
 	float InReflectedInertia,
+	const FVehicleWheelConfig& WheelConfig,
+	const FVehicleTireConfig& TireConfig,
+	const FVehicleABSConfig& ABSConfig,
 	const FVehicleSuspensionSimState& SuspensionState)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelSolver);
 
-	if (!TargetWheelComponent.IsValid()) return;
-
-	FVehicleWheelConfig& Config = TargetWheelComponent->WheelConfig;
+	const FVehicleWheelConfig& Config = WheelConfig;
 
 	//divide something...	to avoid 0
 	State.PhysicsDeltaTime = InPhysicsDeltaTime;
@@ -60,13 +64,13 @@ void FVehicleWheelSolver::UpdateWheel(
 	float TargetBrakeTorque = FMath::Max(0.f, FMath::Abs(InBrakeTorque) + State.BrakeTorqueFromESP);	
 	
 	// update abs
-	PredictSlipAndUpdateABS(TargetBrakeTorque, SuspensionState.bHitGround);
+	PredictSlipAndUpdateABS(ABSConfig, TargetBrakeTorque, SuspensionState.bHitGround);
 
 	// get total brake torque
 	State.BrakeTorqueFromHandbrake = FMath::Abs(InHandbrakeTorque);
 	State.BrakeTorque = State.BrakeTorqueFromBrake + Config.RollingRisistance + State.BrakeTorqueFromHandbrake;
 
-	UpdateDynamicFrictionMultiplier(SuspensionState.ImpactFriction);
+	UpdateDynamicFrictionMultiplier(TireConfig, SuspensionState.ImpactFriction);
 
 	const float SlipVelocityTolerance = 0.1f;
 	WheelAcceleration(LongForceDir, SlipVelocityTolerance);
@@ -85,12 +89,13 @@ void FVehicleWheelSolver::UpdateWheel(
 		ForceIntoSurface,
 		SuspensionState.bHitGround,
 		LongForceDirUnNorm,
-		LatForceDirUnNorm
+		LatForceDirUnNorm,
+		TireConfig
 	);
 }
 
 void FVehicleWheelSolver::DrawWheelForce(
-	UWorld* InCurrentWorld, 
+	UVehicleWheelComponent* WheelComponent,
 	const FVehicleSuspensionSimState& SuspensionState,
 	float Duration, 
 	float Thickness, 
@@ -99,9 +104,11 @@ void FVehicleWheelSolver::DrawWheelForce(
 	bool bDrawSlip, 
 	bool bDrawInertia)
 {
-	if (!InCurrentWorld || !TargetWheelComponent.IsValid())return;
+	if (!WheelComponent)return;
 
-	FVehicleTireConfig& TireConfig = TargetWheelComponent->TireConfig;
+	UWorld* CurrentWorld = WheelComponent->GetWorld();
+
+	FVehicleTireConfig& TireConfig = WheelComponent->TireConfig;
 	FVector WheelRightVec = FVector(SuspensionState.WheelRightVector);
 	FVector ImpactNormal = FVector(SuspensionState.ImpactNormal);
 
@@ -119,21 +126,21 @@ void FVehicleWheelSolver::DrawWheelForce(
 
 	//draw grip circle
 	FColor GripCircleColor = FColor(0, 191, 255);
-	DrawDebugCircle(InCurrentWorld, TempTrans.ToMatrixWithScale(), AvailableGrip, 16, GripCircleColor,
+	DrawDebugCircle(CurrentWorld, TempTrans.ToMatrixWithScale(), AvailableGrip, 16, GripCircleColor,
 		false, Duration, 0, Thickness, false);
 
 	//draw raw force
 	FVector Long = TempForward * State.TireForce2D.X * Length;
 	FVector Lat = TempRight * State.TireForce2D.Y * Length;
 	FColor RawForceColor = FColor(0, 255, 191);
-	DrawDebugLine(InCurrentWorld, TempImpactPoint, TempImpactPoint + Long, RawForceColor, false, Duration, 0, Thickness);
-	DrawDebugLine(InCurrentWorld, TempImpactPoint, TempImpactPoint + Lat, RawForceColor, false, Duration, 0, Thickness);
+	DrawDebugLine(CurrentWorld, TempImpactPoint, TempImpactPoint + Long, RawForceColor, false, Duration, 0, Thickness);
+	DrawDebugLine(CurrentWorld, TempImpactPoint, TempImpactPoint + Lat, RawForceColor, false, Duration, 0, Thickness);
 
 	//draw final force
-	DrawDebugLine(InCurrentWorld, TempImpactPoint, (FVector)State.TireForce * Length + TempImpactPoint, GripCircleColor, false, Duration, 0, Thickness);
+	DrawDebugLine(CurrentWorld, TempImpactPoint, (FVector)State.TireForce * Length + TempImpactPoint, GripCircleColor, false, Duration, 0, Thickness);
 
-	FTransform WheelRelativeTrans = FTransform(TargetWheelComponent->GetWheelRelativeTransform());
-	FTransform WheelTrans = WheelRelativeTrans * TargetWheelComponent->GetCarbodyAsyncWorldTransform();
+	FTransform WheelRelativeTrans = FTransform(WheelComponent->GetWheelRelativeTransform());
+	FTransform WheelTrans = WheelRelativeTrans * WheelComponent->GetCarbodyAsyncWorldTransform();
 
 	if (bDrawVelocity)
 	{
@@ -141,22 +148,22 @@ void FVehicleWheelSolver::DrawWheelForce(
 		FColor StringColor = FColor(255 - VelociyColor.R, 255 - VelociyColor.G, 255 - VelociyColor.B);
 		FVector TempOffset = WheelRightVec * (SuspensionState.bIsRightWheel ? 1.f : -1.f) * FMath::Abs(State.AngularVelocity) * Length * 100;
 		FVector TempWheelLocation = WheelTrans.GetLocation();
-		DrawDebugLine(InCurrentWorld, TempWheelLocation, TempWheelLocation + TempOffset, VelociyColor, false, Duration, 0, Thickness);
+		DrawDebugLine(CurrentWorld, TempWheelLocation, TempWheelLocation + TempOffset, VelociyColor, false, Duration, 0, Thickness);
 
 		FString TempString = FString::SanitizeFloat(State.AngularVelocity);
 		TempString = FString(TEXT("Omega = ")) + TempString;
-		DrawDebugString(InCurrentWorld, TempWheelLocation + TempOffset, TempString, 0, VelociyColor, Duration, true);
+		DrawDebugString(CurrentWorld, TempWheelLocation + TempOffset, TempString, 0, VelociyColor, Duration, true);
 	}
 
 	if (bDrawSlip)
 	{
 		FColor SlipColor = FColor(127, 63, 255);
 		FVector TempWheelLocation = WheelTrans.GetLocation();
-		FVector TempDrawOffset = TargetWheelComponent->WheelConfig.Radius * WheelTrans.GetRotation().GetUpVector();
+		FVector TempDrawOffset = WheelComponent->WheelConfig.Radius * WheelTrans.GetRotation().GetUpVector();
 		FString TextSlipRatio = FString(TEXT("SlipRatio = ")) + FString::SanitizeFloat(State.SlipRatio);
 		FString TextSlipAngle = FString(TEXT("SlipAngle = ")) + FString::SanitizeFloat(State.SlipAngle);
-		DrawDebugString(InCurrentWorld, TempWheelLocation + TempDrawOffset, TextSlipRatio, 0, SlipColor, Duration, true, Length * 100);
-		DrawDebugString(InCurrentWorld, TempWheelLocation - TempDrawOffset, TextSlipAngle, 0, SlipColor, Duration, true, Length * 100);
+		DrawDebugString(CurrentWorld, TempWheelLocation + TempDrawOffset, TextSlipRatio, 0, SlipColor, Duration, true, Length * 100);
+		DrawDebugString(CurrentWorld, TempWheelLocation - TempDrawOffset, TextSlipAngle, 0, SlipColor, Duration, true, Length * 100);
 	}
 
 	if (bDrawInertia)
@@ -164,7 +171,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 		FColor InertiaColor = FColor(255, 255, 255);
 		FVector TempWheelLocation = WheelTrans.GetLocation();
 		FString TextInertia = FString(TEXT("Inertia = ")) + FString::SanitizeFloat(State.TotalInertia);
-		DrawDebugString(InCurrentWorld, TempWheelLocation, TextInertia, 0, InertiaColor, Duration, true, Length * 100);
+		DrawDebugString(CurrentWorld, TempWheelLocation, TextInertia, 0, InertiaColor, Duration, true, Length * 100);
 	}
 }
 
@@ -185,11 +192,8 @@ void FVehicleWheelSolver::SmoothenSlip(float InDeltaTime, float InInterpSpeed)
 	);
 }
 
-void FVehicleWheelSolver::UpdateCachedRichCurves()
+void FVehicleWheelSolver::UpdateCachedRichCurves(const FVehicleTireConfig& Config)
 {
-	if (!TargetWheelComponent.IsValid())return;
-
-	const FVehicleTireConfig& Config = TargetWheelComponent->TireConfig;
 	if (IsValid(Config.Fx))
 	{
 		CachedCurves.Fx = Config.Fx->FloatCurve;
@@ -217,10 +221,11 @@ float FVehicleWheelSolver::GetTangentAtOrigin(const FRichCurve& Curve)
 	return FMath::IsNearlyZero(Key0.Time) ? Key0.LeaveTangent : 0.f;
 }
 
-void FVehicleWheelSolver::PredictSlipAndUpdateABS(float TargetBrakeTorque, bool bHitGround)
+void FVehicleWheelSolver::PredictSlipAndUpdateABS(
+	const FVehicleABSConfig& ABSConfig,
+	const float TargetBrakeTorque, 
+	const bool bHitGround)
 {
-	FVehicleABSConfig& ABSConfig = TargetWheelComponent->ABSConfig;
-
 	// predict angular velocity
 	float PredictedOmega = State.AngularVelocity + State.AngularAcceleration * State.PhysicsDeltaTime;
 	float PredictedVSlip = PredictedOmega * State.R - State.LocalLinearVelocity.X;
@@ -253,10 +258,10 @@ void FVehicleWheelSolver::PredictSlipAndUpdateABS(float TargetBrakeTorque, bool 
 	State.BrakeTorqueFromBrake = TargetBrakeTorque;
 }
 
-void FVehicleWheelSolver::UpdateDynamicFrictionMultiplier(float ImpactFriction)
+void FVehicleWheelSolver::UpdateDynamicFrictionMultiplier(
+	const FVehicleTireConfig& TireConfig,
+	const float ImpactFriction)
 {
-	FVehicleTireConfig& TireConfig = TargetWheelComponent->TireConfig;
-
 	switch (TireConfig.TireFrictionCombineMode)
 	{
 	case ETireFrictionCombineMode::Constant:
@@ -464,7 +469,8 @@ void FVehicleWheelSolver::UpdateTireForce(
 	float PositiveForceIntoSurface,
 	bool bHitGround,
 	const FVector3f& LongForceDirUnNorm,
-	const FVector3f& LatForceDirUnNorm)
+	const FVector3f& LatForceDirUnNorm,
+	const FVehicleTireConfig& TireConfig)
 {
 	UpdateSlipRatio(bHitGround);
 	UpdateSlipAngle(bHitGround);
@@ -476,8 +482,6 @@ void FVehicleWheelSolver::UpdateTireForce(
 		State.TireForce = FVector3f(0.f);
 		return;
 	}
-
-	FVehicleTireConfig& TireConfig = TargetWheelComponent->TireConfig;
 
 	// Constraint tire force
 	FVector2f ConstraintTireForce = FVector2f(

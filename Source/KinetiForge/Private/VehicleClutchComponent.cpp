@@ -28,12 +28,12 @@ void UVehicleClutchComponent::BeginPlay()
 
 
 float UVehicleClutchComponent::GetTorqueSpringModel(
-	float DeltaTime,
-	float ClutchSlip,
-	float EngineInertia,
-	float GearboxReflectedInertia,
-	float GearboxInputShaftInertia,
-	float GearboxReflectedInertia_HighestGear)
+	const float DeltaTime,
+	const float ClutchSlip,
+	const float EngineInertia,
+	const float GearboxReflectedInertia,
+	const float GearboxInputShaftInertia,
+	const float GearboxReflectedInertia_HighestGear)
 {
 	float J_Gearbox = GearboxReflectedInertia + GearboxInputShaftInertia;
 	float J_Engine = EngineInertia;
@@ -80,11 +80,11 @@ float UVehicleClutchComponent::GetTorqueSpringModel(
 }
 
 float UVehicleClutchComponent::GetTorqueDampingModel(
-	float DeltaTime,
-	float ClutchSlip,
-	float EngineInertia,
-	float GearboxReflectedInertia,
-	float GearboxInputShaftInertia)
+	const float DeltaTime,
+	const float ClutchSlip,
+	const float EngineInertia,
+	const float GearboxReflectedInertia,
+	const float GearboxInputShaftInertia)
 {
 	State.AngleDiff = 0.f;
 
@@ -109,31 +109,32 @@ void UVehicleClutchComponent::TickComponent(float DeltaTime, ELevelTick TickType
 }
 
 void UVehicleClutchComponent::UpdatePhysics(
-	float InDeltaTime, 
-	float InClutchValue, 
-	float InGearboxInputShaftVelocity, 
-	float InGearboxReflectedInertia, 
-	float InGearboxInputShaftInertia, 
-	float InCurrentGearRatio, 
-	float GearboxReflectedInertia_HighestGear,
-	UVehicleEngineComponent* TargetEngine)
+	const float InDeltaTime,
+	const float InClutchValue,
+	const float InGearboxInputShaftVelocity,
+	const float InGearboxReflectedInertia,
+	const float InGearboxInputShaftInertia,
+	const float InCurrentGearRatio,
+	const float GearboxReflectedInertia_HighestGear,
+	const float InEngineAngularVelocity,
+	const FVehicleNaturallyAspiratedEngineConfig& NAConfig,
+	const FVehicleEngineTurboConfig& TurboConfig)
 {
-	InClutchValue = FMath::Clamp(InClutchValue, 0.f, 1.f);
+	float ClutchValue = FMath::Clamp(InClutchValue, 0.f, 1.f);
 
 	// get some data from engine
-	if (!IsValid(TargetEngine))return;
-	const float EngineAngularVelocity = TargetEngine->GetAngularVelocity();
-	const float EngineInertia = TargetEngine->NAConfig.EngineInertia;
+	const float EngineAngularVelocity = InEngineAngularVelocity;
+	const float EngineInertia = NAConfig.EngineInertia;
 
-	float EngineMaxTorque = TargetEngine->NAConfig.MaxEngineTorque;
-	if (TargetEngine->TurboConfig.MaxBoostPressure > SMALL_NUMBER)
+	float EngineMaxTorque = NAConfig.MaxEngineTorque;
+	if (TurboConfig.MaxBoostPressure > SMALL_NUMBER)
 	{
 		// if turbo charged
-		EngineMaxTorque *= (1.f + TargetEngine->TurboConfig.MaxBoostPressure * TargetEngine->TurboConfig.BoostEfficiency);
+		EngineMaxTorque *= (1.f + TurboConfig.MaxBoostPressure * TurboConfig.BoostEfficiency);
 	}
 	State.MaxClutchTorque = EngineMaxTorque * Config.Capacity;
 
-	State.ClutchLock = FMath::Clamp((float)(InCurrentGearRatio != 0) - InClutchValue, 0.f, 1.f);
+	State.ClutchLock = FMath::Clamp((float)(InCurrentGearRatio != 0) - ClutchValue, 0.f, 1.f);
 	const float& GearboxAngularVelocity = InGearboxInputShaftVelocity;
 	const float& ClutchSlip = EngineAngularVelocity - GearboxAngularVelocity;
 

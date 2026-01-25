@@ -8,11 +8,12 @@
 
 static void PrepareSimulation(
 	FVehicleSuspensionSimContext& Ctx,
-	UVehicleWheelComponent* TargetWheelComponent,
+	const FTransform& ComponentRelativeTransform,
+	const FTransform& AsyncCarbodyWorldTransform,
 	const FVehicleSuspensionKinematicsConfig& Config)
 {
-	Ctx.RelativeTransform = (FTransform3f)TargetWheelComponent->GetRelativeTransform();
-	Ctx.CarbodyWorldTransform = TargetWheelComponent->GetCarbodyAsyncWorldTransform();
+	Ctx.RelativeTransform = (FTransform3f)ComponentRelativeTransform;
+	Ctx.CarbodyWorldTransform = AsyncCarbodyWorldTransform;
 
 	//dealing with transforms
 	Ctx.WheelPos = FMath::Sign(Ctx.RelativeTransform.GetLocation().Y);
@@ -86,8 +87,7 @@ static void CacheImpactFriction(
 {
 	if (Ctx.HitStruct.bBlockingHit)
 	{
-		UPhysicalMaterial* HitPhysMat = Ctx.HitStruct.PhysMaterial.Get();
-		if (IsValid(HitPhysMat))
+		if (UPhysicalMaterial* HitPhysMat = Ctx.HitStruct.PhysMaterial.Get())
 		{
 			Ctx.ImpactFriction = HitPhysMat->Friction;
 			return;
@@ -491,28 +491,30 @@ static void ComputeSolidAxle(
 
 static void UpdateImpactPointWorldVelocity(
 	FVehicleSuspensionSimContext& Ctx,
-	UVehicleWheelComponent* TargetWheelComponent)
+	UPrimitiveComponent* Carbody)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelLinearVelocity);
 
 	if (Ctx.HitStruct.bBlockingHit)
 	{
 		FVector LinVelWorldA = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(
-			TargetWheelComponent->GetCarbody(),
+			Carbody,
 			Ctx.HitStruct.ImpactPoint,
 			"NONE"
 		);
 		FVector LinVelWorldB = FVector(0.f);
 
-		if (IsValid(Ctx.HitStruct.GetComponent()) 
-			&& Ctx.HitStruct.GetComponent()->Mobility != EComponentMobility::Static
-			&& Ctx.HitStruct.GetComponent()->IsPhysicsStateCreated())
+		if (UPrimitiveComponent* HitComponent = Ctx.HitStruct.GetComponent())
 		{
-			LinVelWorldB = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(
-				Ctx.HitStruct.GetComponent(),
-				Ctx.HitStruct.ImpactPoint,
-				Ctx.HitStruct.BoneName
-			);
+			if (HitComponent->IsPhysicsStateCreated() &&
+				HitComponent->Mobility != EComponentMobility::Static)
+			{
+				LinVelWorldB = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(
+					HitComponent,
+					Ctx.HitStruct.ImpactPoint,
+					Ctx.HitStruct.BoneName
+				);
+			}
 		}
 
 		Ctx.ImpactPointWorldVelocity = FVector3f(0.01 * (LinVelWorldA - LinVelWorldB));
@@ -520,6 +522,22 @@ static void UpdateImpactPointWorldVelocity(
 	else
 	{
 		Ctx.ImpactPointWorldVelocity = FVector3f(0.f);
+	}
+}
+
+static float GetCriticalDamping(
+	const float SpringStiffness,
+	const float SprungMass)
+{
+	if (SprungMass <= 0.f)
+	{
+		//UE_LOG(LogTemp, Warning, TEXT("VehicleSuspensionSolver: SprungMass not valid!"));
+		return 0.1f * SpringStiffness;
+	}
+	else
+	{
+		float NaturalFrequency = FMath::Sqrt(SpringStiffness * 100.f / SprungMass);
+		return 0.02f * SprungMass * NaturalFrequency;
 	}
 }
 
@@ -535,6 +553,7 @@ static void ComputeSuspensionForce(
 
 	Ctx.SuspensionCurrentLength = SuspensionStroke * Ctx.SuspensionExtensionRatio;
 
+	Ctx.CriticalDamping = GetCriticalDamping(SpringConfig.SpringStiffness, Ctx.SprungMass);
 	ComputeValidPreload(Ctx, SpringConfig);
 
 	float DeltaTimeInv = VehicleUtil::SafeDivide(1.f, Ctx.PhysicsDelatTime);
@@ -586,26 +605,31 @@ FVehicleSuspensionSolver::~FVehicleSuspensionSolver()
 {
 }
 
-bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* InTargetWheelComponent)
+bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* WheelComponent)
 {
-	TargetWheelComponent = InTargetWheelComponent;
-
-	UpdateCachedRichCurves();
-
-	if (TargetWheelComponent.IsValid())
+	if (WheelComponent != nullptr)
 	{
-		QueryParams.AddIgnoredActor(TargetWheelComponent->GetOwner());
+		UpdateCachedRichCurves(WheelComponent->SuspensionKinematicsConfig);
+
+		QueryParams.AddIgnoredActor(WheelComponent->GetOwner());
 		QueryParams.bReturnPhysicalMaterial = true;
 		QueryParams.bReturnFaceIndex = false;
 		QueryParams.bTraceComplex = false;
 		
-		float WheelPos = FMath::Sign(TargetWheelComponent->GetRelativeTransform().GetLocation().Y);
+		float WheelPos = FMath::Sign(WheelComponent->GetRelativeTransform().GetLocation().Y);
 		State.bIsRightWheel = WheelPos >= 0.f;
 		
-		ApplySuspensionStateDirect();
+		ApplySuspensionStateDirect(
+			WheelComponent->WheelConfig.Radius,
+			WheelComponent->SuspensionKinematicsConfig,
+			WheelComponent->GetRelativeTransform(),
+			WheelComponent->GetCarbodyAsyncWorldTransform(),
+			1.f,
+			0.f
+		);
 
 		//initialize the cache, so that damping will not be Computed twice when game starts
-		CachedSpringStiffness  = TargetWheelComponent->SuspensionSpringConfig.SpringStiffness;
+		CachedSpringStiffness  = WheelComponent->SuspensionSpringConfig.SpringStiffness;
 		
 		return true;
 	}
@@ -615,7 +639,9 @@ bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* InTargetWheelC
 	}
 }
 
-void FVehicleSuspensionSolver::SetSprungMass(float NewSprungMass)
+void FVehicleSuspensionSolver::SetSprungMass(
+	const FVehicleSuspensionSpringConfig& SpringConfig,
+	const float NewSprungMass)
 {
 	if (NewSprungMass <= 0)
 	{
@@ -625,35 +651,22 @@ void FVehicleSuspensionSolver::SetSprungMass(float NewSprungMass)
 	{
 		State.SprungMass = NewSprungMass;
 	}
-
-	UpdateCriticalDamping();
-}
-
-void FVehicleSuspensionSolver::UpdateCriticalDamping()
-{
-	if (!TargetWheelComponent.IsValid())return;
-	if (State.SprungMass <= 0)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("VehicleSuspensionSolver: SprungMass not valid!"));
-		State.CriticalDamping = 0.1 * TargetWheelComponent->SuspensionSpringConfig.SpringStiffness;
-		return;
-	}
-	else
-	{
-		float NaturalFrequency = FMath::Sqrt(TargetWheelComponent->SuspensionSpringConfig.SpringStiffness * 100 / State.SprungMass);
-		State.CriticalDamping = 0.02 * State.SprungMass * NaturalFrequency;
-		return;
-	}
 }
 
 void FVehicleSuspensionSolver::UpdateSuspension(
+	const float WheelRadius,
+	const float WheelWidth,
+	const FVehicleSuspensionKinematicsConfig& KineConfig,
+	const FVehicleSuspensionSpringConfig& SpringConfig,
+	const FTransform& ComponentRelativeTransform,
+	const FTransform& AsyncCarbodyWorldTransform,
+	const UWorld* CurrentWorld,
+	UPrimitiveComponent* Carbody,
 	float InDeltaTime,
 	float InSteeringAngle, 
 	float InSwaybarForce)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleSuspensionSolver);
-
-	if (!TargetWheelComponent.IsValid())return;
 
 	FVehicleSuspensionSimContext Ctx;
 
@@ -662,18 +675,17 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	Ctx.PhysicsDelatTime = InDeltaTime;
 	Ctx.SteeringAngle = InSteeringAngle;
 	Ctx.SwaybarForce = InSwaybarForce;
-	
-	const UWorld* CurrentWorld = TargetWheelComponent->GetWorld();
-	const float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	const float WheelWidth = TargetWheelComponent->WheelConfig.Width;
-	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
-	const FVehicleSuspensionSpringConfig& SpringConfig = TargetWheelComponent->SuspensionSpringConfig;
 
-	PrepareSimulation(Ctx, TargetWheelComponent.Get(), KineConfig);
+	PrepareSimulation(
+		Ctx,
+		ComponentRelativeTransform,
+		AsyncCarbodyWorldTransform,
+		KineConfig
+	);
 	ComputeRayCastLocation(Ctx, KineConfig);
 	SuspensionRayCast(Ctx, CurrentWorld, WheelRadius, WheelWidth * 0.5f, QueryParams, ResponseParams, KineConfig);
 
-	switch (TargetWheelComponent->SuspensionKinematicsConfig.SuspensionType)
+	switch (KineConfig.SuspensionType)
 	{
 	case ESuspensionType::StraightLine:
 		ComputeStraightSuspension(Ctx, WheelRadius, KineConfig);
@@ -689,32 +701,36 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 		break;
 	}
 
-	UpdateImpactPointWorldVelocity(Ctx, TargetWheelComponent.Get());
+	UpdateImpactPointWorldVelocity(Ctx, Carbody);
 	ComputeSuspensionForce(Ctx, WheelRadius, SpringConfig, KineConfig);
 	CopyContextToState(Ctx);
 }
 
 void FVehicleSuspensionSolver::StartUpdateSolidAxle(
+	const float WheelRadius,
+	const float WheelWidth,
+	const FVehicleSuspensionKinematicsConfig& KineConfig,
+	const FTransform& ComponentRelativeTransform,
+	const FTransform& AsyncCarbodyWorldTransform,
+	const UWorld* CurrentWorld,
 	float InSteeringAngle,
 	FVector& OutApporximatedWheelWorldPos,
 	FVehicleSuspensionSimContext& Ctx)
 {
-	if (!TargetWheelComponent.IsValid())return;
-
 	CopyStateToContext(Ctx);
 
 	Ctx.SteeringAngle = InSteeringAngle;
 
-	const UWorld* CurrentWorld = TargetWheelComponent->GetWorld();
-	const float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	const float WheelWidth = TargetWheelComponent->WheelConfig.Width;
-	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
-
-	PrepareSimulation(Ctx, TargetWheelComponent.Get(), KineConfig);
+	PrepareSimulation(
+		Ctx,
+		ComponentRelativeTransform,
+		AsyncCarbodyWorldTransform,
+		KineConfig
+	);
 	ComputeRayCastLocation(Ctx, KineConfig);
 	SuspensionRayCast(Ctx, CurrentWorld, WheelRadius, WheelWidth * 0.5f, QueryParams, ResponseParams, KineConfig);
 
-	float DistanceToRayCastStart = FMath::Max(0.f, Ctx.HitDistance - TargetWheelComponent->WheelConfig.Radius);
+	float DistanceToRayCastStart = FMath::Max(0.f, Ctx.HitDistance - WheelRadius);
 	FVector OffsetToRayCastStart = Ctx.ComponentUpVector * DistanceToRayCastStart;
 	OutApporximatedWheelWorldPos = Ctx.RayCastStartPos - OffsetToRayCastStart;
 
@@ -722,20 +738,18 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 }
 
 void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
+	const float WheelRadius,
+	const FVehicleSuspensionKinematicsConfig& KineConfig,
+	const FVehicleSuspensionSpringConfig& SpringConfig,
+	UPrimitiveComponent* Carbody,
 	float InDeltaTime, 
 	float InSwaybarForce,
 	FVehicleSuspensionSimContext& Ctx,
 	const FVector& InKnuckleWorldPos,
 	const FVector& InAxleWorldDirection)
 {
-	if (!TargetWheelComponent.IsValid())return;
-
 	Ctx.PhysicsDelatTime = InDeltaTime;
 	Ctx.SwaybarForce = InSwaybarForce;
-
-	const float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
-	const FVehicleSuspensionSpringConfig& SpringConfig = TargetWheelComponent->SuspensionSpringConfig;
 
 	ComputeSolidAxle(
 		Ctx,
@@ -746,7 +760,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	);
 
 	// update velocity
-	UpdateImpactPointWorldVelocity(Ctx, TargetWheelComponent.Get());
+	UpdateImpactPointWorldVelocity(Ctx, Carbody);
 
 	// get suspension force
 	ComputeSuspensionForce(Ctx, WheelRadius, SpringConfig, KineConfig);
@@ -754,25 +768,32 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	CopyContextToState(Ctx);
 }
 
-void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
+void FVehicleSuspensionSolver::ApplySuspensionStateDirect(
+	const float WheelRadius,
+	const FVehicleSuspensionKinematicsConfig& KineConfig,
+	const FTransform& ComponentRelativeTransform,
+	const FTransform& AsyncCarbodyWorldTransform, 
+	float InExtensionRatio, 
+	float InSteeringAngle)
 {
-	if (!TargetWheelComponent.IsValid())return;
-
 	FVehicleSuspensionSimContext Ctx;
 	CopyStateToContext(Ctx);
 	Ctx.SuspensionExtensionRatio = InExtensionRatio;
 	Ctx.SteeringAngle = InSteeringAngle;
 
-	const float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
 	const FVehicleSuspensionCachedRichCurves& CachedKineCurves = CachedCurves;
 
-	PrepareSimulation(Ctx, TargetWheelComponent.Get(), KineConfig);
+	PrepareSimulation(
+		Ctx,
+		ComponentRelativeTransform,
+		AsyncCarbodyWorldTransform,
+		KineConfig
+	);
 	ComputeRayCastLocation(Ctx, KineConfig);
 
-	Ctx.HitDistance = InExtensionRatio * Ctx.RayCastLength + TargetWheelComponent->WheelConfig.Radius;
+	Ctx.HitDistance = InExtensionRatio * Ctx.RayCastLength + WheelRadius;
 
-	switch (TargetWheelComponent->SuspensionKinematicsConfig.SuspensionType)
+	switch (KineConfig.SuspensionType)
 	{
 	case ESuspensionType::StraightLine:
 		ComputeStraightSuspension(Ctx, WheelRadius, KineConfig);
@@ -792,36 +813,42 @@ void FVehicleSuspensionSolver::ApplySuspensionStateDirect(float InExtensionRatio
 }
 
 void FVehicleSuspensionSolver::StartApplySolidAxleStateDirect(
+	const float WheelRadius,
+	const FVehicleSuspensionKinematicsConfig& KineConfig,
+	const FTransform& ComponentRelativeTransform,
+	const FTransform& AsyncCarbodyWorldTransform,
 	float InExtensionRatio, 
 	float InSteeringAngle, 
 	FVector& OutApporximatedWheelWorldPos, 
 	FVehicleSuspensionSimContext& Ctx)
 {
-	if (!TargetWheelComponent.IsValid())return;
-
 	CopyStateToContext(Ctx);
 	Ctx.SuspensionExtensionRatio = InExtensionRatio;
 	Ctx.SteeringAngle = InSteeringAngle;
 
-	const float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
 	const FVehicleSuspensionCachedRichCurves& CachedKineCurves = CachedCurves;
 
-	PrepareSimulation(Ctx, TargetWheelComponent.Get(), KineConfig);
+	PrepareSimulation(
+		Ctx, 
+		ComponentRelativeTransform, 
+		AsyncCarbodyWorldTransform, 
+		KineConfig
+	);
 	ComputeRayCastLocation(Ctx, KineConfig);
 
-	Ctx.HitDistance = InExtensionRatio * Ctx.RayCastLength + TargetWheelComponent->WheelConfig.Radius;
-	float DistanceToRayCastStart = FMath::Max(0.f, Ctx.HitDistance - TargetWheelComponent->WheelConfig.Radius);
+	Ctx.HitDistance = InExtensionRatio * Ctx.RayCastLength + WheelRadius;
+	float DistanceToRayCastStart = FMath::Max(0.f, Ctx.HitDistance - WheelRadius);
 	FVector OffsetToRayCastStart = Ctx.ComponentUpVector * DistanceToRayCastStart;
 	OutApporximatedWheelWorldPos = Ctx.RayCastStartPos - OffsetToRayCastStart;
 }
 
-void FVehicleSuspensionSolver::FinalizeApplySolidAxleStateDirect(FVehicleSuspensionSimContext& Ctx, const FVector& InKnuckleWorldPos, const FVector& InAxleWorldDirection)
+void FVehicleSuspensionSolver::FinalizeApplySolidAxleStateDirect(
+	const float WheelRadius,
+	const FVehicleSuspensionKinematicsConfig& KineConfig, 
+	FVehicleSuspensionSimContext& Ctx, 
+	const FVector& InKnuckleWorldPos, 
+	const FVector& InAxleWorldDirection)
 {
-	if (!TargetWheelComponent.IsValid())return;
-
-	const float WheelRadius = TargetWheelComponent->WheelConfig.Radius;
-	const FVehicleSuspensionKinematicsConfig& KineConfig = TargetWheelComponent->SuspensionKinematicsConfig;
 	ComputeSolidAxle(
 		Ctx,
 		WheelRadius,
@@ -832,14 +859,18 @@ void FVehicleSuspensionSolver::FinalizeApplySolidAxleStateDirect(FVehicleSuspens
 	CopyContextToState(Ctx);
 }
 
-void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)
+void FVehicleSuspensionSolver::DrawSuspension(
+	UVehicleWheelComponent* WheelComponent, 
+	float Duration, 
+	float Thickness, 
+	bool bDrawSuspension, 
+	bool bDrawWheel, 
+	bool bDrawRayCast)
 {
-	if (!TargetWheelComponent.IsValid())return;
-
-	UWorld* TempWorld = TargetWheelComponent->GetWorld();
+	UWorld* TempWorld = WheelComponent->GetWorld();
 	if (!IsValid(TempWorld))return;
 
-	const FTransform& CarbodyWorldTrans = TargetWheelComponent->GetCarbodyAsyncWorldTransform();
+	const FTransform& CarbodyWorldTrans = WheelComponent->GetCarbodyAsyncWorldTransform();
 
 	FVector WheelRelativePos = FVector(State.KnuckleRelativePos + State.WheelCenterToKnuckle);
 	FVector WheelWorldPos = CarbodyWorldTrans.TransformPositionNoScale(WheelRelativePos);
@@ -850,7 +881,7 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 	{
 		FVector TempKnuckleWorldPos = CarbodyWorldTrans.TransformPositionNoScale((FVector)State.KnuckleRelativePos);
 		//draw arm
-		FTransform WorldTrans = TargetWheelComponent->GetRelativeTransform() * CarbodyWorldTrans;
+		FTransform WorldTrans = WheelComponent->GetRelativeTransform() * CarbodyWorldTrans;
 		FVector PivotPos = WorldTrans.TransformPositionNoScale((FVector)SuspensionPlaneToZYPlane(FVector2f(0.f), WheelPos));
 		DrawDebugLine(TempWorld, PivotPos, TempKnuckleWorldPos, FColor(0, 0, 255), false, Duration, 0, Thickness);
 		//draw strut
@@ -862,22 +893,22 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 	if (bDrawWheel)
 	{
 		//draw cylinder
-		FVector W = FVector(State.WheelRightVector) * TargetWheelComponent->WheelConfig.Width * 0.5;
+		FVector W = FVector(State.WheelRightVector) * WheelComponent->WheelConfig.Width * 0.5;
 		DrawDebugCylinder(TempWorld, WheelWorldPos + W, WheelWorldPos - W,
-			TargetWheelComponent->WheelConfig.Radius, 8, FColor(128, 128, 128), false, Duration, 0, Thickness);
+			WheelComponent->WheelConfig.Radius, 8, FColor(128, 128, 128), false, Duration, 0, Thickness);
 	}
 
 	if (bDrawRayCast)
 	{
-		float TempR = TargetWheelComponent->WheelConfig.Radius;
-		float TempHalfWidth = TargetWheelComponent->WheelConfig.Width * 0.5;
+		float TempR = WheelComponent->WheelConfig.Radius;
+		float TempHalfWidth = WheelComponent->WheelConfig.Width * 0.5;
 		float ValidR = FMath::Min(TempR, TempHalfWidth);
 		FVector HalfSize = FVector(TempR, TempHalfWidth, TempR) * 0.707;
 		FQuat Orientation = FQuat(RayCastResult.TraceRot *
 			FQuat4f(0.0f, 0.38268343f, 0.0f, 0.92387953f));	// this is Rotator(0.0, 45.0, 0.0)
 		float SphereTraceR = (State.ImpactPoint - RayCastResult.Location).Length();
 		float RayCastLength = (RayCastResult.TraceStart - RayCastResult.TraceEnd).Length();
-		switch (TargetWheelComponent->SuspensionKinematicsConfig.RayCastMode)
+		switch (WheelComponent->SuspensionKinematicsConfig.RayCastMode)
 		{
 		case ESuspensionRayCastMode::LineTrace:
 			DrawDebugLine(TempWorld, RayCastResult.TraceStart, RayCastResult.TraceEnd, FColor(0, 255, 0), false, Duration, 0, Thickness);
@@ -911,46 +942,29 @@ void FVehicleSuspensionSolver::DrawSuspension(float Duration, float Thickness, b
 	}
 }
 
-void FVehicleSuspensionSolver::DrawSuspensionForce(float Duration, float Thickness, float Length)
+void FVehicleSuspensionSolver::DrawSuspensionForce(
+	UVehicleWheelComponent* WheelComponent, 
+	float Duration, 
+	float Thickness, 
+	float Length)
 {
-	if (!TargetWheelComponent.IsValid())return;
-
-	UWorld* TempWorld = TargetWheelComponent->GetWorld();
+	UWorld* TempWorld = WheelComponent->GetWorld();
 	if (!IsValid(TempWorld))return;
 
 	FColor TempColor = FColor(0, 255, 127);
 	if (State.ForceAlongImpactNormal < 0.f)TempColor = FColor(255 - TempColor.R, 255 - TempColor.G, 255 - TempColor.B);
 
-	const FTransform& CarbodyTrans = TargetWheelComponent->GetCarbodyAsyncWorldTransform();
+	const FTransform& CarbodyTrans = WheelComponent->GetCarbodyAsyncWorldTransform();
 
 	FVector TempStart = CarbodyTrans.TransformPositionNoScale(FVector(State.TopMountRelativePos));
 	FVector TempEnd = TempStart + FVector(State.ImpactNormal) * State.ForceAlongImpactNormal * Length * 0.01;
 	DrawDebugLine(TempWorld, TempStart, TempEnd, TempColor, false, Duration, 0, Thickness);
 }
 
-bool FVehicleSuspensionSolver::CheckIsDampingDirty()
+void FVehicleSuspensionSolver::UpdateCachedRichCurves(
+	FVehicleSuspensionKinematicsConfig& KineConfig)
 {
-	if (!TargetWheelComponent.IsValid())return false;
-
-	float Stiffness = TargetWheelComponent->SuspensionSpringConfig.SpringStiffness;
-
-	if (CachedSpringStiffness != Stiffness)
-	{
-		CachedSpringStiffness = Stiffness;
-		UpdateCriticalDamping();
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
-
-void FVehicleSuspensionSolver::UpdateCachedRichCurves()
-{
-	if (!TargetWheelComponent.IsValid())return;
-
-	const FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
+	const FVehicleSuspensionKinematicsConfig& Config = KineConfig;
 
 	if (IsValid(Config.CamberCurve))
 	{
@@ -976,12 +990,36 @@ void FVehicleSuspensionSolver::UpdateCachedRichCurves()
 	{
 		CachedCurves.CasterCurve.Reset();
 	}
+	if (IsValid(Config.AntiDiveCurve))
+	{
+		CachedCurves.AntiDiveCurve = Config.AntiDiveCurve->FloatCurve;
+	}
+	else
+	{
+		CachedCurves.AntiDiveCurve.Reset();
+	}
+	if (IsValid(Config.AntiSquatCurve))
+	{
+		CachedCurves.AntiSquatCurve = Config.AntiSquatCurve->FloatCurve;
+	}
+	else
+	{
+		CachedCurves.AntiSquatCurve.Reset();
+	}
+	if (IsValid(Config.AntiRollCurve))
+	{
+		CachedCurves.AntiRollCurve = Config.AntiRollCurve->FloatCurve;
+	}
+	else
+	{
+		CachedCurves.AntiRollCurve.Reset();
+	}
 }
 
-bool FVehicleSuspensionSolver::CheckAndFixTriangle()
+bool FVehicleSuspensionSolver::CheckAndFixTriangle(
+	FVehicleSuspensionKinematicsConfig& KineConfig)
 {
-	if(!TargetWheelComponent.IsValid())return false;
-	FVehicleSuspensionKinematicsConfig& Config = TargetWheelComponent->SuspensionKinematicsConfig;
+	FVehicleSuspensionKinematicsConfig& Config = KineConfig;
 
 	bool valid = true;
 	

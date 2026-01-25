@@ -28,32 +28,35 @@ protected:
 	FVehicleClutchSimState State;
 
 	float GetTorqueSpringModel(
-		float DeltaTime,
-		float ClutchSlip,
-		float EngineInertia,
-		float GearboxReflectedInertia,
-		float GearboxInputShaftInertia,
-		float GearboxReflectedInertia_HighestGear);
+		const float DeltaTime,
+		const float ClutchSlip,
+		const float EngineInertia,
+		const float GearboxReflectedInertia,
+		const float GearboxInputShaftInertia,
+		const float GearboxReflectedInertia_HighestGear);
 	float GetTorqueDampingModel(
-		float DeltaTime,
-		float ClutchSlip,
-		float EngineInertia,
-		float GearboxReflectedInertia,
-		float GearboxInputShaftInertia);
+		const float DeltaTime,
+		const float ClutchSlip,
+		const float EngineInertia,
+		const float GearboxReflectedInertia,
+		const float GearboxInputShaftInertia);
 
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleClutch")
-	void UpdatePhysics(float InDeltaTime, 
-		float InClutchValue, 
-		float InGearboxInputShaftVelocity, 
-		float InGearboxReflectedInertia,
-		float InGearboxInputShaftInertia,
-		float InCurrentGearRatio, 
-		float GearboxReflectedInertia_HighestGear,
-		UVehicleEngineComponent* TargetEngine);
+	void UpdatePhysics(
+		const float InDeltaTime, 
+		const float InClutchValue, 
+		const float InGearboxInputShaftVelocity, 
+		const float InGearboxReflectedInertia,
+		const float InGearboxInputShaftInertia,
+		const float InCurrentGearRatio, 
+		const float GearboxReflectedInertia_HighestGear,
+		const float InEngineAngularVelocity,
+		const FVehicleNaturallyAspiratedEngineConfig& NAConfig,
+		const FVehicleEngineTurboConfig& TurboConfig);
 	UFUNCTION(BlueprintCallable, Category = "VehicleClutch")
 	float GetCluchTorque();
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleClutch")

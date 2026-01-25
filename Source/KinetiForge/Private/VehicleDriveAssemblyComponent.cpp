@@ -156,24 +156,31 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 {
 	float RealThrottleInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Brake : InputValues.Raw.Throttle;
 
-	//check if there's no need to edit throttle value
-	if (Gearbox->GetIsInGear() || !InputAssistConfig.bAutomaticClutch)
+	if (IsValid(Gearbox))
 	{
-		InputValues.Smoothened.Throttle = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Throttle, RealThrottleInput, InDeltaTime, InputConfig.Throttle.InterpSpeed);
+		//check if there's no need to edit throttle value
+		if (Gearbox->GetIsInGear() || !InputAssistConfig.bAutomaticClutch)
+		{
+			InputValues.Smoothened.Throttle = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Throttle, RealThrottleInput, InDeltaTime, InputConfig.Throttle.InterpSpeed);
 
-		InputValues.Smoothened.Throttle *= !(InputAssistConfig.bEVClutchLogic && Gearbox->GetCurrentGearRatio() == 0.f);
+			InputValues.Smoothened.Throttle *= !(InputAssistConfig.bEVClutchLogic && Gearbox->GetCurrentGearRatio() == 0.f);
+		}
+		//if not in gear and should rev-match
+		else if (Gearbox->GetShouldRevMatch() && FMath::Abs(LocalLinearVelocity.X) > 0.5 && InputAssistConfig.bRevMatching)
+		{
+			const float Rate = 5.f;
+			InputValues.Smoothened.Throttle += VehicleUtil::SafeDivide(InDeltaTime * Rate, Gearbox->Config.ShiftDelay);
+			InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
+		}
+		//if not in gear and no rev-matching
+		else
+		{
+			InputValues.Smoothened.Throttle = 0.f;
+		}
 	}
-	//if not in gear and should rev-match
-	else if(Gearbox->GetShouldRevMatch() && FMath::Abs(LocalLinearVelocity.X) > 0.5 && InputAssistConfig.bRevMatching)
-	{
-		float Rate = 5.f;
-		InputValues.Smoothened.Throttle += VehicleUtil::SafeDivide(InDeltaTime * Rate, Gearbox->Config.ShiftDelay);
-		InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
-	}
-	//if not in gear and no rev-matching
 	else
 	{
-		InputValues.Smoothened.Throttle = 0.f;
+		InputValues.Smoothened.Throttle = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Throttle, RealThrottleInput, InDeltaTime, InputConfig.Throttle.InterpSpeed);
 	}
 
 	if (IsValid(InputConfig.Throttle.ResponseCurve))
@@ -227,7 +234,7 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 	{
 		InputValues.Smoothened.Clutch = 0.f;
 	}
-	else if (InputAssistConfig.bAutomaticClutch)
+	else if (InputAssistConfig.bAutomaticClutch && IsValid(Gearbox) && IsValid(Engine))
 	{
 		//check if clutch has to be engaged
 		bool bNotInGearAndNotSequential = !(Gearbox->GetIsInGear() || Gearbox->Config.bSequentialGearbox);
@@ -296,6 +303,8 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	AutoGearboxCount -= AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxTimerOverFlowed;
 
 	if (bIsInAir || 
+		!IsValid(Gearbox) ||
+		!IsValid(Engine) ||
 		!Gearbox->GetIsInGear() ||
 		!AutoGearboxTimerOverFlowed ||
 		(!Gearbox->Config.NumberOfGears && !Gearbox->Config.NumOfReverseGears)
@@ -724,7 +733,9 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		GearboxInputShaftInertia,
 		CurrentGearboxRatio, 
 		HighestGearReflectedInertia,
-		Engine
+		Engine->GetAngularVelocity(),
+		Engine->NAConfig,
+		Engine->TurboConfig
 	);
 
 	//get velocity

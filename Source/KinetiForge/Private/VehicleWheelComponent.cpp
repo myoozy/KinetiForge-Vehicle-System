@@ -18,34 +18,67 @@ UVehicleWheelComponent::UVehicleWheelComponent()
 	//load default curves
 	if (!TireConfig.Fx)
 	{
-		static ConstructorHelpers::FObjectFinder<UCurveFloat> DefaultMuLongCurveObj(
+		static ConstructorHelpers::FObjectFinder<UCurveFloat> CurveObj(
 			TEXT("/Script/Engine.CurveFloat'/KinetiForge/DefaultConfigs/Curves/DefaultFx.DefaultFx'")
 		);
-		if (DefaultMuLongCurveObj.Succeeded())
+		if (CurveObj.Succeeded())
 		{
-			TireConfig.Fx = DefaultMuLongCurveObj.Object;
+			TireConfig.Fx = CurveObj.Object;
 		}
 	}
 	
 	if (!TireConfig.Fy)
 	{
-		static ConstructorHelpers::FObjectFinder<UCurveFloat> DefaultMuLatCurveObj(
+		static ConstructorHelpers::FObjectFinder<UCurveFloat> CurveObj(
 			TEXT("/Script/Engine.CurveFloat'/KinetiForge/DefaultConfigs/Curves/DefaultFy.DefaultFy'")
 		);
-		if (DefaultMuLatCurveObj.Succeeded())
+		if (CurveObj.Succeeded())
 		{
-			TireConfig.Fy = DefaultMuLatCurveObj.Object;
+			TireConfig.Fy = CurveObj.Object;
 		}
 	}
 
 	if (!SuspensionKinematicsConfig.CamberCurve)
 	{
-		static ConstructorHelpers::FObjectFinder<UCurveFloat> DefaultCamberCurveObj(
+		static ConstructorHelpers::FObjectFinder<UCurveFloat> CurveObj(
 			TEXT("/Script/Engine.CurveFloat'/KinetiForge/DefaultConfigs/Curves/DefaultCamberCurve.DefaultCamberCurve'")
 		);
-		if (DefaultCamberCurveObj.Succeeded())
+		if (CurveObj.Succeeded())
 		{
-			SuspensionKinematicsConfig.CamberCurve = DefaultCamberCurveObj.Object;
+			SuspensionKinematicsConfig.CamberCurve = CurveObj.Object;
+		}
+	}
+
+	if (!SuspensionKinematicsConfig.AntiDiveCurve)
+	{
+		static ConstructorHelpers::FObjectFinder<UCurveFloat> CurveObj(
+				TEXT("/Script/Engine.CurveFloat'/KinetiForge/DefaultConfigs/Curves/DefaultAntiDiveCurve.DefaultAntiDiveCurve'")
+		);
+		if (CurveObj.Succeeded())
+		{
+			SuspensionKinematicsConfig.AntiDiveCurve = CurveObj.Object;
+		}
+	}
+
+	if (!SuspensionKinematicsConfig.AntiSquatCurve)
+	{
+		static ConstructorHelpers::FObjectFinder<UCurveFloat> CurveObj(
+			TEXT("/Script/Engine.CurveFloat'/KinetiForge/DefaultConfigs/Curves/DefaultAntiSquatCurve.DefaultAntiSquatCurve'")
+		);
+		if (CurveObj.Succeeded())
+		{
+			SuspensionKinematicsConfig.AntiSquatCurve = CurveObj.Object;
+		}
+	}
+
+	if (!SuspensionKinematicsConfig.AntiRollCurve)
+	{
+		static ConstructorHelpers::FObjectFinder<UCurveFloat> CurveObj(
+			TEXT("/Script/Engine.CurveFloat'/KinetiForge/DefaultConfigs/Curves/DefaultAntiRollCurve.DefaultAntiRollCurve'")
+		);
+		if (CurveObj.Succeeded())
+		{
+			SuspensionKinematicsConfig.AntiRollCurve = CurveObj.Object;
 		}
 	}
 
@@ -169,44 +202,91 @@ void UVehicleWheelComponent::ApplyWheelForce()
 		break;
 	}
 
-	/**** Anti-Pitch ****/
-	// attention: the anti-pitch geometry does not work in this way in real life,
-	// the logic will be fixed in the future (when I find a better solution)
-	// the axis of the suspension is the forward vector of the component
-	const FVector& ArmRelativeAxis = GetRelativeTransform().GetRotation().GetForwardVector();
-	FVector3f ArmAxis = (FVector3f)CarbodyAsyncWorldTransform.TransformVectorNoScale(ArmRelativeAxis);
-	FVector3f ImpactNormal = Suspension.State.ImpactNormal;
-	FVector3f ArmAxisProjOnGround = FVector3f::VectorPlaneProject(ArmAxis, ImpactNormal);
-	float TireForceCausingAntiPitch = FVector3f::DotProduct(Wheel.State.TireForce, ArmAxisProjOnGround.GetSafeNormal());
-	FVector3f AntiPitchForce = (ArmAxis - ArmAxisProjOnGround) * TireForceCausingAntiPitch;
+	/*---------------------------ANTI-PITCH & ANTI-ROLL GEOMETRY------------------------------*/
+
+	// get rigid handle to get world com position
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = nullptr;
+	if (IsValid(Carbody))
+	{
+		if (const FBodyInstance* BodyInstance = Carbody->GetBodyInstance())
+		{
+			if (const auto Handle = BodyInstance->ActorHandle)
+			{
+				CarbodyHandle = Handle->GetPhysicsThreadAPI();
+			}
+		}
+	}
+
+	// get world com
+	Chaos::FVec3 CarbodyWorldCOM = CarbodyHandle != nullptr ? 
+		Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(CarbodyHandle) : CarbodyAsyncWorldTransform.GetLocation();
+
+	// get arm
+	Chaos::FVec3 LeverArmVec = PosToApplyImpulse - CarbodyWorldCOM;
+	float LeverArmLengthSq = LeverArmVec.SquaredLength();
+
+	// get torque caused by tire force
+	Chaos::FVec3 InducedTorqueWorld = Chaos::FVec3::CrossProduct(LeverArmVec, Wheel.State.TireForce);
+
+	// transform torque into carbody space
+	Chaos::FVec3 InducedTorqueLocal = CarbodyAsyncWorldTransform.GetRotation().UnrotateVector(InducedTorqueWorld);
+
+	// get anti-pitch value
+	bool bIsDiving = InducedTorqueLocal.Y < 0.f;
+	float AntiPitchScale = bIsDiving ? Suspension.State.AntiDiveRatio : Suspension.State.AntiSquatRatio;
+
+	// get anti-roll value
+	float AntiRollScale = Suspension.State.AntiRollRatio;
+
+	// get counter torque
+	Chaos::FVec3 TargetCounterTorqueLocal = 
+		-Chaos::FVec3(InducedTorqueLocal.X * AntiRollScale, InducedTorqueLocal.Y * AntiPitchScale, InducedTorqueLocal.Z);
+
+	// get counter torque in world space
+	Chaos::FVec3 TargetCounterTorqueWorld = CarbodyAsyncWorldTransform.GetRotation().RotateVector(TargetCounterTorqueLocal);
+
+	// get normal of ground
+	FVector ImpactNormal = (FVector)Suspension.State.ImpactNormal;
+
+	// Torque Axis for Normal Force (1N)
+	Chaos::FVec3 NormalTorqueAxis = Chaos::FVec3::CrossProduct(LeverArmVec, ImpactNormal);
+	float EffectiveLeverArmSq = NormalTorqueAxis.SizeSquared();
+
+	// get final jacking force
+	Chaos::FVec3 FinalJackingForce = Chaos::FVec3(0.f);
+	if (EffectiveLeverArmSq > SMALL_NUMBER)
+	{
+		float ForceMagnitude = Chaos::FVec3::DotProduct(TargetCounterTorqueWorld, NormalTorqueAxis) / EffectiveLeverArmSq;
+
+		FinalJackingForce = ImpactNormal * ForceMagnitude;
+	}
+
+	/*-------------------------------------APPLY FORCE---------------------------------------*/
 
 	// project the suspension force onto the impact normal
 	// so that the car will not move by itself when parked
-	FVector3f SuspensionForceProj = ImpactNormal * Suspension.State.ForceAlongImpactNormal;
-	FVector Impulse = (FVector)(Wheel.State.TireForce + SuspensionForceProj + AntiPitchForce) * Wheel.State.PhysicsDeltaTime;
-	Impulse *= 100.;
+	FVector SuspensionForceProj = ImpactNormal * Suspension.State.ForceAlongImpactNormal;
+	FVector Impulse = ((FVector)Wheel.State.TireForce + SuspensionForceProj + FinalJackingForce) * Wheel.State.PhysicsDeltaTime;
+	Impulse *= 100.;	// because of the unit of unreal engine
 
-	if (IsValid(Carbody) && Carbody->IsPhysicsStateCreated())
-	{
-		// add impulse at carbody
-		UAsyncTickFunctions::ATP_AddImpulseAtPosition(
-			Carbody,
-			PosToApplyImpulse,
-			Impulse
-		);
-	}
+	// apply force to carbody
+	FVector AngularImpulse = FVector::CrossProduct(LeverArmVec, Impulse);
+	CarbodyHandle->SetLinearImpulse(CarbodyHandle->LinearImpulse() + Impulse, false);
+	CarbodyHandle->SetAngularImpulse(CarbodyHandle->AngularImpulse() + AngularImpulse, false);
 
 	// also add force to the contacted component
-	if (Suspension.RayCastResult.Component.IsValid() &&
-		Suspension.RayCastResult.Component.Get()->IsPhysicsStateCreated() &&
-		Suspension.RayCastResult.Component.Get()->IsSimulatingPhysics())
+	if (UPrimitiveComponent* HitComponent = Suspension.RayCastResult.Component.Get())
 	{
-		UAsyncTickFunctions::ATP_AddImpulseAtPosition(
-			Suspension.RayCastResult.Component.Get(),
-			Suspension.State.ImpactPoint,
-			-Impulse,
-			Suspension.RayCastResult.BoneName
-		);
+		if (HitComponent->IsPhysicsStateCreated() &&
+			HitComponent->IsSimulatingPhysics())
+		{
+			UAsyncTickFunctions::ATP_AddImpulseAtPosition(
+				HitComponent,
+				Suspension.State.ImpactPoint,
+				-Impulse,
+				Suspension.RayCastResult.BoneName
+			);
+		}
 	}
 }
 
@@ -223,8 +303,8 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 		TimeSinceLastConfigSync -= ConfigSyncInterval;
 
 		// update cached curves
-		Suspension.UpdateCachedRichCurves();
-		Wheel.UpdateCachedRichCurves();
+		Suspension.UpdateCachedRichCurves(SuspensionKinematicsConfig);
+		Wheel.UpdateCachedRichCurves(TireConfig);
 
 		// check if sprungmass should be updated
 		FVector NewRelativeLocation = GetRelativeLocation();
@@ -232,9 +312,6 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 		{
 			if (IsValid(WheelCoordinator))WheelCoordinator->NotifyWheelMoved();
 		}
-
-		// check if suspension damping need to be updated
-		Suspension.CheckIsDampingDirty();
 	}
 	
 	// update animation
@@ -296,7 +373,7 @@ void UVehicleWheelComponent::InitializeWheel()
 
 void UVehicleWheelComponent::SetSprungMass(float NewSprungMass)
 {
-	Suspension.SetSprungMass(NewSprungMass);
+	Suspension.SetSprungMass(SuspensionSpringConfig, NewSprungMass);
 }
 
 FTransform3f UVehicleWheelComponent::GetWheelRelativeTransform()
@@ -370,9 +447,18 @@ void UVehicleWheelComponent::UpdatePhysics(
 	TimeSinceLastPhysicsTick = 0.f;
 
 	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody);
+	if (!CarbodyAsyncWorldTransform.IsRotationNormalized()) CarbodyAsyncWorldTransform.NormalizeRotation();
 
 	//Suspension
 	Suspension.UpdateSuspension(
+		WheelConfig.Radius,
+		WheelConfig.Width,
+		SuspensionKinematicsConfig,
+		SuspensionSpringConfig,
+		GetRelativeTransform(),
+		CarbodyAsyncWorldTransform,
+		GetWorld(),
+		Carbody,
 		InPhysicsDeltaTime, 
 		InSteeringAngle,
 		InSwaybarForce);
@@ -384,6 +470,9 @@ void UVehicleWheelComponent::UpdatePhysics(
 		InBrakeTorque,
 		InHandbrakeTorque,
 		InReflectedInertia,
+		WheelConfig,
+		TireConfig,
+		ABSConfig,
 		Suspension.State);
 
 	ApplyWheelForce();
@@ -397,7 +486,16 @@ void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
 {
 	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody);
 
-	return Suspension.StartUpdateSolidAxle(InSteeringAngle, OutApporximatedWheelWorldPos, Ctx);
+	return Suspension.StartUpdateSolidAxle(
+		WheelConfig.Radius,
+		WheelConfig.Width,
+		SuspensionKinematicsConfig,
+		GetRelativeTransform(),
+		CarbodyAsyncWorldTransform,
+		GetWorld(),
+		InSteeringAngle, 
+		OutApporximatedWheelWorldPos, 
+		Ctx);
 }
 
 void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
@@ -413,6 +511,10 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 )
 {
 	Suspension.FinalizeUpdateSolidAxle(
+		WheelConfig.Radius,
+		SuspensionKinematicsConfig,
+		SuspensionSpringConfig,
+		Carbody,
 		InPhysicsDeltaTime, 
 		InSwaybarForce,
 		Ctx,
@@ -425,6 +527,9 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 		InBrakeTorque,
 		InHandbrakeTorque,
 		InReflectedInertia,
+		WheelConfig,
+		TireConfig,
+		ABSConfig,
 		Suspension.State);
 
 	ApplyWheelForce();
@@ -435,7 +540,13 @@ void UVehicleWheelComponent::ApplySuspensionStateDirect(float InExtensionRatio, 
 	const int32 Iteration = 2;
 	for (int32 i = 0; i < Iteration; i++)
 	{
-		Suspension.ApplySuspensionStateDirect(InExtensionRatio, InSteeringAngle);
+		Suspension.ApplySuspensionStateDirect(
+			WheelConfig.Radius,
+			SuspensionKinematicsConfig,
+			GetRelativeTransform(),
+			CarbodyAsyncWorldTransform,
+			InExtensionRatio, 
+			InSteeringAngle);
 		UpdateWheelAnim();
 	}
 }
@@ -447,6 +558,10 @@ void UVehicleWheelComponent::StartApplySolidAxleStateDirect(
 	FVehicleSuspensionSimContext& Ctx)
 {
 	Suspension.StartApplySolidAxleStateDirect(
+		WheelConfig.Radius,
+		SuspensionKinematicsConfig,
+		GetRelativeTransform(),
+		CarbodyAsyncWorldTransform,
 		InExtensionRatio, 
 		InSteeringAngle, 
 		OutApporximatedWheelWorldPos, 
@@ -460,6 +575,8 @@ void UVehicleWheelComponent::FinalizeApplySolidAxleStateDirect(
 	const FVector& InAxleWorldDirection)
 {
 	Suspension.FinalizeApplySolidAxleStateDirect(
+		WheelConfig.Radius,
+		SuspensionKinematicsConfig,
 		Ctx,
 		InKnuckleWorldPos,
 		InAxleWorldDirection
@@ -520,17 +637,17 @@ FTransform UVehicleWheelComponent::GetCarbodyWorldTransform()
 
 void UVehicleWheelComponent::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)
 {
-	Suspension.DrawSuspension(Duration, Thickness, bDrawSuspension, bDrawWheel, bDrawRayCast);
+	Suspension.DrawSuspension(this, Duration, Thickness, bDrawSuspension, bDrawWheel, bDrawRayCast);
 }
 
 void UVehicleWheelComponent::DrawSuspensionForce(float Duration, float Thickness, float Length)
 {
-	Suspension.DrawSuspensionForce(Duration, Thickness, Length);
+	Suspension.DrawSuspensionForce(this, Duration, Thickness, Length);
 }
 
 void UVehicleWheelComponent::DrawWheelForce(float Duration, float Thickness, float Length, bool bDrawVelocity, bool bDrawSlip, bool bDrawInertia)
 {
-	Wheel.DrawWheelForce(CurrentWorld, Suspension.State, Duration, Thickness, Length, bDrawVelocity, bDrawSlip, bDrawInertia);
+	Wheel.DrawWheelForce(this, Suspension.State, Duration, Thickness, Length, bDrawVelocity, bDrawSlip, bDrawInertia);
 }
 
 bool UVehicleWheelComponent::SetMesh(

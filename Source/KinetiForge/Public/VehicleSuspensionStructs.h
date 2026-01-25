@@ -64,6 +64,12 @@ struct KINETIFORGE_API FVehicleSuspensionKinematicsConfig
 	UCurveFloat* ToeCurve = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone", EditConditionHides, ToolTip = "X: SuspensionCompressionRatio; Y:Caster; Only enabled when the suspension type is double-wishbone"))
 	UCurveFloat* CasterCurve = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Controls suspension resistance to compression under BRAKING (Front wheels mostly).\nX-Axis: Suspension Compression (0 = Fully Extended, 1 = Fully Compressed).\nY-Axis: Counter-Force Ratio (0 = Natural Dive, 1 = No Dive/Flat, >1 = Nose Lift)."))
+	UCurveFloat* AntiDiveCurve = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Controls suspension resistance to compression under BRAKING (Front wheels mostly).\nX-Axis: Suspension Compression (0 = Fully Extended, 1 = Fully Compressed).\nY-Axis: Counter-Force Ratio (0 = Natural Squat, 1 = No Squat/Flat, >1 = Lift/Anti-Gravity)."))
+	UCurveFloat* AntiSquatCurve = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Controls suspension resistance to compression under BRAKING (Front wheels mostly).\nX-Axis: Suspension Compression (0 = Fully Extended, 1 = Fully Compressed).\nY-Axis: Counter-Force Ratio (0 = Natural Roll, 1 = No Roll/Flat, >1 = Roll in opposite direction)."))
+	UCurveFloat* AntiRollCurve = nullptr;
 };
 
 USTRUCT(BlueprintType)
@@ -94,6 +100,12 @@ struct KINETIFORGE_API FVehicleSuspensionCachedRichCurves
 	FRichCurve ToeCurve;
 	UPROPERTY()
 	FRichCurve CasterCurve;
+	UPROPERTY()
+	FRichCurve AntiDiveCurve;
+	UPROPERTY()
+	FRichCurve AntiSquatCurve;
+	UPROPERTY()
+	FRichCurve AntiRollCurve;
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "A simplified HitResult"))
@@ -128,8 +140,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	float SteeringAngle = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float SuspensionCurrentLength = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Config")
-	float CriticalDamping = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float SprungMass = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
@@ -146,22 +156,28 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	FVector3f TopMountRelativePos = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
 	FVector3f StrutDirection = FVector3f(0.f);	// strut direction in world space
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float AntiDiveRatio = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float AntiSquatRatio = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float AntiRollRatio = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	FVector3f ImpactPointWorldVelocity = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector3f ImpactNormal = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector ImpactPoint = FVector(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector WheelWorldPos = FVector(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FQuat4f WheelRelativeRotation = FQuat4f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	float ImpactFriction = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Position")
 	bool bIsRightWheel = true;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	bool bHitGround = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FVector WheelWorldPos = FVector(0.f);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	FQuat4f WheelRelativeRotation = FQuat4f(0.f);
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "suspension context in simulation"))
