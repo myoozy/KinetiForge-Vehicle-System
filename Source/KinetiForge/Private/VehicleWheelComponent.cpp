@@ -270,9 +270,12 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	Impulse *= 100.;	// because of the unit of unreal engine
 
 	// apply force to carbody
-	FVector AngularImpulse = FVector::CrossProduct(LeverArmVec, Impulse);
-	CarbodyHandle->SetLinearImpulse(CarbodyHandle->LinearImpulse() + Impulse, false);
-	CarbodyHandle->SetAngularImpulse(CarbodyHandle->AngularImpulse() + AngularImpulse, false);
+	if (CarbodyHandle)
+	{
+		FVector AngularImpulse = FVector::CrossProduct(LeverArmVec, Impulse);
+		CarbodyHandle->SetLinearImpulse(CarbodyHandle->LinearImpulse() + Impulse, false);
+		CarbodyHandle->SetAngularImpulse(CarbodyHandle->AngularImpulse() + AngularImpulse, false);
+	}
 
 	// also add force to the contacted component
 	if (UPrimitiveComponent* HitComponent = Suspension.RayCastResult.Component.Get())
