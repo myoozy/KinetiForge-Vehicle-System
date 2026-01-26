@@ -25,7 +25,7 @@ struct KINETIFORGE_API FAxleAssemblyConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Only by using existing manually created Components can the level sequence correctly recognize and record its animations."))
     bool bUseExistingComponent = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bUseExistingComponent", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (GetOptions = "GetNamesOfAxlesOfOwner", EditCondition = "bUseExistingComponent", EditConditionHides))
     FName AxleComponentName = FName();
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
@@ -67,28 +67,28 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bUseExistingEngineComponent = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingEngineComponent", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfEnginesOfOwner", EditCondition = "bUseExistingEngineComponent", EditConditionHides))
     FName EngineComponentName = FName();
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingEngineComponent", EditConditionHides))
     TSubclassOf<UVehicleEngineComponent> EngineConfig;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bUseExistingClutchComponent = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingClutchComponent", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfClutchesOfOwner", EditCondition = "bUseExistingClutchComponent", EditConditionHides))
     FName ClutchComponentName = FName();
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingClutchComponent", EditConditionHides))
     TSubclassOf<UVehicleClutchComponent> ClutchConfig;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bUseExistingGearboxComponent = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingGearboxComponent", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfGearboxesOfOwner", EditCondition = "bUseExistingGearboxComponent", EditConditionHides))
     FName GearboxComponentName = FName();
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingGearboxComponent", EditConditionHides))
     TSubclassOf<UVehicleGearboxComponent> GearboxConfig;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bUseExistingTransferCaseComponent = false;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingTransferCaseComponent", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfTransferCasesOfOwner", EditCondition = "bUseExistingTransferCaseComponent", EditConditionHides))
     FName TransferCaseComponentName = FName();
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingTransferCaseComponent", EditConditionHides))
     TSubclassOf<UVehicleDifferentialComponent> TransferCaseConfig;
@@ -295,4 +295,15 @@ private:
     bool GeneratePowerUnit();
     int GenerateAxles();    //-1: no owner actor; -2: no valid Carbody; -3: there're already axles
     int SearchExistingAxles();
+
+    UFUNCTION()
+    TArray<FName> GetNamesOfAxlesOfOwner();
+    UFUNCTION()
+    TArray<FName> GetNamesOfEnginesOfOwner();
+    UFUNCTION()
+    TArray<FName> GetNamesOfClutchesOfOwner();
+    UFUNCTION()
+    TArray<FName> GetNamesOfGearboxesOfOwner();
+    UFUNCTION()
+    TArray<FName> GetNamesOfTransferCasesOfOwner();
 };

@@ -22,9 +22,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ToolTip = "Select whether to use existing Components. If not, dynamically created wheels can still be correctly identified and have their animations recorded by the level sequence."))
 	bool bUseExistingWheelComponent = false;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingWheelComponent", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfWheelsOfOwner", EditCondition = "bUseExistingWheelComponent", EditConditionHides))
 	FName LeftWheelComponentName = FName();
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingWheelComponent", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfWheelsOfOwner", EditCondition = "bUseExistingWheelComponent", EditConditionHides))
 	FName RightWheelComponentName = FName();
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelComponent", EditConditionHides))
 	TSubclassOf<UVehicleWheelComponent> WheelConfig;
@@ -32,7 +32,7 @@ public:
 	FRotator VehicleWheelComponentSetupRotation;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	bool bUseExistingDifferentialComponent = false;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "bUseExistingDifferentialComponent", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfDifferentialsOfOwner", EditCondition = "bUseExistingDifferentialComponent", EditConditionHides))
 	FName DifferentialComponentName = FName();
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingDifferentialComponent", EditConditionHides))
 	TSubclassOf<UVehicleDifferentialComponent> DifferentialConfig;
@@ -140,4 +140,9 @@ private:
 	bool GenerateWheels();
 	bool SearchExistingWheels();
 	bool GenerateDifferential();
+
+	UFUNCTION()
+	TArray<FName> GetNamesOfWheelsOfOwner();
+	UFUNCTION()
+	TArray<FName> GetNamesOfDifferentialsOfOwner();
 };

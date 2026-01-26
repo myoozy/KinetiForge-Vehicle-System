@@ -5,6 +5,7 @@
 #include "VehicleWheelComponent.h"
 #include "VehicleDifferentialComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
+#include "VehicleUtil.h"
 
 // Sets default values for this component's properties
 UVehicleAxleAssemblyComponent::UVehicleAxleAssemblyComponent()
@@ -695,18 +696,21 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 		RightWheel->DestroyComponent();
 	}
 
+	AActor* Owner = GetOwner();
+	if (!IsValid(Owner))return false;
+
 	//Generate left wheel
 	if (!IsValid(LeftWheel) && AxleLayout != EVehicleAxleLayout::SingleRight)
 	{
 		LeftWheel = Cast<UVehicleWheelComponent>
-			(GetOwner()->AddComponentByClass(UVehicleWheelComponent::StaticClass(), false, FTransform(), false));
+			(Owner->AddComponentByClass(UVehicleWheelComponent::StaticClass(), false, FTransform(), false));
 	}
 
 	//Generate right wheel
 	if (!IsValid(RightWheel) && AxleLayout != EVehicleAxleLayout::SingleLeft)
 	{
 		RightWheel = Cast<UVehicleWheelComponent>
-			(GetOwner()->AddComponentByClass(UVehicleWheelComponent::StaticClass(), false, FTransform(), false));
+			(Owner->AddComponentByClass(UVehicleWheelComponent::StaticClass(), false, FTransform(), false));
 	}
 
 	switch (AxleLayout)
@@ -728,35 +732,28 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 
 bool UVehicleAxleAssemblyComponent::SearchExistingWheels()
 {
-	if (bUseExistingWheelComponent && GetOwner())
+	AActor* Owner = GetOwner();
+	if (bUseExistingWheelComponent && IsValid(Owner))
 	{
-		// search for wheels
-		for (UActorComponent* Comp : GetOwner()->GetComponents())
+		if (!IsValid(LeftWheel))
 		{
-			UVehicleWheelComponent* Wheel;
-			Wheel = Cast<UVehicleWheelComponent>(Comp);
-			if (IsValid(Wheel))
-			{
-				if (!IsValid(LeftWheel))
-				{
-					if (Wheel->GetName() == LeftWheelComponentName)
-					{
-						LeftWheel = Wheel;
-						LeftWheel->InitializeWheel();
-					}
-				}
-				if (!IsValid(RightWheel))
-				{
-					if (Wheel->GetName() == RightWheelComponentName)
-					{
-						RightWheel = Wheel;
-						RightWheel->InitializeWheel();
-					}
-				}
-				if (IsValid(LeftWheel) && IsValid(RightWheel)) return true;
-			}
+			LeftWheel = VehicleUtil::GetComponentByName<UVehicleWheelComponent>(Owner, LeftWheelComponentName);
 		}
-		return false;
+		if (!IsValid(RightWheel))
+		{
+			RightWheel = VehicleUtil::GetComponentByName<UVehicleWheelComponent>(Owner, RightWheelComponentName);
+		}
+		bool bIsLeftValid = IsValid(LeftWheel);
+		if (bIsLeftValid)
+		{
+			LeftWheel->InitializeWheel();
+		}
+		bool bIsRightValid = IsValid(RightWheel);
+		if (bIsRightValid)
+		{
+			RightWheel->InitializeWheel();
+		}
+		return bIsLeftValid && bIsRightValid;
 	}
 	else
 	{
@@ -766,24 +763,15 @@ bool UVehicleAxleAssemblyComponent::SearchExistingWheels()
 
 bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 {
+	AActor* Owner = GetOwner();
 	//set differential
-	if (!IsValid(Differential) && GetOwner())
+	if (!IsValid(Differential) && IsValid(Owner))
 	{
 		bool bExistingDiffFound = false;
 		if (bUseExistingDifferentialComponent)
 		{
-			// search for differential
-			for (UActorComponent* Comp : GetOwner()->GetComponents())
-			{
-				UVehicleDifferentialComponent* Diff;
-				Diff = Cast<UVehicleDifferentialComponent>(Comp);
-				if (IsValid(Diff) && Comp->GetFName() == DifferentialComponentName)
-				{
-					Differential = Diff;
-					bExistingDiffFound = true;
-					break;
-				}
-			}
+			Differential = VehicleUtil::GetComponentByName<UVehicleDifferentialComponent>(Owner, DifferentialComponentName);
+			bExistingDiffFound = IsValid(Differential);
 		}
 
 		// if not found, generate one
@@ -793,15 +781,25 @@ bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 			if (DifferentialConfig)
 			{
 				Differential = Cast<UVehicleDifferentialComponent>
-					(GetOwner()->AddComponentByClass(DifferentialConfig, false, FTransform(), false));
+					(Owner->AddComponentByClass(DifferentialConfig, false, FTransform(), false));
 			}
 			else
 			{
 				Differential = Cast<UVehicleDifferentialComponent>
-					(GetOwner()->AddComponentByClass(UVehicleDifferentialComponent::StaticClass(), false, FTransform(), false));
+					(Owner->AddComponentByClass(UVehicleDifferentialComponent::StaticClass(), false, FTransform(), false));
 			}
 		}
 	}
 
 	return IsValid(Differential);
+}
+
+TArray<FName> UVehicleAxleAssemblyComponent::GetNamesOfWheelsOfOwner()
+{
+	return VehicleUtil::GetNamesOfComponentsOfActor<UVehicleWheelComponent>(this);
+}
+
+TArray<FName> UVehicleAxleAssemblyComponent::GetNamesOfDifferentialsOfOwner()
+{
+	return VehicleUtil::GetNamesOfComponentsOfActor<UVehicleDifferentialComponent>(this);
 }
