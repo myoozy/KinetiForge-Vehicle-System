@@ -19,8 +19,6 @@ class KINETIFORGE_API UVehicleAsyncTickComponent : public UAsyncTickActorCompone
 public:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	virtual void BeginDestroy() override;
-	virtual void OnUnregister() override;
 	virtual void NativeAsyncTick(float DeltaTime) override;
 	virtual void AsyncPhysicsTickComponent(float DeltaTime, float SimTime) override;
 
@@ -30,11 +28,13 @@ public:
 	void Register(UVehicleDriveAssemblyComponent* newDriveAssembly);
 	void UnRegister(UVehicleDriveAssemblyComponent* targetDriveAssembly);
 
-	bool bUpdatePhysicsOnGameThread = true;
+	bool bUpdatePhysicsOnGameThread = false;
 
 protected:
 	TArray<TWeakObjectPtr<UVehicleDriveAssemblyComponent>> DriveAssemblies;
 
 private:
 	void UpdateVehiclePhysics(float DeltaTime);
+
+	bool bCouldUpdatePhysics = false;
 };

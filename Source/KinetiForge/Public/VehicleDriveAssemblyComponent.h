@@ -165,21 +165,21 @@ protected:
     EVehicleEngineOperationMode ServerVehicleEngineOperationMode;
 
     UPROPERTY()
-    TArray <TObjectPtr<UVehicleAxleAssemblyComponent>> Axles;
+    TArray <TWeakObjectPtr<UVehicleAxleAssemblyComponent>> Axles;
     UPROPERTY()
-    TObjectPtr<UVehicleEngineComponent> Engine;
+    TWeakObjectPtr<UVehicleEngineComponent> Engine;
     UPROPERTY()
-    TObjectPtr<UVehicleClutchComponent> Clutch;
+    TWeakObjectPtr<UVehicleClutchComponent> Clutch;
     UPROPERTY()
-    TObjectPtr<UVehicleGearboxComponent> Gearbox;
+    TWeakObjectPtr<UVehicleGearboxComponent> Gearbox;
     UPROPERTY()
-    TObjectPtr<UVehicleDifferentialComponent> TransferCase;
+    TWeakObjectPtr<UVehicleDifferentialComponent> TransferCase;
     UPROPERTY()
-    TObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
+    TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
     UPROPERTY()
-    TObjectPtr<UVehicleAsyncTickComponent> VehicleAsyncTickComponent;
+    TWeakObjectPtr<UVehicleAsyncTickComponent> VehicleAsyncTickComponent;
     UPROPERTY()
-    TObjectPtr<UPrimitiveComponent> Carbody;
+    TWeakObjectPtr<UPrimitiveComponent> Carbody;
 
     //physics
     float PhysicsDeltaTime;
@@ -243,17 +243,17 @@ public:
         float InStartSpeed_mps = 5.f);
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void GetInputValues(FVehicleInputPipeline& Out) { Out = InputValues; }
-    UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator; }
+    UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator.Get(); }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
-    TArray<UVehicleAxleAssemblyComponent*> GetAxles() { return Axles; }
+    void GetAxles(TArray<UVehicleAxleAssemblyComponent*>& OutAxles);
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
-    UVehicleEngineComponent* GetEngine() { return Engine; }
+    UVehicleEngineComponent* GetEngine() { return Engine.Get(); }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
-    UVehicleClutchComponent* GetClutch() { return Clutch; }
+    UVehicleClutchComponent* GetClutch() { return Clutch.Get(); }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
-    UVehicleGearboxComponent* GetGearbox() { return Gearbox; }
+    UVehicleGearboxComponent* GetGearbox() { return Gearbox.Get(); }
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
-    TArray<UVehicleWheelComponent*> GetWheels();
+    void GetWheels(TArray<UVehicleWheelComponent*>& OutWheels);
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void DestroyTargetAxle(UVehicleAxleAssemblyComponent* InTargetAxle);
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")

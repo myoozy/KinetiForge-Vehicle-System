@@ -28,7 +28,7 @@ public:
 		const FTransform& ComponentRelativeTransform,
 		const FTransform& AsyncCarbodyWorldTransform,
 		const UWorld* CurrentWorld,
-		UPrimitiveComponent* Carbody,
+		Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
 		float InDeltaTime,
 		float InSteeringAngle,
 		float InSwaybarForce
@@ -48,7 +48,7 @@ public:
 		const float WheelRadius,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FVehicleSuspensionSpringConfig& SpringConfig,
-		UPrimitiveComponent* Carbody,
+		Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
 		float InDeltaTime,
 		float InSwaybarForce,
 		FVehicleSuspensionSimContext& Ctx,

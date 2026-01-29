@@ -97,7 +97,7 @@ struct FVehicleTCSConfig
 
 
 USTRUCT(BlueprintType, Blueprintable)
-struct FVehicleAxleSimData
+struct FVehicleAxleSimState
 {
 	GENERATED_BODY()
 

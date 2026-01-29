@@ -6,6 +6,7 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
+#include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 
 /**
  * 
@@ -103,4 +104,23 @@ public:
         }
         return Names;
     }
+
+    static FORCEINLINE Chaos::FRigidBodyHandle_Internal* GetInternalHandle(UPrimitiveComponent* Component, FName BoneName)
+    {
+        if (IsValid(Component))
+        {
+            if (const FBodyInstance* BodyInstance = Component->GetBodyInstance(BoneName))
+            {
+                if (const auto Handle = BodyInstance->ActorHandle)
+                {
+                    if (Chaos::FRigidBodyHandle_Internal* RigidHandle = Handle->GetPhysicsThreadAPI())
+                    {
+                        return RigidHandle;
+                    }
+                }
+            }
+        }
+        return nullptr;
+    }
+
 };

@@ -56,28 +56,54 @@ protected:
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 
 	UPROPERTY()
-	TObjectPtr<UPrimitiveComponent> Carbody;
+	TWeakObjectPtr<UPrimitiveComponent> Carbody;
 	UPROPERTY()
-	TObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
+	TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
 	
-	FVehicleAxleSimData SimData;
+	FVehicleAxleSimState State;
 
 	UPROPERTY()
-	TObjectPtr<UVehicleWheelComponent> LeftWheel;
+	TWeakObjectPtr<UVehicleWheelComponent> LeftWheel;
 	UPROPERTY()
-	TObjectPtr<UVehicleWheelComponent> RightWheel;
+	TWeakObjectPtr<UVehicleWheelComponent> RightWheel;
 	UPROPERTY()
-	TObjectPtr<UVehicleDifferentialComponent> Differential;
+	TWeakObjectPtr<UVehicleDifferentialComponent> Differential;
 
-	void UpdateTwoWheelAxle(float InDriveTorque, float InReflectedInertia);
-	void UpdateSingleWheelAxle(float InDriveTorque, float InReflectedInertia);
+	void UpdateTwoWheelAxle(
+		UVehicleWheelComponent* WheelL, 
+		UVehicleWheelComponent* WheelR, 
+		float InDriveTorque, 
+		float InReflectedInertia
+	);
+	void UpdateSingleWheelAxle(
+		UVehicleWheelComponent* WheelL, 
+		UVehicleWheelComponent* WheelR, 
+		float InDriveTorque, 
+		float InReflectedInertia
+	);
 	void UpdateSteering(float InSteeringInput);
 	void UpdateSteeringAssist(float InSteeringInput);
-	void CalculateLinearVelocity();
-	void UpdateSwaybarForce();
-	void UpdateTCS(float TargetDriveTorque);
-	void UpdateIndependentSuspensionPhysics();
-	void UpdateSolidAxlePhysics();
+	void CalculateLinearVelocity(
+		UVehicleWheelComponent* WheelL, 
+		UVehicleWheelComponent* WheelR
+	);
+	void UpdateSwaybarForce(
+		UVehicleWheelComponent* WheelL, 
+		UVehicleWheelComponent* WheelR
+	);
+	void UpdateTCS(
+		UVehicleWheelComponent* WheelL, 
+		UVehicleWheelComponent* WheelR, 
+		float TargetDriveTorque
+	);
+	void UpdateIndependentSuspensionPhysics(
+		UVehicleWheelComponent* WheelL, 
+		UVehicleWheelComponent* WheelR
+	);
+	void UpdateSolidAxlePhysics(
+		UVehicleWheelComponent* WheelL, 
+		UVehicleWheelComponent* WheelR
+	);
 
 public:	
 	// Called every frame
@@ -99,16 +125,16 @@ public:
 		float& OutAngularVelocity);
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	void GetWheels(UVehicleWheelComponent*& OutLeftWheel, UVehicleWheelComponent*& OutRightWheel)
-	{ OutLeftWheel = LeftWheel; OutRightWheel = RightWheel; }
+	{ OutLeftWheel = LeftWheel.Get(); OutRightWheel = RightWheel.Get(); }
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	void GetDifferential(UVehicleDifferentialComponent*& OutDifferential)
-	{ OutDifferential = Differential; }
+	{ OutDifferential = Differential.Get(); }
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	void GetAxleMovement(FVehicleAxleSimData& Out) { Out = SimData; }
+	void GetAxleMovement(FVehicleAxleSimState& Out) { Out = State; }
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	void SetP3MotorTorque(float NewTorque) { SimData.P3MotorTorque = NewTorque; }
+	void SetP3MotorTorque(float NewTorque) { State.P3MotorTorque = NewTorque; }
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
-	float GetP3MotorTorque() { return SimData.P3MotorTorque; }
+	float GetP3MotorTorque() { return State.P3MotorTorque; }
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void SetWheelPosition(float NewTrackWidth);
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
@@ -129,11 +155,11 @@ public:
 		float SteeringAngle = 0.f
 	);
 
-	void SetWheelBase(float NewWheelBase) { SimData.WheelBase = NewWheelBase; }
+	void SetWheelBase(float NewWheelBase) { State.WheelBase = NewWheelBase; }
 	void GetLinearVelocity(FVector3f& OutLocalVelocity, FVector3f& OutWorldVelocity);
-	float GetAngularVelocity() { return SimData.AxleAngularVelocity; }
-	float GetTotalAxleInertia() { return SimData.AxleTotalInertia; }
-	int32 GetNumOfWheelsOnGround() { return SimData.NumOfWheelOnGround; }
+	float GetAngularVelocity() { return State.AxleAngularVelocity; }
+	float GetTotalAxleInertia() { return State.AxleTotalInertia; }
+	int32 GetNumOfWheelsOnGround() { return State.NumOfWheelOnGround; }
 	FVector3f GetAxleCenter();
 
 private:

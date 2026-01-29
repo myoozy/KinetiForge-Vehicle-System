@@ -33,29 +33,23 @@ protected:
 	float TimeSinceLastRefresh = 0.f;
 
 	UPROPERTY()
-	UPrimitiveComponent* Carbody;
+	TWeakObjectPtr<UPrimitiveComponent> Carbody;
 	FVector3f CarbodyCOM;		//local position
 
 
 	UPROPERTY()
 	TArray<TWeakObjectPtr<UVehicleWheelComponent>> RegisteredWheels;
-	int NumOfWheels = 0.f;
 	TArray<float> StaticLoadMasses;
 	bool bMassMatrixDirty = false;	//if wheel position changed, or if wheel is added or destoryed 
 
 	UPROPERTY()
 	TArray<TWeakObjectPtr<UVehicleAxleAssemblyComponent>> RegisteredAxles;
-	int NumOfAxles = 0.f;
 	TArray<float> WheelBases;
 	bool bWheelBaseDataDirty = false;
 
 	UPROPERTY()
 	TArray<TWeakObjectPtr<UVehicleDriveAssemblyComponent>> RegisteredDriveAssemblies;
 
-	bool FindCarbody();
-	int FindAllWheels(TArray<UVehicleWheelComponent*>& OutWheels);
-	int FindAllAxles(TArray <UVehicleAxleAssemblyComponent*>& OutAxles);
-	int FindAllDriveAssemblies(TArray<UVehicleDriveAssemblyComponent*>& OutDriveAssemblies);
 	bool UpdateWheelSprungMass();
 	void UpdateWheelBase();
 

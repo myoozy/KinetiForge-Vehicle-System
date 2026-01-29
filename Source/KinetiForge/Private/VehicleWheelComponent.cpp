@@ -101,8 +101,8 @@ void UVehicleWheelComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody);
-	if (IsValid(WheelCoordinator))
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
+	if (WheelCoordinator.IsValid())
 	{
 		WheelCoordinator->RegisterWheel(this);
 	}
@@ -127,29 +127,35 @@ void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 	if (IsValid(WheelKnuckleComponent) && !WheelKnuckleComponent->IsBeingDestroyed())
 	{
 		WheelKnuckleComponent->DestroyComponent();
-		WheelKnuckleComponent = nullptr;
 	}
+	WheelKnuckleComponent = nullptr;
 
 	if (IsValid(WheelMeshComponent) && !WheelMeshComponent->IsBeingDestroyed())
 	{
 		WheelMeshComponent->DestroyComponent();
-		WheelMeshComponent = nullptr;
 	}
+	WheelMeshComponent = nullptr;
+
 	if (IsValid(BrakeMeshComponent) && !BrakeMeshComponent->IsBeingDestroyed())
 	{
 		BrakeMeshComponent->DestroyComponent();
-		BrakeMeshComponent = nullptr;
+	}
+	BrakeMeshComponent = nullptr;
+
+	if (WheelCoordinator.IsValid() && !WheelCoordinator->IsBeingDestroyed())
+	{ 
+		WheelCoordinator->NotifyWheelMoved(); 
 	}
 
-	if (IsValid(WheelCoordinator) && !WheelCoordinator->IsBeingDestroyed()) { WheelCoordinator->NotifyWheelMoved(); }
-
-	if (IsValid(CurrentWorld))CurrentWorld = nullptr;
-	if (IsValid(Carbody))Carbody = nullptr;
-	if (TireConfig.Fx)TireConfig.Fx = nullptr;
-	if (TireConfig.Fy)TireConfig.Fy = nullptr;
-	if (SuspensionKinematicsConfig.CamberCurve)SuspensionKinematicsConfig.CamberCurve = nullptr;
-	if (SuspensionKinematicsConfig.ToeCurve)SuspensionKinematicsConfig.ToeCurve = nullptr;
-	if (SuspensionKinematicsConfig.CasterCurve)SuspensionKinematicsConfig.CasterCurve = nullptr;
+	Carbody = nullptr;
+	TireConfig.Fx = nullptr;
+	TireConfig.Fy = nullptr;
+	SuspensionKinematicsConfig.CamberCurve = nullptr;
+	SuspensionKinematicsConfig.ToeCurve = nullptr;
+	SuspensionKinematicsConfig.CasterCurve = nullptr;
+	SuspensionKinematicsConfig.AntiDiveCurve = nullptr;
+	SuspensionKinematicsConfig.AntiSquatCurve = nullptr;
+	SuspensionKinematicsConfig.AntiRollCurve = nullptr;
 
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
@@ -180,7 +186,7 @@ bool UVehicleWheelComponent::GenerateMeshComponents()
 	return RefreshWheelMesh();
 }
 
-void UVehicleWheelComponent::ApplyWheelForce()
+void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* CarbodyHandle)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelAddForce);
 
@@ -203,19 +209,6 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	}
 
 	/*---------------------------ANTI-PITCH & ANTI-ROLL GEOMETRY------------------------------*/
-
-	// get rigid handle to get world com position
-	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = nullptr;
-	if (IsValid(Carbody))
-	{
-		if (const FBodyInstance* BodyInstance = Carbody->GetBodyInstance())
-		{
-			if (const auto Handle = BodyInstance->ActorHandle)
-			{
-				CarbodyHandle = Handle->GetPhysicsThreadAPI();
-			}
-		}
-	}
 
 	// get world com
 	Chaos::FVec3 CarbodyWorldCOM = CarbodyHandle != nullptr ? 
@@ -280,14 +273,15 @@ void UVehicleWheelComponent::ApplyWheelForce()
 	// also add force to the contacted component
 	if (UPrimitiveComponent* HitComponent = Suspension.RayCastResult.Component.Get())
 	{
+		const FName& BoneName = Suspension.RayCastResult.BoneName;
 		if (HitComponent->IsPhysicsStateCreated() &&
-			HitComponent->IsSimulatingPhysics())
+			HitComponent->IsSimulatingPhysics(BoneName))
 		{
 			UAsyncTickFunctions::ATP_AddImpulseAtPosition(
 				HitComponent,
 				Suspension.State.ImpactPoint,
 				-Impulse,
-				Suspension.RayCastResult.BoneName
+				BoneName
 			);
 		}
 	}
@@ -313,7 +307,18 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 		FVector NewRelativeLocation = GetRelativeLocation();
 		if ((CachedComponentRelativeLocation - NewRelativeLocation).SquaredLength() > 1.f)
 		{
-			if (IsValid(WheelCoordinator))WheelCoordinator->NotifyWheelMoved();
+			if (WheelCoordinator.IsValid())
+			{
+				WheelCoordinator->NotifyWheelMoved();
+			}
+			else
+			{
+				WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
+				if (WheelCoordinator.IsValid())
+				{
+					WheelCoordinator->NotifyWheelMoved();
+				}
+			}
 		}
 	}
 	
@@ -353,13 +358,12 @@ void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Sourc
 
 void UVehicleWheelComponent::InitializeWheel()
 {
-	CurrentWorld = GetWorld();
 	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
-	if (IsValid(Carbody) && Carbody != GetAttachParent())
+	if (Carbody.IsValid() && Carbody != GetAttachParent())
 	{
-		AttachToComponent(Carbody, FAttachmentTransformRules::KeepWorldTransform);
+		AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepWorldTransform);
 	}
-	if (!IsValid(Carbody))
+	if (!Carbody.IsValid())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: Carbody Not Found!"));
 	}
@@ -430,17 +434,21 @@ void UVehicleWheelComponent::UpdatePhysics(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheel);
 
-	//check if carbody is valid
-	if (!IsValid(Carbody))
+	// get rigid handle to get world com position
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = nullptr;
+	if (Carbody.IsValid())
+	{
+		if (const FBodyInstance* BodyInstance = Carbody->GetBodyInstance())
+		{
+			if (const auto Handle = BodyInstance->ActorHandle)
+			{
+				CarbodyHandle = Handle->GetPhysicsThreadAPI();
+			}
+		}
+	}
+	if (!CarbodyHandle)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CarBody!!!"));
-		return;
-	}
-
-	//check if current world is valid
-	if (!IsValid(CurrentWorld))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CurrentWorld!!!"));
 		return;
 	}
 
@@ -449,7 +457,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 	PrevWheelRelativeRot = Suspension.State.WheelRelativeRotation;
 	TimeSinceLastPhysicsTick = 0.f;
 
-	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody);
+	CarbodyAsyncWorldTransform = Chaos::FParticleUtilitiesGT::GetActorWorldTransform(CarbodyHandle);
 	if (!CarbodyAsyncWorldTransform.IsRotationNormalized()) CarbodyAsyncWorldTransform.NormalizeRotation();
 
 	//Suspension
@@ -461,7 +469,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 		GetRelativeTransform(),
 		CarbodyAsyncWorldTransform,
 		GetWorld(),
-		Carbody,
+		CarbodyHandle,
 		InPhysicsDeltaTime, 
 		InSteeringAngle,
 		InSwaybarForce);
@@ -478,7 +486,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 		ABSConfig,
 		Suspension.State);
 
-	ApplyWheelForce();
+	ApplyWheelForce(CarbodyHandle);
 }
 
 void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
@@ -487,7 +495,7 @@ void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
 	FVehicleSuspensionSimContext& Ctx
 )
 {
-	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody);
+	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody.Get());
 
 	return Suspension.StartUpdateSolidAxle(
 		WheelConfig.Radius,
@@ -513,11 +521,29 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 	const FVector& InAxleWorldDirection
 )
 {
+	// get rigid handle to get world com position
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = nullptr;
+	if (Carbody.IsValid())
+	{
+		if (const FBodyInstance* BodyInstance = Carbody->GetBodyInstance())
+		{
+			if (const auto Handle = BodyInstance->ActorHandle)
+			{
+				CarbodyHandle = Handle->GetPhysicsThreadAPI();
+			}
+		}
+	}
+	if (!CarbodyHandle)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CarBody!!!"));
+		return;
+	}
+
 	Suspension.FinalizeUpdateSolidAxle(
 		WheelConfig.Radius,
 		SuspensionKinematicsConfig,
 		SuspensionSpringConfig,
-		Carbody,
+		CarbodyHandle,
 		InPhysicsDeltaTime, 
 		InSwaybarForce,
 		Ctx,
@@ -535,7 +561,7 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 		ABSConfig,
 		Suspension.State);
 
-	ApplyWheelForce();
+	ApplyWheelForce(CarbodyHandle);
 }
 
 void UVehicleWheelComponent::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
@@ -590,7 +616,7 @@ void UVehicleWheelComponent::FinalizeApplySolidAxleStateDirect(
 
 void UVehicleWheelComponent::GetWheelCoordinator(UVehicleWheelCoordinatorComponent*& OutWheelCoordinator)
 {
-	OutWheelCoordinator = WheelCoordinator;
+	OutWheelCoordinator = WheelCoordinator.Get();
 }
 
 float UVehicleWheelComponent::ComputeFeedBackTorque()
@@ -635,7 +661,7 @@ void UVehicleWheelComponent::SetInertiaTensor(UPrimitiveComponent* InComponent, 
 
 FTransform UVehicleWheelComponent::GetCarbodyWorldTransform()
 {
-	return IsValid(Carbody) ? Carbody->GetComponentTransform() : FTransform();
+	return Carbody.Get() ? Carbody->GetComponentTransform() : FTransform();
 }
 
 void UVehicleWheelComponent::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)

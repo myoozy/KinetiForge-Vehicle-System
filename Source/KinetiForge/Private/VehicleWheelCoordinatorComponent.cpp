@@ -34,105 +34,15 @@ void UVehicleWheelCoordinatorComponent::BeginPlay()
 void UVehicleWheelCoordinatorComponent::OnRegister()
 {
 	Super::OnRegister();
-	FindCarbody();
+	Carbody = FindPhysicalParent(this);
 }
 
 void UVehicleWheelCoordinatorComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
 	//...
-	if (Carbody)Carbody = nullptr;
+	Carbody = nullptr;
 
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
-}
-
-bool UVehicleWheelCoordinatorComponent::FindCarbody()
-{
-	Carbody = Cast< UPrimitiveComponent>(GetAttachParent());
-	if (!Carbody)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: Carbody Not Found!"));
-		return false;
-	}
-	else
-	{
-		return true;
-	}
-}
-
-int UVehicleWheelCoordinatorComponent::FindAllWheels(TArray<UVehicleWheelComponent*>& OutWheels)
-{
-	if (!Carbody)
-	{
-		if (!FindCarbody())return -1;
-	}
-
-	int n = 0;
-	TArray<USceneComponent*> Children;
-	TArray<UVehicleWheelComponent*> FoundWheels;
-	Carbody->GetChildrenComponents(false, Children);
-	for (USceneComponent* Child : Children)
-	{
-		if (UVehicleWheelComponent* Wheel = Cast<UVehicleWheelComponent>(Child))
-		{
-			FoundWheels.Add(Wheel);
-			n++;
-		}
-	}
-
-	OutWheels = FoundWheels;
-	if (!n)UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: No wheel is found!"));
-	return n;	//or return the length of array
-	//return RegisteredWheels.Num();
-}
-
-int UVehicleWheelCoordinatorComponent::FindAllAxles(TArray<UVehicleAxleAssemblyComponent*>& OutAxles)
-{
-	if (!Carbody)
-	{
-		if (!FindCarbody())return -1;
-	}
-
-	int n = 0;
-	TArray<USceneComponent*> Children;
-	TArray<UVehicleAxleAssemblyComponent*> FoundAxles;
-	Carbody->GetChildrenComponents(false, Children);
-	for (USceneComponent* Child : Children)
-	{
-		if (UVehicleAxleAssemblyComponent* Axle = Cast<UVehicleAxleAssemblyComponent>(Child))
-		{
-			FoundAxles.Add(Axle);
-			n++;
-		}
-	}
-
-	OutAxles = FoundAxles;
-	if (!n)UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: No wheel is found!"));
-	return n;	//or return the length of array
-}
-
-int UVehicleWheelCoordinatorComponent::FindAllDriveAssemblies(TArray<UVehicleDriveAssemblyComponent*>& OutDriveAssemblies)
-{
-	if (!Carbody)
-	{
-		if (!FindCarbody())return -1;
-	}
-	
-	int n = 0;
-	TArray<USceneComponent*> Children;
-	TArray<UVehicleDriveAssemblyComponent*> FoundDriveAssemblies;
-	Carbody->GetChildrenComponents(true, Children);
-	for (USceneComponent* Child : Children)
-	{
-		if (UVehicleDriveAssemblyComponent* DriveAssembly = Cast<UVehicleDriveAssemblyComponent>(Child))
-		{
-			FoundDriveAssemblies.Add(DriveAssembly);
-			n++;
-		}
-	}
-
-	OutDriveAssemblies = FoundDriveAssemblies;
-	if (!n)UE_LOG(LogTemp, Warning, TEXT("WheelCoordinator: No wheel is found!"));
-	return n;
 }
 
 bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
@@ -151,7 +61,7 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 	TArray<float> SprungMasses;
 	if (ComputeSprungMasses(Positions, CarbodyCOM, Carbody->GetMass(), SprungMasses))
 	{
-		for (int i = 0; i < RegisteredWheels.Num(); i++)
+		for (int32 i = 0; i < RegisteredWheels.Num(); i++)
 		{
 			RegisteredWheels[i]->SetSprungMass(SprungMasses[i]);
 		}
@@ -178,6 +88,7 @@ void UVehicleWheelCoordinatorComponent::UpdateWheelBase()
 	{
 		AveragePos += Axle->GetAxleCenter();
 	}
+	int32 NumOfAxles = RegisteredAxles.Num();
 	if (!NumOfAxles)return;
 	AveragePos = AveragePos / NumOfAxles;
 	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> Axle : RegisteredAxles)
@@ -197,14 +108,17 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 	if (TimeSinceLastRefresh > RefreshInterval)
 	{
 		TimeSinceLastRefresh -= RefreshInterval;
-		if (IsValid(Carbody) && Carbody->IsPhysicsStateCreated())
+		if (UPrimitiveComponent* CarbodyRaw = Carbody.Get())
 		{
-			//check if center of mass changed
-			FVector3f NewCarbodyLocalCOM = (FVector3f)Carbody->GetComponentTransform().InverseTransformPosition(Carbody->GetCenterOfMass());
-			if ((CarbodyCOM - NewCarbodyLocalCOM).SquaredLength() > 1.f)
+			if (CarbodyRaw->IsPhysicsStateCreated())
 			{
-				CarbodyCOM = NewCarbodyLocalCOM;
-				bMassMatrixDirty = true;
+				//check if center of mass changed
+				FVector3f NewCarbodyLocalCOM = (FVector3f)CarbodyRaw->GetComponentTransform().InverseTransformPosition(CarbodyRaw->GetCenterOfMass());
+				if ((CarbodyCOM - NewCarbodyLocalCOM).SquaredLength() > 1.f)
+				{
+					CarbodyCOM = NewCarbodyLocalCOM;
+					bMassMatrixDirty = true;
+				}
 			}
 		}
 	}
@@ -282,7 +196,7 @@ UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelC
 void UVehicleWheelCoordinatorComponent::NotifyWheelMoved()
 {
 	bMassMatrixDirty = true;
-	if (NumOfAxles > 0)	//or RegisteredAxles.Num() > 0
+	if (RegisteredAxles.Num() > 0)
 	{
 		bWheelBaseDataDirty = true;
 	}
@@ -291,14 +205,12 @@ void UVehicleWheelCoordinatorComponent::NotifyWheelMoved()
 void UVehicleWheelCoordinatorComponent::RegisterWheel(UVehicleWheelComponent* NewWheel)
 {
 	RegisteredWheels.Add(NewWheel);
-	NumOfWheels++;
 	bMassMatrixDirty = true;
 }
 
 void UVehicleWheelCoordinatorComponent::RegisterAxle(UVehicleAxleAssemblyComponent* NewAxle)
 {
 	RegisteredAxles.Add(NewAxle);
-	NumOfAxles++;
 	bWheelBaseDataDirty = true;
 }
 

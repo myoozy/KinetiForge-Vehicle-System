@@ -491,17 +491,28 @@ static void ComputeSolidAxle(
 
 static void UpdateImpactPointWorldVelocity(
 	FVehicleSuspensionSimContext& Ctx,
-	UPrimitiveComponent* Carbody)
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelLinearVelocity);
 
 	if (Ctx.HitStruct.bBlockingHit)
 	{
-		FVector LinVelWorldA = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(
-			Carbody,
-			Ctx.HitStruct.ImpactPoint,
-			"NONE"
-		);
+		FVector LinVelWorldA = FVector(0.f);
+		if (CarbodyHandle)
+		{
+			if (ensure(CarbodyHandle->CanTreatAsKinematic()))
+			{
+				const bool bIsRigid = CarbodyHandle->CanTreatAsRigid();
+				const Chaos::FVec3 COM = bIsRigid
+					? Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(CarbodyHandle)
+					: static_cast<Chaos::FVec3>(
+						Chaos::FParticleUtilitiesGT::GetActorWorldTransform(CarbodyHandle).
+						GetTranslation());
+				const Chaos::FVec3 Diff = Ctx.HitStruct.ImpactPoint - COM;
+				LinVelWorldA = CarbodyHandle->V() - Chaos::FVec3::CrossProduct(Diff, CarbodyHandle->W());
+			}
+		}
+
 		FVector LinVelWorldB = FVector(0.f);
 
 		if (UPrimitiveComponent* HitComponent = Ctx.HitStruct.GetComponent())
@@ -661,7 +672,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	const FTransform& ComponentRelativeTransform,
 	const FTransform& AsyncCarbodyWorldTransform,
 	const UWorld* CurrentWorld,
-	UPrimitiveComponent* Carbody,
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
 	float InDeltaTime,
 	float InSteeringAngle, 
 	float InSwaybarForce)
@@ -682,8 +693,21 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 		AsyncCarbodyWorldTransform,
 		KineConfig
 	);
-	ComputeRayCastLocation(Ctx, KineConfig);
-	SuspensionRayCast(Ctx, CurrentWorld, WheelRadius, WheelWidth * 0.5f, QueryParams, ResponseParams, KineConfig);
+
+	ComputeRayCastLocation(
+		Ctx, 
+		KineConfig
+	);
+
+	SuspensionRayCast(
+		Ctx, 
+		CurrentWorld, 
+		WheelRadius, 
+		WheelWidth * 0.5f, 
+		QueryParams, 
+		ResponseParams, 
+		KineConfig
+	);
 
 	switch (KineConfig.SuspensionType)
 	{
@@ -701,7 +725,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 		break;
 	}
 
-	UpdateImpactPointWorldVelocity(Ctx, Carbody);
+	UpdateImpactPointWorldVelocity(Ctx, CarbodyHandle);
 	ComputeSuspensionForce(Ctx, WheelRadius, SpringConfig, KineConfig);
 	CopyContextToState(Ctx);
 }
@@ -741,7 +765,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	const float WheelRadius,
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
 	const FVehicleSuspensionSpringConfig& SpringConfig,
-	UPrimitiveComponent* Carbody,
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
 	float InDeltaTime, 
 	float InSwaybarForce,
 	FVehicleSuspensionSimContext& Ctx,
@@ -760,7 +784,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	);
 
 	// update velocity
-	UpdateImpactPointWorldVelocity(Ctx, Carbody);
+	UpdateImpactPointWorldVelocity(Ctx, CarbodyHandle);
 
 	// get suspension force
 	ComputeSuspensionForce(Ctx, WheelRadius, SpringConfig, KineConfig);

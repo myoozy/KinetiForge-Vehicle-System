@@ -60,7 +60,7 @@ protected:
 	virtual void OnRegister() override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 	bool GenerateMeshComponents();
-	void ApplyWheelForce();
+	void ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* CarbodyHandle);
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> WheelKnuckleComponent;
@@ -71,11 +71,9 @@ protected:
 	
 	//
 	UPROPERTY()
-	TObjectPtr<UWorld> CurrentWorld;
+	TWeakObjectPtr<UPrimitiveComponent> Carbody;
 	UPROPERTY()
-	TObjectPtr<UPrimitiveComponent> Carbody;
-	UPROPERTY()
-	TObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
+	TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
 
 	//suspension movement
 	FVehicleSuspensionSolver Suspension;
@@ -214,7 +212,7 @@ public:
 	FVehicleSuspensionSimState GetSuspensionMovement() { return Suspension.State; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
-	UPrimitiveComponent* GetCarbody() { return Carbody; }
+	UPrimitiveComponent* GetCarbody() { return Carbody.Get(); }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	bool GetRayCastResult(FVehicleSuspensionHitResult& Out) { Out = Suspension.RayCastResult; return Suspension.State.bHitGround; }
