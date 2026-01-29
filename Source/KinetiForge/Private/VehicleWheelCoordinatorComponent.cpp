@@ -204,19 +204,19 @@ void UVehicleWheelCoordinatorComponent::NotifyWheelMoved()
 
 void UVehicleWheelCoordinatorComponent::RegisterWheel(UVehicleWheelComponent* NewWheel)
 {
-	RegisteredWheels.Add(NewWheel);
+	RegisteredWheels.AddUnique(NewWheel);
 	bMassMatrixDirty = true;
 }
 
 void UVehicleWheelCoordinatorComponent::RegisterAxle(UVehicleAxleAssemblyComponent* NewAxle)
 {
-	RegisteredAxles.Add(NewAxle);
+	RegisteredAxles.AddUnique(NewAxle);
 	bWheelBaseDataDirty = true;
 }
 
 void UVehicleWheelCoordinatorComponent::RegisterDriveAssembly(UVehicleDriveAssemblyComponent* NewVehicleDriveAssemblyComponent)
 {
-	RegisteredDriveAssemblies.Add(NewVehicleDriveAssemblyComponent);
+	RegisteredDriveAssemblies.AddUnique(NewVehicleDriveAssemblyComponent);
 }
 
 bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector3f>& MassSpringPositions, const float TotalMass, TArray<float>& OutSprungMasses)

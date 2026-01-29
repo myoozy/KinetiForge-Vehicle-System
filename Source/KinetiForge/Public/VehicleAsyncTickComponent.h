@@ -7,6 +7,7 @@
 #include "VehicleAsyncTickComponent.generated.h"
 
 class UVehicleDriveAssemblyComponent;
+class FAsyncTickManager;
 
 /**
  * 
@@ -19,6 +20,7 @@ class KINETIFORGE_API UVehicleAsyncTickComponent : public UAsyncTickActorCompone
 public:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void OnUnregister() override;
 	virtual void NativeAsyncTick(float DeltaTime) override;
 	virtual void AsyncPhysicsTickComponent(float DeltaTime, float SimTime) override;
 
@@ -35,6 +37,5 @@ protected:
 
 private:
 	void UpdateVehiclePhysics(float DeltaTime);
-
-	bool bCouldUpdatePhysics = false;
+	FAsyncTickManager* CachedAsyncTickManager = nullptr;
 };

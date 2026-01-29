@@ -122,6 +122,8 @@ void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierar
 
 	if (TransferCase.IsValid() && !TransferCase->IsBeingDestroyed())TransferCase->DestroyComponent();
 
+	if (VehicleAsyncTickComponent.IsValid())VehicleAsyncTickComponent->UnRegister(this);
+
 	Carbody = nullptr;
 
 	InputConfig.Throttle.ResponseCurve = nullptr;

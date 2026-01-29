@@ -2,12 +2,12 @@
 
 #include "VehicleAsyncTickComponent.h"
 #include "VehicleDriveAssemblyComponent.h"
-#include "Windows/WindowsHWrapper.h"
+#include "AsyncTickManager.h"
 
 void UVehicleAsyncTickComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
+	
 	// ...
 	//make sure the component is registered and active
 	SetActive(true);
@@ -16,20 +16,37 @@ void UVehicleAsyncTickComponent::BeginPlay()
 		SetAsyncPhysicsTickEnabled(bUpdatePhysicsOnGameThread);
 	}
 
-	bCouldUpdatePhysics = true;
+	if (UWorld* World = GetWorld())
+	{
+		if (FAsyncTickManager* FoundManager = FAsyncTickManager::GetPhysicsManagerFromScene(World->GetPhysicsScene()))
+		{
+			CachedAsyncTickManager = FoundManager;
+		}
+	}
 }
 
 void UVehicleAsyncTickComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	bCouldUpdatePhysics = false;
-
 	SetAsyncPhysicsTickEnabled(false);
-
 	SetActive(false);
 
 	Super::EndPlay(EndPlayReason);
 
 	// ...
+}
+
+void UVehicleAsyncTickComponent::OnUnregister()
+{
+	SetAsyncPhysicsTickEnabled(false);
+	SetActive(false);
+
+	if (CachedAsyncTickManager)
+	{
+		CachedAsyncTickManager->RemoveActorComponent(this);
+		CachedAsyncTickManager = nullptr;
+	}
+
+	Super::OnUnregister();
 }
 
 void UVehicleAsyncTickComponent::NativeAsyncTick(float DeltaTime)
@@ -78,9 +95,6 @@ void UVehicleAsyncTickComponent::UnRegister(UVehicleDriveAssemblyComponent* targ
 
 void UVehicleAsyncTickComponent::UpdateVehiclePhysics(float DeltaTime)
 {
-	if (!bCouldUpdatePhysics || !IsValid(this) || IsBeingDestroyed()) return;
-
-	//update physics
 	for (TWeakObjectPtr<UVehicleDriveAssemblyComponent> DriveAssemblyPtr : DriveAssemblies)
 	{
 		if (UVehicleDriveAssemblyComponent* DriveAssembly = DriveAssemblyPtr.Get())
@@ -95,5 +109,5 @@ void UVehicleAsyncTickComponent::UpdateVehiclePhysics(float DeltaTime)
 
 void UVehicleAsyncTickComponent::Register(UVehicleDriveAssemblyComponent* newDriveAssembly)
 {
-	DriveAssemblies.Add(newDriveAssembly);
+	DriveAssemblies.AddUnique(newDriveAssembly);
 }
