@@ -25,6 +25,62 @@ static void PrepareSimulation(
 	Ctx.ComponentRelativeForwardVector = Ctx.RelativeTransform.GetRotation().GetForwardVector();
 }
 
+static void UpdateAntiPitchRollGeometry(
+	FVehicleSuspensionSimContext& Ctx,
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
+	const FVehicleSuspensionKinematicsConfig& Config,
+	const FVehicleSuspensionCachedRichCurves& KineCurves,
+	const FTransform& AsyncCarbodyWorldTransform,
+	const FVector3f& TireForce)
+{
+	float Compression = 1.f - VehicleUtil::SafeDivide(Ctx.SuspensionCurrentLength, Config.Stroke);
+
+	Ctx.AntiDiveRatio = KineCurves.AntiDiveCurve.Eval(Compression);
+	Ctx.AntiSquatRatio = KineCurves.AntiSquatCurve.Eval(Compression);
+	Ctx.AntiRollRatio = KineCurves.AntiRollCurve.Eval(Compression);
+
+	// get world com
+	Chaos::FVec3 CarbodyWorldCOM = CarbodyHandle != nullptr ?
+		Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(CarbodyHandle) : AsyncCarbodyWorldTransform.GetLocation();
+
+	// get arm
+	Chaos::FVec3 LeverArmVec = Ctx.HitStruct.ImpactPoint - CarbodyWorldCOM;
+	float LeverArmLengthSq = LeverArmVec.SquaredLength();
+
+	// get torque caused by tire force
+	Chaos::FVec3 InducedTorqueWorld = Chaos::FVec3::CrossProduct(LeverArmVec,TireForce);
+
+	// transform torque into carbody space
+	Chaos::FVec3 InducedTorqueLocal = AsyncCarbodyWorldTransform.GetRotation().UnrotateVector(InducedTorqueWorld);
+
+	// get anti-pitch value
+	bool bIsDiving = InducedTorqueLocal.Y < 0.f;
+	float AntiPitchScale = bIsDiving ? Ctx.AntiDiveRatio : Ctx.AntiSquatRatio;
+
+	// get anti-roll value
+	float AntiRollScale = Ctx.AntiRollRatio;
+
+	// get counter torque
+	Chaos::FVec3 TargetCounterTorqueLocal =
+		-Chaos::FVec3(InducedTorqueLocal.X * AntiRollScale, InducedTorqueLocal.Y * AntiPitchScale, 0.f);
+
+	// get counter torque in world space
+	Chaos::FVec3 TargetCounterTorqueWorld = AsyncCarbodyWorldTransform.GetRotation().RotateVector(TargetCounterTorqueLocal);
+
+	// get normal of ground
+	FVector ImpactNormal = Ctx.HitStruct.Normal;
+
+	// Torque Axis for Normal Force (1N)
+	Chaos::FVec3 NormalTorqueAxis = Chaos::FVec3::CrossProduct(LeverArmVec, ImpactNormal);
+	float EffectiveLeverArmSq = NormalTorqueAxis.SizeSquared();
+
+	// get final jacking force
+	Ctx.JackingForce = VehicleUtil::SafeDivide(
+		(float)Chaos::FVec3::DotProduct(TargetCounterTorqueWorld, NormalTorqueAxis), 
+		EffectiveLeverArmSq
+	);
+}
+
 static float ComputeValidPreload(
 	FVehicleSuspensionSimContext& Ctx,
 	const FVehicleSuspensionSpringConfig& Config)
@@ -599,7 +655,7 @@ static void ComputeSuspensionForce(
 	}
 
 	float SuspensionForceProj = FVector::DotProduct(SuspensionForceVector, Ctx.HitStruct.Normal);
-	Ctx.ForceAlongImpactNormal = SuspensionForceProj + ForceToHoldCar;
+	Ctx.ForceAlongImpactNormal = SuspensionForceProj + ForceToHoldCar + Ctx.JackingForce;
 
 	if (!Ctx.bHitGround)
 	{
@@ -667,6 +723,7 @@ void FVehicleSuspensionSolver::SetSprungMass(
 void FVehicleSuspensionSolver::UpdateSuspension(
 	const float WheelRadius,
 	const float WheelWidth,
+	const FVector3f& TireForce,
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
 	const FVehicleSuspensionSpringConfig& SpringConfig,
 	const FTransform& ComponentRelativeTransform,
@@ -692,6 +749,15 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 		ComponentRelativeTransform,
 		AsyncCarbodyWorldTransform,
 		KineConfig
+	);
+
+	UpdateAntiPitchRollGeometry(
+		Ctx,
+		CarbodyHandle,
+		KineConfig,
+		CachedCurves,
+		AsyncCarbodyWorldTransform,
+		TireForce
 	);
 
 	ComputeRayCastLocation(
@@ -733,10 +799,12 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 	const float WheelRadius,
 	const float WheelWidth,
+	const FVector3f& TireForce,
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
 	const FTransform& ComponentRelativeTransform,
 	const FTransform& AsyncCarbodyWorldTransform,
 	const UWorld* CurrentWorld,
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
 	float InSteeringAngle,
 	FVector& OutApporximatedWheelWorldPos,
 	FVehicleSuspensionSimContext& Ctx)
@@ -751,6 +819,16 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 		AsyncCarbodyWorldTransform,
 		KineConfig
 	);
+
+	UpdateAntiPitchRollGeometry(
+		Ctx,
+		CarbodyHandle,
+		KineConfig,
+		CachedCurves,
+		AsyncCarbodyWorldTransform,
+		TireForce
+	);
+
 	ComputeRayCastLocation(Ctx, KineConfig);
 	SuspensionRayCast(Ctx, CurrentWorld, WheelRadius, WheelWidth * 0.5f, QueryParams, ResponseParams, KineConfig);
 

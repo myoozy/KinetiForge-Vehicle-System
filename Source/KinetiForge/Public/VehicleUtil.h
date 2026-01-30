@@ -105,7 +105,7 @@ public:
         return Names;
     }
 
-    static FORCEINLINE Chaos::FRigidBodyHandle_Internal* GetInternalHandle(UPrimitiveComponent* Component, FName BoneName)
+    static FORCEINLINE Chaos::FRigidBodyHandle_Internal* GetInternalHandle(UPrimitiveComponent* Component, FName BoneName = NAME_None)
     {
         if (IsValid(Component))
         {

@@ -213,6 +213,14 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 	float SprungMass = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float WorldGravityZ = 9.8f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	float ImpactFriction = 1.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float AntiDiveRatio = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float AntiSquatRatio = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float AntiRollRatio = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector2f TopMountPos2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
@@ -246,12 +254,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector WheelWorldPos = FVector(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	bool bHitGround = true;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	bool bRayCastRefined = false;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	float ImpactFriction = 1.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FTransform RayCastTransform = FTransform(FQuat(0.f));
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FTransform CarbodyWorldTransform = FTransform(FQuat(0.f));
@@ -261,4 +263,10 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 	FTransform3f WheelRelativeTransform = FTransform3f(FQuat4f(0.f));	//relative to carbody
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FHitResult HitStruct = FHitResult();
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	bool bHitGround = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	bool bRayCastRefined = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
+	float JackingForce = 0.f;
 };

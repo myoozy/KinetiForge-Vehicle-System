@@ -23,6 +23,7 @@ public:
 	void UpdateSuspension(
 		const float WheelRadius,
 		const float WheelWidth,
+		const FVector3f& TireForce,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FVehicleSuspensionSpringConfig& SpringConfig,
 		const FTransform& ComponentRelativeTransform,
@@ -36,10 +37,12 @@ public:
 	void StartUpdateSolidAxle(
 		const float WheelRadius,
 		const float WheelWidth,
+		const FVector3f& TireForce,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FTransform& ComponentRelativeTransform,
 		const FTransform& AsyncCarbodyWorldTransform,
 		const UWorld* CurrentWorld,
+		Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
 		float InSteeringAngle,
 		FVector& OutApporximatedWheelWorldPos,
 		FVehicleSuspensionSimContext& Ctx
@@ -153,6 +156,9 @@ public:
 		State.ImpactPoint = Context.HitStruct.ImpactPoint;
 		State.WheelWorldPos = Context.WheelWorldPos;
 		State.WheelRelativeRotation = FQuat4f(Context.WheelRelativeTransform.GetRotation());
+		State.AntiDiveRatio = Context.AntiDiveRatio;
+		State.AntiSquatRatio = Context.AntiSquatRatio;
+		State.AntiRollRatio = Context.AntiRollRatio;
 
 		State.ImpactFriction = Context.ImpactFriction;
 		
@@ -183,6 +189,8 @@ public:
 		Context.WheelCenterToKnuckle = State.WheelCenterToKnuckle;
 		Context.WheelRelativeTransform.SetRotation(State.WheelRelativeRotation);
 		Context.WheelRelativeTransform.SetLocation(State.WheelCenterToKnuckle + State.KnuckleRelativePos);
+		Context.HitStruct.Normal = FVector(State.ImpactNormal);
+		Context.HitStruct.ImpactPoint = State.ImpactPoint;
 	}
 
 	static FORCEINLINE FVector3f GetCamberToeCasterFromCurve(

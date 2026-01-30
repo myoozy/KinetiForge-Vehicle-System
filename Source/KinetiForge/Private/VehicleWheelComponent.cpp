@@ -208,58 +208,22 @@ void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* C
 		break;
 	}
 
-	/*---------------------------ANTI-PITCH & ANTI-ROLL GEOMETRY------------------------------*/
-
 	// get world com
 	Chaos::FVec3 CarbodyWorldCOM = CarbodyHandle != nullptr ? 
 		Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(CarbodyHandle) : CarbodyAsyncWorldTransform.GetLocation();
 
 	// get arm
 	Chaos::FVec3 LeverArmVec = PosToApplyImpulse - CarbodyWorldCOM;
-	float LeverArmLengthSq = LeverArmVec.SquaredLength();
-
-	// get torque caused by tire force
-	Chaos::FVec3 InducedTorqueWorld = Chaos::FVec3::CrossProduct(LeverArmVec, Wheel.State.TireForce);
-
-	// transform torque into carbody space
-	Chaos::FVec3 InducedTorqueLocal = CarbodyAsyncWorldTransform.GetRotation().UnrotateVector(InducedTorqueWorld);
-
-	// get anti-pitch value
-	bool bIsDiving = InducedTorqueLocal.Y < 0.f;
-	float AntiPitchScale = bIsDiving ? Suspension.State.AntiDiveRatio : Suspension.State.AntiSquatRatio;
-
-	// get anti-roll value
-	float AntiRollScale = Suspension.State.AntiRollRatio;
-
-	// get counter torque
-	Chaos::FVec3 TargetCounterTorqueLocal = 
-		-Chaos::FVec3(InducedTorqueLocal.X * AntiRollScale, InducedTorqueLocal.Y * AntiPitchScale, InducedTorqueLocal.Z);
-
-	// get counter torque in world space
-	Chaos::FVec3 TargetCounterTorqueWorld = CarbodyAsyncWorldTransform.GetRotation().RotateVector(TargetCounterTorqueLocal);
 
 	// get normal of ground
 	FVector ImpactNormal = (FVector)Suspension.State.ImpactNormal;
-
-	// Torque Axis for Normal Force (1N)
-	Chaos::FVec3 NormalTorqueAxis = Chaos::FVec3::CrossProduct(LeverArmVec, ImpactNormal);
-	float EffectiveLeverArmSq = NormalTorqueAxis.SizeSquared();
-
-	// get final jacking force
-	Chaos::FVec3 FinalJackingForce = Chaos::FVec3(0.f);
-	if (EffectiveLeverArmSq > SMALL_NUMBER)
-	{
-		float ForceMagnitude = Chaos::FVec3::DotProduct(TargetCounterTorqueWorld, NormalTorqueAxis) / EffectiveLeverArmSq;
-
-		FinalJackingForce = ImpactNormal * ForceMagnitude;
-	}
 
 	/*-------------------------------------APPLY FORCE---------------------------------------*/
 
 	// project the suspension force onto the impact normal
 	// so that the car will not move by itself when parked
 	FVector SuspensionForceProj = ImpactNormal * Suspension.State.ForceAlongImpactNormal;
-	FVector Impulse = ((FVector)Wheel.State.TireForce + SuspensionForceProj + FinalJackingForce) * Wheel.State.PhysicsDeltaTime;
+	FVector Impulse = ((FVector)Wheel.State.TireForce + SuspensionForceProj) * Wheel.State.PhysicsDeltaTime;
 	Impulse *= 100.;	// because of the unit of unreal engine
 
 	// apply force to carbody
@@ -435,17 +399,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheel);
 
 	// get rigid handle to get world com position
-	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = nullptr;
-	if (Carbody.IsValid())
-	{
-		if (const FBodyInstance* BodyInstance = Carbody->GetBodyInstance())
-		{
-			if (const auto Handle = BodyInstance->ActorHandle)
-			{
-				CarbodyHandle = Handle->GetPhysicsThreadAPI();
-			}
-		}
-	}
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = VehicleUtil::GetInternalHandle(Carbody.Get());
 	if (!CarbodyHandle)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CarBody!!!"));
@@ -464,6 +418,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 	Suspension.UpdateSuspension(
 		WheelConfig.Radius,
 		WheelConfig.Width,
+		Wheel.State.TireForce,
 		SuspensionKinematicsConfig,
 		SuspensionSpringConfig,
 		GetRelativeTransform(),
@@ -495,15 +450,24 @@ void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
 	FVehicleSuspensionSimContext& Ctx
 )
 {
-	CarbodyAsyncWorldTransform = UAsyncTickFunctions::ATP_GetTransform(Carbody.Get());
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = VehicleUtil::GetInternalHandle(Carbody.Get());
+	if (!CarbodyHandle)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CarBody!!!"));
+		return;
+	}
+
+	CarbodyAsyncWorldTransform = Chaos::FParticleUtilitiesGT::GetActorWorldTransform(CarbodyHandle);
 
 	return Suspension.StartUpdateSolidAxle(
 		WheelConfig.Radius,
 		WheelConfig.Width,
+		Wheel.State.TireForce,
 		SuspensionKinematicsConfig,
 		GetRelativeTransform(),
 		CarbodyAsyncWorldTransform,
 		GetWorld(),
+		CarbodyHandle,
 		InSteeringAngle, 
 		OutApporximatedWheelWorldPos, 
 		Ctx);
