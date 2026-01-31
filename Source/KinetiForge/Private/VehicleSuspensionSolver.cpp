@@ -54,7 +54,7 @@ static void UpdateAntiPitchRollGeometry(
 	Chaos::FVec3 InducedTorqueLocal = AsyncCarbodyWorldTransform.GetRotation().UnrotateVector(InducedTorqueWorld);
 
 	// get anti-pitch value
-	bool bIsDiving = InducedTorqueLocal.Y < 0.f;
+	bool bIsDiving = InducedTorqueLocal.Y > 0.f;
 	float AntiPitchScale = bIsDiving ? Ctx.AntiDiveRatio : Ctx.AntiSquatRatio;
 
 	// get anti-roll value
