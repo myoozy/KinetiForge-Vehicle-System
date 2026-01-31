@@ -70,6 +70,8 @@ struct KINETIFORGE_API FVehicleSuspensionKinematicsConfig
 	UCurveFloat* AntiSquatCurve = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Controls suspension resistance to compression under BRAKING (Front wheels mostly).\nX-Axis: Suspension Compression (0 = Fully Extended, 1 = Fully Compressed).\nY-Axis: Counter-Force Ratio (0 = Natural Roll, 1 = No Roll/Flat, >1 = Roll in opposite direction)."))
 	UCurveFloat* AntiRollCurve = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UCurveFloat* SpringMotionRatioCurve = nullptr;
 };
 
 USTRUCT(BlueprintType)
@@ -106,6 +108,8 @@ struct KINETIFORGE_API FVehicleSuspensionCachedRichCurves
 	FRichCurve AntiSquatCurve;
 	UPROPERTY()
 	FRichCurve AntiRollCurve;
+	UPROPERTY()
+	FRichCurve MotionRatioCurve;
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "A simplified HitResult"))
@@ -145,6 +149,12 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float ForceAlongImpactNormal = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float Compression = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float AntiPitchScale = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float AntiRollScale = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector2f KnucklePos2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f WheelRightVector = FVector3f(0.f);
@@ -156,12 +166,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	FVector3f TopMountRelativePos = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
 	FVector3f StrutDirection = FVector3f(0.f);	// strut direction in world space
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	float AntiDiveRatio = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	float AntiSquatRatio = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	float AntiRollRatio = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	FVector3f ImpactPointWorldVelocity = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
@@ -216,11 +220,11 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	float ImpactFriction = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	float AntiDiveRatio = 0.f;
+	float AntiPitchScale = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	float AntiSquatRatio = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	float AntiRollRatio = 0.f;
+	float AntiRollScale = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
+	float JackingForce = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector2f TopMountPos2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
@@ -267,6 +271,4 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 	bool bHitGround = true;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	bool bRayCastRefined = false;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float JackingForce = 0.f;
 };

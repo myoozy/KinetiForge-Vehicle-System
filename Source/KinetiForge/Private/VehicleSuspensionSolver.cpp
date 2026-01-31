@@ -28,16 +28,11 @@ static void PrepareSimulation(
 static void UpdateAntiPitchRollGeometry(
 	FVehicleSuspensionSimContext& Ctx,
 	Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
-	const FVehicleSuspensionKinematicsConfig& Config,
 	const FVehicleSuspensionCachedRichCurves& KineCurves,
 	const FTransform& AsyncCarbodyWorldTransform,
 	const FVector3f& TireForce)
 {
-	float Compression = 1.f - VehicleUtil::SafeDivide(Ctx.SuspensionCurrentLength, Config.Stroke);
-
-	Ctx.AntiDiveRatio = KineCurves.AntiDiveCurve.Eval(Compression);
-	Ctx.AntiSquatRatio = KineCurves.AntiSquatCurve.Eval(Compression);
-	Ctx.AntiRollRatio = KineCurves.AntiRollCurve.Eval(Compression);
+	float Compression = 1.f - Ctx.SuspensionExtensionRatio;
 
 	// get world com
 	Chaos::FVec3 CarbodyWorldCOM = CarbodyHandle != nullptr ?
@@ -55,14 +50,16 @@ static void UpdateAntiPitchRollGeometry(
 
 	// get anti-pitch value
 	bool bIsDiving = InducedTorqueLocal.Y > 0.f;
-	float AntiPitchScale = bIsDiving ? Ctx.AntiDiveRatio : Ctx.AntiSquatRatio;
+	Ctx.AntiPitchScale = bIsDiving ?
+		KineCurves.AntiDiveCurve.Eval(Compression) : 
+		KineCurves.AntiSquatCurve.Eval(Compression);
 
 	// get anti-roll value
-	float AntiRollScale = Ctx.AntiRollRatio;
+	Ctx.AntiRollScale = KineCurves.AntiRollCurve.Eval(Compression);
 
 	// get counter torque
 	Chaos::FVec3 TargetCounterTorqueLocal =
-		-Chaos::FVec3(InducedTorqueLocal.X * AntiRollScale, InducedTorqueLocal.Y * AntiPitchScale, 0.f);
+		-Chaos::FVec3(InducedTorqueLocal.X * Ctx.AntiRollScale, InducedTorqueLocal.Y * Ctx.AntiPitchScale, 0.f);
 
 	// get counter torque in world space
 	Chaos::FVec3 TargetCounterTorqueWorld = AsyncCarbodyWorldTransform.GetRotation().RotateVector(TargetCounterTorqueLocal);
@@ -79,18 +76,6 @@ static void UpdateAntiPitchRollGeometry(
 		(float)Chaos::FVec3::DotProduct(TargetCounterTorqueWorld, NormalTorqueAxis), 
 		EffectiveLeverArmSq
 	);
-}
-
-static float ComputeValidPreload(
-	FVehicleSuspensionSimContext& Ctx,
-	const FVehicleSuspensionSpringConfig& Config)
-{
-	//check suspension preload
-	//preload should not be greater than gravity force on the wheel
-	float Proj = FVector3f::DotProduct(FVector3f(0.f, 0.f, 1.f), Ctx.StrutRelativeDirection);
-	float MaxPreload = VehicleUtil::SafeDivide(0.99f * Ctx.WorldGravityZ * Ctx.SprungMass, Proj);
-
-	return Ctx.ValidPreload = FMath::Min(Config.SpringPreload, MaxPreload);
 }
 
 static void ComputeRayCastLocation(
@@ -478,8 +463,6 @@ static void ComputeDoubleWishbone(
 
 	Ctx.KnuckleRelativePos = Ctx.RelativeTransform.TransformPositionNoScale(
 		FVehicleSuspensionSolver::SuspensionPlaneToZYPlane(Ctx.KnucklePos2D, Ctx.WheelPos));
-	Ctx.TopMountRelativePos = Ctx.RelativeTransform.TransformPositionNoScale(
-		FVehicleSuspensionSolver::SuspensionPlaneToZYPlane(Ctx.TopMountPos2D, Ctx.WheelPos));
 
 	Ctx.StrutRelativeDirection = (Ctx.TopMountRelativePos - Ctx.KnuckleRelativePos).GetSafeNormal();
 
@@ -612,29 +595,39 @@ static void ComputeSuspensionForce(
 	FVehicleSuspensionSimContext& Ctx,
 	const float WheelRadius,
 	const FVehicleSuspensionSpringConfig& SpringConfig,
-	const FVehicleSuspensionKinematicsConfig& KineConfig)
+	const FVehicleSuspensionKinematicsConfig& KineConfig,
+	const FVehicleSuspensionCachedRichCurves& KineCurves)
 {
-	float SuspensionStroke = KineConfig.Stroke;
-
-	float LastLength = Ctx.SuspensionCurrentLength;
-
-	Ctx.SuspensionCurrentLength = SuspensionStroke * Ctx.SuspensionExtensionRatio;
-
-	Ctx.CriticalDamping = GetCriticalDamping(SpringConfig.SpringStiffness, Ctx.SprungMass);
-	ComputeValidPreload(Ctx, SpringConfig);
-
 	float DeltaTimeInv = VehicleUtil::SafeDivide(1.f, Ctx.PhysicsDelatTime);
 
-	float SpringForce = SpringConfig.SpringStiffness * (SuspensionStroke - Ctx.SuspensionCurrentLength) + Ctx.ValidPreload + Ctx.SwaybarForce;
+	const float SuspensionStroke = KineConfig.Stroke;
 
-	float DampingRatio = (Ctx.SuspensionCurrentLength > LastLength) ? SpringConfig.ReboundDampingRatio : SpringConfig.CompressionDampingRatio;
+	const float LastLength = Ctx.SuspensionCurrentLength;
+
+	Ctx.SuspensionCurrentLength = SuspensionStroke * Ctx.SuspensionExtensionRatio;
+	Ctx.CriticalDamping = GetCriticalDamping(SpringConfig.SpringStiffness, Ctx.SprungMass);
+
+	const float MotionRatio = KineCurves.MotionRatioCurve.Eval(1.f - Ctx.SuspensionExtensionRatio);
+
+	//check suspension preload
+	//preload should not be greater than gravity force on the wheel
+	Ctx.StrutDirection = Ctx.CarbodyWorldTransform.TransformVectorNoScale((FVector)Ctx.StrutRelativeDirection);
+	float Proj = FVector::DotProduct(FVector(0.f, 0.f, 1.f), Ctx.StrutDirection);
+	float MaxPreload = VehicleUtil::SafeDivide(0.99f * Ctx.WorldGravityZ * Ctx.SprungMass, Proj);
+	Ctx.ValidPreload = FMath::Min(SpringConfig.SpringPreload * MotionRatio, MaxPreload);
+
+	const float EquivSpringStiffness = SpringConfig.SpringStiffness * MotionRatio * MotionRatio;
+	float SpringForce = EquivSpringStiffness * (SuspensionStroke - Ctx.SuspensionCurrentLength);
+	SpringForce += Ctx.ValidPreload + Ctx.SwaybarForce;
+
+	float DampingRatio = (Ctx.SuspensionCurrentLength > LastLength) ? 
+		SpringConfig.ReboundDampingRatio : SpringConfig.CompressionDampingRatio;
 	float DamperStiffness = Ctx.CriticalDamping * DampingRatio;
-
-	float DampingForce = DamperStiffness * (LastLength - Ctx.SuspensionCurrentLength) * DeltaTimeInv;
+	float EquivDamperStiffness = DamperStiffness * MotionRatio * MotionRatio;
+	float DampingForce = EquivDamperStiffness * (LastLength - Ctx.SuspensionCurrentLength) * DeltaTimeInv;
 
 	Ctx.SuspensionForce = SpringForce + DampingForce;
 
-	Ctx.StrutDirection = Ctx.CarbodyWorldTransform.TransformVectorNoScale((FVector)Ctx.StrutRelativeDirection);
 	FVector SuspensionForceVector = Ctx.StrutDirection * Ctx.SuspensionForce;
 
 	// if suspension is compeletly compressed
@@ -649,8 +642,8 @@ static void ComputeSuspensionForce(
 		// the spring system in another direction (normal of impact surface)
 		FVector WheelCenterToImpactPoint = Ctx.WheelWorldPos - Ctx.HitStruct.ImpactPoint;
 		float DistanceToSurface = FVector::DotProduct(Ctx.HitStruct.Normal, WheelCenterToImpactPoint);
-		SpringForce = (WheelRadius - DistanceToSurface) * SpringConfig.SpringStiffness;
-		DampingForce = -VelocityIntoSurface * DamperStiffness;
+		SpringForce = (WheelRadius - DistanceToSurface) * EquivSpringStiffness;
+		DampingForce = -VelocityIntoSurface * EquivDamperStiffness;
 		ForceToHoldCar += SpringForce + DampingForce;
 	}
 
@@ -754,7 +747,6 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	UpdateAntiPitchRollGeometry(
 		Ctx,
 		CarbodyHandle,
-		KineConfig,
 		CachedCurves,
 		AsyncCarbodyWorldTransform,
 		TireForce
@@ -792,7 +784,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	}
 
 	UpdateImpactPointWorldVelocity(Ctx, CarbodyHandle);
-	ComputeSuspensionForce(Ctx, WheelRadius, SpringConfig, KineConfig);
+	ComputeSuspensionForce(Ctx, WheelRadius, SpringConfig, KineConfig, CachedCurves);
 	CopyContextToState(Ctx);
 }
 
@@ -823,7 +815,6 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 	UpdateAntiPitchRollGeometry(
 		Ctx,
 		CarbodyHandle,
-		KineConfig,
 		CachedCurves,
 		AsyncCarbodyWorldTransform,
 		TireForce
@@ -865,7 +856,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	UpdateImpactPointWorldVelocity(Ctx, CarbodyHandle);
 
 	// get suspension force
-	ComputeSuspensionForce(Ctx, WheelRadius, SpringConfig, KineConfig);
+	ComputeSuspensionForce(Ctx, WheelRadius, SpringConfig, KineConfig, CachedCurves);
 
 	CopyContextToState(Ctx);
 }
@@ -1115,6 +1106,15 @@ void FVehicleSuspensionSolver::UpdateCachedRichCurves(
 	else
 	{
 		CachedCurves.AntiRollCurve.Reset();
+	}
+	if (IsValid(Config.SpringMotionRatioCurve))
+	{
+		CachedCurves.MotionRatioCurve = Config.SpringMotionRatioCurve->FloatCurve;
+	}
+	else
+	{
+		CachedCurves.MotionRatioCurve.Reset();
+		CachedCurves.MotionRatioCurve.AddKey(0.f, 1.f);
 	}
 }
 

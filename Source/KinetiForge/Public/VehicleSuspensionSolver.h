@@ -156,9 +156,9 @@ public:
 		State.ImpactPoint = Context.HitStruct.ImpactPoint;
 		State.WheelWorldPos = Context.WheelWorldPos;
 		State.WheelRelativeRotation = FQuat4f(Context.WheelRelativeTransform.GetRotation());
-		State.AntiDiveRatio = Context.AntiDiveRatio;
-		State.AntiSquatRatio = Context.AntiSquatRatio;
-		State.AntiRollRatio = Context.AntiRollRatio;
+		State.AntiPitchScale = Context.AntiPitchScale;
+		State.AntiRollScale = Context.AntiRollScale;
+		State.Compression = 1.f - Context.SuspensionExtensionRatio;
 
 		State.ImpactFriction = Context.ImpactFriction;
 		
@@ -173,17 +173,12 @@ public:
 			Context.HitStruct.Location,
 			(FQuat4f)Context.RayCastTransform.GetRotation()
 		);
-
-		// get anti-pitch / anti-roll
-		float Compression = 1.f - Context.SuspensionExtensionRatio;
-		State.AntiDiveRatio = CachedCurves.AntiDiveCurve.Eval(Compression);
-		State.AntiSquatRatio = CachedCurves.AntiSquatCurve.Eval(Compression);
-		State.AntiRollRatio = CachedCurves.AntiRollCurve.Eval(Compression);
 	}
 
 	FORCEINLINE void CopyStateToContext(FVehicleSuspensionSimContext& Context)
 	{
 		Context.SuspensionCurrentLength = State.SuspensionCurrentLength;
+		Context.SuspensionExtensionRatio = 1.f - State.Compression;
 		Context.SprungMass = State.SprungMass;
 		Context.KnucklePos2D = State.KnucklePos2D;
 		Context.WheelCenterToKnuckle = State.WheelCenterToKnuckle;
