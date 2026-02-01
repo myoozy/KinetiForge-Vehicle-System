@@ -24,7 +24,7 @@ struct KINETIFORGE_API FVehicleNaturallyAspiratedEngineConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
 	float MaxEngineTorque = 400.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0", ToolTip = "normalized engine torque curve"))
-	UCurveFloat* EngineTorqueCurve;
+	UCurveFloat* EngineTorqueCurve = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))
 	float EngineIdleRPM = 900.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EngineSetup", meta = (ClampMin = "0.0"))

@@ -118,21 +118,21 @@ struct KINETIFORGE_API FVehicleSuspensionHitResult
 	GENERATED_BODY()
 
 	UPROPERTY()
-	TWeakObjectPtr<UPhysicalMaterial> PhysMaterial;
+	TWeakObjectPtr<UPhysicalMaterial> PhysMaterial = nullptr;
 	UPROPERTY()
-	TWeakObjectPtr<UPrimitiveComponent> Component;
+	TWeakObjectPtr<UPrimitiveComponent> Component = nullptr;
 	UPROPERTY()
-	FName BoneName;
+	FName BoneName = NAME_None;
 	UPROPERTY()
-	bool bBlockingHit;
+	bool bBlockingHit = false;
 	UPROPERTY()
-	FVector_NetQuantize TraceStart;
+	FVector TraceStart = FVector(0.f);
 	UPROPERTY()
-	FVector_NetQuantize TraceEnd;
+	FVector TraceEnd = FVector(0.f);
 	UPROPERTY()
-	FVector_NetQuantize Location;
+	FVector Location = FVector(0.f);
 	UPROPERTY()
-	FQuat4f TraceRot;
+	FQuat4f TraceRot = FQuat4f(0.f);
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "suspension state in simulation"))
