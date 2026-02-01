@@ -87,11 +87,12 @@ protected:
 	FQuat4f PrevWheelRelativeRot;
 	FVector2f AnimKnucklePos2D;
 	FQuat4f AnimWheelRelativeRot;
+	float AnimWheelRotationAngle = 0.f;
 	float TimeSinceLastPhysicsTick = 0.0f;
 
 	//cache
 	FVector CachedComponentRelativeLocation;
-	float TimeSinceLastConfigSync;
+	float TimeSinceLastConfigSync = 0.f;
 
 public:	
 	// Called every frame

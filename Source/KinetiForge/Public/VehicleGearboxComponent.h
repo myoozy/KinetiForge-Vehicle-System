@@ -37,6 +37,7 @@ protected:
 	int32 TargetGear;
 	bool bIsInGear = true;
 	bool bShouldRevMatch = false;
+	bool bShouldCutSpark = false;
 
 	//cache
 	float CachedFirstGear = -1;
@@ -108,4 +109,5 @@ public:
 
 	bool IsGearDataDirty();
 	bool GetShouldRevMatch() { return bShouldRevMatch; }
+	bool GetShouldCutSpark() { return bShouldCutSpark; }
 };

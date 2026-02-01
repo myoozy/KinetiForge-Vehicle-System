@@ -157,27 +157,34 @@ void UVehicleDriveAssemblyComponent::UpdateInput(float InDeltaTime)
 void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 {
 	float RealThrottleInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Brake : InputValues.Raw.Throttle;
-
-	if (Gearbox.IsValid())
+	
+	if (UVehicleGearboxComponent* GearboxRaw = Gearbox.Get())
 	{
-		//check if there's no need to edit throttle value
-		if (Gearbox->GetIsInGear() || !InputAssistConfig.bAutomaticClutch)
-		{
-			InputValues.Smoothened.Throttle = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Throttle, RealThrottleInput, InDeltaTime, InputConfig.Throttle.InterpSpeed);
-
-			InputValues.Smoothened.Throttle *= !(InputAssistConfig.bEVClutchLogic && Gearbox->GetCurrentGearRatio() == 0.f);
-		}
 		//if not in gear and should rev-match
-		else if (Gearbox->GetShouldRevMatch() && FMath::Abs(LocalLinearVelocity.X) > 0.5 && InputAssistConfig.bRevMatching)
+		if (GearboxRaw->GetShouldRevMatch() &&
+			RealThrottleInput < InputAssistConfig.RevMatchMaxThrottle && 
+			FMath::Abs(LocalLinearVelocity.X) > 0.5 && 
+			InputAssistConfig.bRevMatching)
 		{
 			const float Rate = 5.f;
-			InputValues.Smoothened.Throttle += VehicleUtil::SafeDivide(InDeltaTime * Rate, Gearbox->Config.ShiftDelay);
+			InputValues.Smoothened.Throttle += VehicleUtil::SafeDivide(InDeltaTime * Rate, GearboxRaw->Config.ShiftDelay);
 			InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
 		}
-		//if not in gear and no rev-matching
-		else
+		//if not in gear and no rev-matching and not sequential
+		else if (!GearboxRaw->GetIsInGear() &&
+			InputAssistConfig.bAutomaticClutch && 
+			!GearboxRaw->Config.bSequentialGearbox)
 		{
 			InputValues.Smoothened.Throttle = 0.f;
+		}
+		else
+		{
+			InputValues.Smoothened.Throttle = FVehicleInputAxisConfig::InterpInputValueConstant(
+				InputValues.Smoothened.Throttle, 
+				RealThrottleInput, InDeltaTime, 
+				InputConfig.Throttle.InterpSpeed
+			);
+			InputValues.Smoothened.Throttle *= !(InputAssistConfig.bEVClutchLogic && GearboxRaw->GetCurrentGearRatio() == 0.f);
 		}
 	}
 	else
@@ -232,18 +239,21 @@ void UVehicleDriveAssemblyComponent::UpdateBrake(float InDeltaTime)
 
 void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 {
+	UVehicleGearboxComponent* GearboxRaw = Gearbox.Get();
+	UVehicleEngineComponent * EngineRaw = Engine.Get();
+
 	if (InputAssistConfig.bEVClutchLogic)
 	{
 		InputValues.Smoothened.Clutch = 0.f;
 	}
-	else if (InputAssistConfig.bAutomaticClutch && Gearbox.IsValid() && Engine.IsValid())
+	else if (InputAssistConfig.bAutomaticClutch && GearboxRaw && EngineRaw)
 	{
 		//check if clutch has to be engaged
-		bool bNotInGearAndNotSequential = !(Gearbox->GetIsInGear() || Gearbox->Config.bSequentialGearbox);
+		bool bNotInGearAndNotSequential = !(GearboxRaw->GetIsInGear() || GearboxRaw->Config.bSequentialGearbox);
 		float TargetClutchValue = (InputValues.Raw.Handbrake > 0.9 || bNotInGearAndNotSequential) ? 1.f : InputValues.Raw.Clutch;
 
 		//take engine rpm into account
-		float Bias = FMath::GetMappedRangeValueClamped(InputAssistConfig.AutoClutchRange, FVector2f(1, 0), Engine->GetRPM());
+		float Bias = FMath::GetMappedRangeValueClamped(InputAssistConfig.AutoClutchRange, FVector2f(1, 0), EngineRaw->GetRPM());
 		TargetClutchValue = FMath::Clamp(TargetClutchValue + Bias, 0.f, 1.f);
 		InputValues.Smoothened.Clutch = FMath::Min(InputValues.Smoothened.Clutch + Bias, TargetClutchValue);
 
@@ -251,7 +261,7 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 		FVector2f FinalInterpSpeed;
 		float Rate = 10.f;
 		FinalInterpSpeed.Y = InputConfig.Clutch.InterpSpeed.Y;
-		FinalInterpSpeed.X = bNotInGearAndNotSequential ? VehicleUtil::SafeDivide(Rate, Gearbox->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
+		FinalInterpSpeed.X = bNotInGearAndNotSequential ? VehicleUtil::SafeDivide(Rate, GearboxRaw->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
 
 		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, TargetClutchValue, InDeltaTime, FinalInterpSpeed);
 	}
@@ -304,12 +314,15 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	bool AutoGearboxTimerOverFlowed = AutoGearboxCount > 0.f;
 	AutoGearboxCount -= AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxTimerOverFlowed;
 
+	UVehicleGearboxComponent* GearboxRaw = Gearbox.Get();
+	UVehicleEngineComponent* EngineRaw = Engine.Get();
+
 	if (bIsInAir || 
-		!Gearbox.IsValid() ||
-		!Engine.IsValid() ||
-		!Gearbox->GetIsInGear() ||
+		!GearboxRaw ||
+		!EngineRaw ||
+		!GearboxRaw->GetIsInGear() ||
 		!AutoGearboxTimerOverFlowed ||
-		(!Gearbox->Config.NumberOfGears && !Gearbox->Config.NumOfReverseGears)
+		(!GearboxRaw->Config.NumberOfGears && !GearboxRaw->Config.NumOfReverseGears)
 		)return;
 
 	float LinearVelocityX = FMath::Abs(LocalLinearVelocity.X);
@@ -318,7 +331,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	if (AutoGearboxConfig.bArcadeAutoGearbox)
 	{
 		//if in N gear
-		if (Gearbox->GetCurrentGear() == 0)
+		if (GearboxRaw->GetCurrentGear() == 0)
 		{
 			if (InputValues.Raw.Throttle > SMALL_NUMBER)
 			{
@@ -334,7 +347,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 			}
 		}
 		//if the vehicle is almost stopped, or going in wrong direction
-		else if (LinearVelocityX < 1 || (LocalLinearVelocity.X * Gearbox->GetCurrentGear()) < 0)
+		else if (LinearVelocityX < 1 || (LocalLinearVelocity.X * GearboxRaw->GetCurrentGear()) < 0)
 		{
 			if (InputValues.Raw.Throttle > SMALL_NUMBER)
 			{
@@ -358,14 +371,14 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	}
 
 	//if in N gear, don't update
-	if (!Gearbox->GetCurrentGear())return;
+	if (!GearboxRaw->GetCurrentGear())return;
 
 	TArray<UVehicleAxleAssemblyComponent*> AxlesRaw;
 	GetAxles(AxlesRaw);
-	Gearbox->CalculateSpeedRangeOfEachGear(
+	GearboxRaw->CalculateSpeedRangeOfEachGear(
 		TransferCase->CalculateEffectiveWheelRadius(AxlesRaw),
-		Engine->NAConfig.EngineIdleRPM,
-		Engine->NAConfig.EngineMaxRPM,
+		EngineRaw->NAConfig.EngineIdleRPM,
+		EngineRaw->NAConfig.EngineMaxRPM,
 		SpeedRangeOfEachGear);
 
 	//如果急刹车时，也希望尽早降档，发动机协助制动
@@ -386,13 +399,13 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	}
 
 	// should shift down if rpm is too low
-	float MinShiftUpFactor = VehicleUtil::SafeDivide(Engine->NAConfig.EngineIdleRPM, Engine->NAConfig.EngineMaxRPM);
+	float MinShiftUpFactor = VehicleUtil::SafeDivide(EngineRaw->NAConfig.EngineIdleRPM, EngineRaw->NAConfig.EngineMaxRPM);
 	ShiftFactor = FMath::Max(MinShiftUpFactor, ShiftFactor);
 
-	int32 UnsignedCurrentGear = FMath::Abs(Gearbox->GetCurrentGear());
+	int32 UnsignedCurrentGear = FMath::Abs(GearboxRaw->GetCurrentGear());
 	int32 StartGear = FMath::Max(UnsignedCurrentGear - AutoGearboxConfig.MaxDownShiftSteps, 1);
 	int32 EndGear = FMath::Min(UnsignedCurrentGear + AutoGearboxConfig.MaxUpShiftSteps,
-		FMath::Max(Gearbox->Config.NumberOfGears, Gearbox->Config.NumOfReverseGears));
+		FMath::Max(GearboxRaw->Config.NumberOfGears, GearboxRaw->Config.NumOfReverseGears));
 	
 	int32 TargetGear = StartGear;
 	float UnsignedSpeed = FMath::Abs(LocalLinearVelocity.X);
@@ -407,13 +420,13 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 		}
 	}
 
-	bool GearingUp = FMath::Abs(Gearbox->GetCurrentGear()) < TargetGear;
+	bool GearingUp = FMath::Abs(GearboxRaw->GetCurrentGear()) < TargetGear;
 
 	//check sign
 	if (LocalLinearVelocity.X < 0)TargetGear = -TargetGear;
 
-	if (Gearbox->GetCurrentGear() != TargetGear
-		&& TargetGear * Gearbox->GetCurrentGear() > 0
+	if (GearboxRaw->GetCurrentGear() != TargetGear
+		&& TargetGear * GearboxRaw->GetCurrentGear() > 0
 		&& !(GearingUp && InputValues.Final.Brake > SMALL_NUMBER))
 	{
 		ShiftToTargetGear(TargetGear, 0.f);
@@ -691,16 +704,18 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 	TArray<UVehicleAxleAssemblyComponent*> AxlesRaw;
 	GetAxles(AxlesRaw);
 
-	//update engine
+	// update engine
 	float ClutchTorque = (NumOfDriveAxles > 0) ? Clutch->GetCluchTorque() : 0.f;
-	EngineRaw->UpdatePhysics(PhysicsDeltaTime, InputValues.Final.Throttle, ClutchTorque);
+	// sequential transmission disables spark when shifting up
+	bool bDisableSpark = GearboxRaw->GetShouldCutSpark();
+	EngineRaw->UpdatePhysics(PhysicsDeltaTime, InputValues.Final.Throttle, ClutchTorque, bDisableSpark);
 
-	//get gearbox output torque
+	// get gearbox output torque
 	float GearboxOutputTorque;
 	float GearboxReflectedInertia;
 	GearboxRaw->UpdateOutputShaft(ClutchTorque, GearboxOutputTorque, GearboxReflectedInertia);
 
-	//update transfercase
+	// update transfercase
 	float SumAxleInertia;
 	float GearboxOutputShaftAngularVelocity;
 	NumOfDriveAxles = TransferCaseRaw->UpdateTransferCase(
@@ -719,9 +734,9 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		SumAxleInertia
 	);
 
-	//get gearbox inputshaft angular velocity
+	// get gearbox inputshaft angular velocity
 	float GearboxInputShaftVelocity;
-	//float GearboxReflectedInertia; // already defined
+	// float GearboxReflectedInertia; // already defined
 	float GearboxInputShaftInertia;
 	float CurrentGearboxRatio;
 	float HighestGearReflectedInertia;
@@ -735,7 +750,7 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		HighestGearReflectedInertia
 	);
 
-	//get clutch torque for next frame
+	// get clutch torque for next frame
 	ClutchRaw->UpdatePhysics(
 		PhysicsDeltaTime, 
 		InputValues.Final.Clutch,
@@ -749,7 +764,7 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		EngineRaw->TurboConfig
 	);
 
-	//get velocity
+	// get velocity
 	NumOfWheelsOnGround = 0;
 	FVector3f SumLocalLinVel = FVector3f(0.f);
 	FVector3f SumWorldLinVel = FVector3f(0.f);
@@ -757,7 +772,7 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 	{
 		if (!Axle)continue;
 
-		//calculate linear velocity
+		// calculate linear velocity
 		FVector3f LocalVel;
 		FVector3f WorldVel;
 		NumOfWheelsOnGround += Axle->GetNumOfWheelsOnGround();
@@ -771,7 +786,7 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 	WorldLinearVelocity = SumWorldLinVel * 2.f * NumGroundedWheelsInv;
 	LocalVelocityClamped = LocalLinearVelocity.SquaredLength() > 0.01f ? LocalLinearVelocity : FVector3f(0.f);
 
-	//get acceleration
+	// get acceleration
 	FVector3f LastAbsVelocity = AbsoluteWorldLinearVelocity;
 	AbsoluteWorldLinearVelocity = 0.01f * (FVector3f)UAsyncTickFunctions::ATP_GetLinearVelocity(Carbody.Get());
 	WorldAcceleration = VehicleUtil::SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, PhysicsDeltaTime);

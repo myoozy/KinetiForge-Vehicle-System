@@ -48,10 +48,12 @@ void UVehicleGearboxComponent::StartShift(int32 InTargetGear, bool bImmediate)
 	TargetGear = InTargetGear;
 	CurrentGearRatio = 0.f;
 	bIsInGear = false;
-	if (FMath::Abs(TargetGear) < FMath::Abs(CurrentGear) && TargetGear != 0)
-	{
-		bShouldRevMatch = true;
-	}
+	int32 AbsTargetGear = FMath::Abs(TargetGear);
+	int32 AbsCurrentGear = FMath::Abs(CurrentGear);
+	bool bShiftingUp = AbsTargetGear > AbsCurrentGear;
+	bool bShiftingDown = AbsTargetGear < AbsCurrentGear;
+	bShouldRevMatch = bShiftingDown && TargetGear != 0;
+	bShouldCutSpark = Config.bSequentialGearbox && bShiftingUp && AbsTargetGear != 1;
 
 	//start shift
 	if (bImmediate)
@@ -76,6 +78,7 @@ void UVehicleGearboxComponent::FinalizeShift()
 	CurrentGear = TargetGear;
 	bIsInGear = true;
 	bShouldRevMatch = false;
+	bShouldCutSpark = false;
 	CurrentGearRatio = GetGearRatio(CurrentGear);
 	TargetGear = 0;
 

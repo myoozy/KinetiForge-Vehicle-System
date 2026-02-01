@@ -345,74 +345,51 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 }
 
-void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque)
+void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque, bool bDisableSpark)
 {
 	State.PhysicsDeltaTime = InDeltaTime;
 	State.RawThrottleInput = FMath::Clamp(InThrottle, 0.f, 1.f);
 	State.LoadTorque = InLoadTorque;
 
-	//update revlimit timer
-	State.RevLimiterTimer += State.PhysicsDeltaTime;
-	//avoid overflow
-	// avoid rapid toggling due to RevLimiterTime being too short (not unit conversion)
-	State.RevLimiterTimer = FMath::Min(State.RevLimiterTimer, NAConfig.RevLimiterTime * 99999);
+	// true if rpm > max rpm
+	bool bRevLimit = State.EngineRPM > NAConfig.EngineMaxRPM;
 
 	switch (State.OperationMode)
 	{
 	case EVehicleEngineOperationMode::On:
-		// get real throttle value
-		State.RealThrottle = FMath::Lerp(State.IdleThrottle, 1.f, State.RawThrottleInput);
-
 		// enable fuel injection and spark if there's throttle input
 		// the fuel injection and spark might be disabled in certain conditions
 		State.bFuelInjection = State.RawThrottleInput > SMALL_NUMBER;
-		State.bSpark = true;
 
-		if (State.EngineRPM > NAConfig.EngineMaxRPM)
+		// update revlimit timer
+		State.RevLimiterTimer = bRevLimit ? 0.f : State.RevLimiterTimer + State.PhysicsDeltaTime;
+		// avoid overflow
+		// avoid rapid toggling due to RevLimiterTime being too short (not unit conversion)
+		State.RevLimiterTimer = FMath::Min(State.RevLimiterTimer, NAConfig.RevLimiterTime * 10.f);
+
+		// if rpm is smaller than max rpm and the timer fullfills the timer limit
+		State.bSpark = !bDisableSpark && !bRevLimit && State.RevLimiterTimer >= NAConfig.RevLimiterTime;
+
+		//check if engine is idling
+		if (State.EngineRPM < NAConfig.EngineIdleRPM && NAConfig.EngineIdleRPM > 0.f)
 		{
-			//cut power(disable spark) at max rpm
-			// but keep fuel injection, because we want back fireing
-			State.bSpark = false;
-			State.RevLimiterTimer = 0.f;
+			// if rpm is too low
+			// interp the throttle to 1
+			// and enable spark and fuel injection
+			// to maintain the rpm
+			State.RealThrottle = FMath::FInterpTo(
+				State.RealThrottle, 
+				1.f, 
+				State.PhysicsDeltaTime, 
+				NAConfig.IdleThrottleInterpSpeed);
+
+			State.bFuelInjection = State.bSpark = true;
 		}
 		else
 		{
-			// if rpm is smaller than max rpm and the timer fullfills the timer limit
-			State.bSpark = State.RevLimiterTimer >= NAConfig.RevLimiterTime;
-		}
-
-		//check if throttle is released and if idle is valid
-		if (State.RawThrottleInput < SMALL_NUMBER && NAConfig.EngineIdleRPM > 0.f)
-		{
-			//check if engine is idling
-			if (State.EngineRPM < NAConfig.EngineIdleRPM)
-			{
-				// if rpm is too low
-				// interp the throttle to 1
-				// and enable spark and fuel injection
-				// to maintain the rpm
-				State.RealThrottle = FMath::FInterpTo(
-					State.RealThrottle, 
-					1.f, 
-					State.PhysicsDeltaTime, 
-					NAConfig.IdleThrottleInterpSpeed);
-
-				State.bFuelInjection = State.bSpark = true;
-			}
-			else
-			{
-				// if rpm is higher than idle rpm
-				// interp the trottle to 0
-				// because sometimes the idle throttle is slighly too large
-				// (Due to floating-point precision)
-				State.RealThrottle = FMath::FInterpTo(
-					State.RealThrottle, 
-					0.f, 
-					State.PhysicsDeltaTime, 
-					NAConfig.IdleThrottleInterpSpeed);
-
-				State.bFuelInjection = false;
-			}
+			const float FloatingErrorTolerance = 1e-3f;
+			// get real throttle value
+			State.RealThrottle = FMath::Lerp(State.IdleThrottle - FloatingErrorTolerance, 1.f, State.RawThrottleInput);
 		}
 
 		// check if engine is off

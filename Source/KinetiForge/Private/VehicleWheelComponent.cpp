@@ -712,6 +712,7 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelAnimation);
 
+	// update wheel position & alignment
 	if (DeltaTime > 0)
 	{
 		TimeSinceLastPhysicsTick += DeltaTime;
@@ -745,17 +746,24 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 		ETeleportType::TeleportPhysics
 	);
 	
+	// update wheel spin
+	float Omega = (MaxAnimAngularVelocity > 0.f) ?
+		FMath::Clamp(Wheel.State.AngularVelocity, -MaxAnimAngularVelocity, MaxAnimAngularVelocity) :
+		Wheel.State.AngularVelocity;
+
+	AnimWheelRotationAngle += FMath::RadiansToDegrees(Omega) * DeltaTime;
+	AnimWheelRotationAngle = FMath::Fmod(AnimWheelRotationAngle, 360.0f);
+
+	FQuat NewRot = FQuat(FVector(0.f, 1.f, 0.f), FMath::DegreesToRadians(AnimWheelRotationAngle));
+
 	if (IsValid(WheelMeshComponent))
 	{
-		if (MaxAnimAngularVelocity > 0)
-		{
-			WheelMeshComponent->AddLocalRotation(FRotator(FMath::RadiansToDegrees(
-				FMath::Clamp(-Wheel.State.AngularVelocity, -MaxAnimAngularVelocity, MaxAnimAngularVelocity)) * DeltaTime, 0, 0));
-		}
-		else
-		{
-			WheelMeshComponent->AddLocalRotation(FRotator(FMath::RadiansToDegrees(-Wheel.State.AngularVelocity) * DeltaTime, 0, 0));
-		}
+		WheelMeshComponent->SetRelativeRotation(
+			NewRot,
+			false,
+			nullptr,
+			ETeleportType::TeleportPhysics
+		);
 	}
 }
 

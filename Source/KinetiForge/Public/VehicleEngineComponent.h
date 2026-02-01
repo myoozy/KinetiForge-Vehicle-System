@@ -51,7 +51,7 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
-	void UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque);
+	void UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque, bool bDisableSpark = false);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	void GetEngineMovement(FVehicleEngineSimState& Out) { Out = State; }
