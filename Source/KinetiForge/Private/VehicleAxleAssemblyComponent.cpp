@@ -555,7 +555,8 @@ void UVehicleAxleAssemblyComponent::SetWheelPosition(float NewTrackWidth)
 		FVehicleSuspensionKinematicsConfig& KineConfig = LeftWheel->SuspensionKinematicsConfig;
 		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, -VehicleWheelComponentSetupRotation.Yaw, VehicleWheelComponentSetupRotation.Roll));
 		FVector WheelCompPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y - FMath::Abs(NewTrackWidth * 0.5), GetRelativeLocation().Z);
-		FQuat WheelAlignmentRot = FQuat(FRotator(0, -KineConfig.BaseToe, -KineConfig.BaseCamber));
+		FQuat WheelAlignmentRot = (FQuat)FVehicleSuspensionSolver::GetSpindleMountQuat(
+			KineConfig.SpindleMountRotation, -1.f);
 		WheelCompPos += WheelAlignmentRot.GetRightVector() * KineConfig.AxialHubOffset;
 		WheelCompPos += WheelCompRot.GetRightVector() * KineConfig.ArmLength;
 		LeftWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
@@ -572,7 +573,8 @@ void UVehicleAxleAssemblyComponent::SetWheelPosition(float NewTrackWidth)
 		FVehicleSuspensionKinematicsConfig& KineConfig = RightWheel->SuspensionKinematicsConfig;
 		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, VehicleWheelComponentSetupRotation.Yaw, -VehicleWheelComponentSetupRotation.Roll));
 		FVector WheelCompPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y + FMath::Abs(NewTrackWidth * 0.5), GetRelativeLocation().Z);
-		FQuat WheelAlignmentRot = FQuat(FRotator(0, KineConfig.BaseToe, KineConfig.BaseCamber));
+		FQuat WheelAlignmentRot = (FQuat)FVehicleSuspensionSolver::GetSpindleMountQuat(
+			KineConfig.SpindleMountRotation, 1.f);
 		WheelCompPos -= WheelAlignmentRot.GetRightVector() * KineConfig.AxialHubOffset;
 		WheelCompPos -= WheelCompRot.GetRightVector() * KineConfig.ArmLength;
 		RightWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));

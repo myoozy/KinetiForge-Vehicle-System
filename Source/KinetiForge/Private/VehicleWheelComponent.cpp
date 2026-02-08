@@ -668,9 +668,12 @@ bool UVehicleWheelComponent::SetMesh(
 		BrakeMeshRelativeTransform *= TempTrans;
 	}
 
-	FQuat TempRot = FQuat(FRotator(0, SuspensionKinematicsConfig.BaseToe * WheelPos, SuspensionKinematicsConfig.BaseCamber * WheelPos));
+	FQuat SpindleMountRotation = (FQuat)FVehicleSuspensionSolver::GetSpindleMountQuat(
+		SuspensionKinematicsConfig.SpindleMountRotation,
+		WheelPos
+	);
 	FVector KnucklePos = GetRelativeRotation().Quaternion().GetRightVector() * SuspensionKinematicsConfig.ArmLength * WheelPos;
-	WheelKnuckleComponent->SetRelativeTransform(FTransform(GetRelativeTransform().InverseTransformRotation(TempRot), KnucklePos, FVector(1)));
+	WheelKnuckleComponent->SetRelativeTransform(FTransform(GetRelativeTransform().InverseTransformRotation(SpindleMountRotation), KnucklePos, FVector(1)));
 
 	if (NewWheelMesh)
 	{

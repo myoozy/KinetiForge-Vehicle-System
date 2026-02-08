@@ -45,7 +45,7 @@ struct KINETIFORGE_API FVehicleSuspensionKinematicsConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EPositionToApplyForce PositionToApplyForce = EPositionToApplyForce::ImpactPoint;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "The location of the top mount relative to the pivot of the arm. It is under the coordinate of the wheel component, not car body."))
-	FVector3f TopMountPosition = FVector3f(0.f, 40.f, 35.f);
+	FVector3f TopMountPosition = FVector3f(0.f, 45.f, 35.f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The traveling distance of the strut"))
 	float Stroke = 20.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ToolTip = "Unit: cm. The length of the strut when the suspension is fully compressed."))
@@ -54,10 +54,8 @@ struct KINETIFORGE_API FVehicleSuspensionKinematicsConfig
 	float ArmLength = 50.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "The distance of the wheel hub(where the wheel is mounted) to the wheel knuckle(where the arm and wheel-hub/strut is connected)."))
 	float AxialHubOffset = 5.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "For StraightLine: the camber under all the conditions; For Macpherson: the camber when the control arm is horizontal; For DoubleWishbone: the camber when the suspension is not compressed."))
-	float BaseCamber = -1.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "For StraightLine: the toe under all the conditions; For Macpherson: the toe when the control arm is horizontal; For DoubleWishbone: the toe when the suspension is not compressed."))
-	float BaseToe = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = ())
+	FRotator3f SpindleMountRotation = FRotator3f(0.f, 0.f, 5.f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone", EditConditionHides, ToolTip = "X: SuspensionCompressionRatio; Y:CamberGain; Only enabled when the suspension type is double-wishbone"))
 	UCurveFloat* CamberCurve = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone", EditConditionHides, ToolTip = "X: SuspensionCompressionRatio; Y:ToeGain; Only enabled when the suspension type is double-wishbone"))

@@ -212,6 +212,17 @@ public:
 		return v;
 	}
 
+	static inline FQuat4f GetSpindleMountQuat(
+		const FRotator3f& InSpindleMountRotationConfig,
+		const float WheelPos)
+	{
+		return FQuat4f(FRotator3f(
+			InSpindleMountRotationConfig.Pitch,
+			InSpindleMountRotationConfig.Yaw * WheelPos,
+			InSpindleMountRotationConfig.Roll * WheelPos
+		));
+	}
+
 	FVehicleSuspensionSimState State;
 	FVehicleSuspensionCachedRichCurves CachedCurves;
 	FVehicleSuspensionHitResult RayCastResult;

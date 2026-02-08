@@ -404,8 +404,11 @@ static void ComputeStraightSuspension(
 	// the kingpin(steering axis) is the up vector
 	FQuat4f SteeringBiasRotation = FQuat4f(Ctx.StrutRelativeDirection, FMath::DegreesToRadians(Ctx.SteeringAngle));
 
-	FQuat4f InitialWheelRelativeRotation = FQuat4f(FRotator3f(0.f, Config.BaseToe * Ctx.WheelPos, Config.BaseCamber * Ctx.WheelPos));
-	Ctx.WheelRelativeTransform.SetRotation(SteeringBiasRotation * InitialWheelRelativeRotation);
+	FQuat4f SpindleMountRotation = FVehicleSuspensionSolver::GetSpindleMountQuat(
+		Config.SpindleMountRotation,
+		Ctx.WheelPos
+	);
+	Ctx.WheelRelativeTransform.SetRotation(SteeringBiasRotation * SpindleMountRotation);
 	FVector3f WheelRelativeRightVec = Ctx.WheelRelativeTransform.GetRotation().GetRightVector();
 
 	Ctx.WheelCenterToKnuckle = Config.AxialHubOffset * Ctx.WheelPos * WheelRelativeRightVec;
@@ -429,17 +432,18 @@ static void ComputeMacpherson(
 	Ctx.KnuckleRelativePos = Ctx.RelativeTransform.TransformPositionNoScale(
 		FVehicleSuspensionSolver::SuspensionPlaneToZYPlane(Ctx.KnucklePos2D, Ctx.WheelPos));
 
-	FVector3f InitialKnuckleRelativePos = Ctx.RelativeTransform.TransformPositionNoScale(
-		FVehicleSuspensionSolver::SuspensionPlaneToZYPlane(FVector2f(0, Config.ArmLength), Ctx.WheelPos));
-	FVector3f InitialStrutDirection = (Ctx.TopMountRelativePos - InitialKnuckleRelativePos).GetSafeNormal();
+	FVector3f BaseUp = FVector3f(0.f, 0.f, 1.f);
 	Ctx.StrutRelativeDirection = (Ctx.TopMountRelativePos - Ctx.KnuckleRelativePos).GetSafeNormal();
-	FQuat4f StrutBiasRotation = FQuat4f::FindBetweenNormals(InitialStrutDirection, Ctx.StrutRelativeDirection);
+	FQuat4f StrutBiasRotation = FQuat4f::FindBetweenNormals(BaseUp, Ctx.StrutRelativeDirection);
 
 	// the kingpin(steering axis) is the strut, for simplification
 	FQuat4f SteeringBiasRotation = FQuat4f(Ctx.StrutRelativeDirection, FMath::DegreesToRadians(Ctx.SteeringAngle));
 
-	FQuat4f InitialWheelRelativeRotation = FQuat4f(FRotator3f(0, Config.BaseToe * Ctx.WheelPos, Config.BaseCamber * Ctx.WheelPos));
-	Ctx.WheelRelativeTransform.SetRotation(SteeringBiasRotation * StrutBiasRotation * InitialWheelRelativeRotation);
+	FQuat4f SpindleMountRotation = FVehicleSuspensionSolver::GetSpindleMountQuat(
+		Config.SpindleMountRotation,
+		Ctx.WheelPos
+	);
+	Ctx.WheelRelativeTransform.SetRotation(SteeringBiasRotation * StrutBiasRotation * SpindleMountRotation);
 	FVector3f WheelRelativeRightVec = Ctx.WheelRelativeTransform.GetRotation().GetRightVector();
 
 	Ctx.WheelCenterToKnuckle = Config.AxialHubOffset * Ctx.WheelPos * WheelRelativeRightVec;
@@ -471,8 +475,10 @@ static void ComputeDoubleWishbone(
 			KineCurves,
 			1.f - Ctx.SuspensionExtensionRatio, 
 			Ctx.WheelPos, 
-			Config.BaseCamber,
-			Config.BaseToe);
+			Config.SpindleMountRotation.Roll,
+			Config.SpindleMountRotation.Yaw,
+			Config.SpindleMountRotation.Pitch
+		);
 	FQuat4f BaseWheelRelativeRotation = FQuat4f(FRotator3f(WheelAlignmentEuler.X, WheelAlignmentEuler.Y, WheelAlignmentEuler.Z));
 
 	// the kingpin(steering axis) is the upvector of BaseWheelRelativeRotation
