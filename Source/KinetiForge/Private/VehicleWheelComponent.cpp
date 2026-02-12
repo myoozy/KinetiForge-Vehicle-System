@@ -462,12 +462,10 @@ void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
 	return Suspension.StartUpdateSolidAxle(
 		WheelConfig.Radius,
 		WheelConfig.Width,
-		Wheel.State.TireForce,
 		SuspensionKinematicsConfig,
 		GetRelativeTransform(),
 		CarbodyAsyncWorldTransform,
 		GetWorld(),
-		CarbodyHandle,
 		InSteeringAngle, 
 		OutApporximatedWheelWorldPos, 
 		Ctx);
@@ -507,12 +505,15 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 		WheelConfig.Radius,
 		SuspensionKinematicsConfig,
 		SuspensionSpringConfig,
+		CarbodyAsyncWorldTransform,
 		CarbodyHandle,
 		InPhysicsDeltaTime, 
 		InSwaybarForce,
 		Ctx,
 		InKnuckleWorldPos,
-		InAxleWorldDirection);
+		InAxleWorldDirection,
+		Wheel.State.TireForce
+	);
 
 	Wheel.UpdateWheel(
 		InPhysicsDeltaTime,

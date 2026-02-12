@@ -37,12 +37,10 @@ public:
 	void StartUpdateSolidAxle(
 		const float WheelRadius,
 		const float WheelWidth,
-		const FVector3f& TireForce,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FTransform& ComponentRelativeTransform,
 		const FTransform& AsyncCarbodyWorldTransform,
 		const UWorld* CurrentWorld,
-		Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
 		float InSteeringAngle,
 		FVector& OutApporximatedWheelWorldPos,
 		FVehicleSuspensionSimContext& Ctx
@@ -51,12 +49,14 @@ public:
 		const float WheelRadius,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FVehicleSuspensionSpringConfig& SpringConfig,
+		const FTransform& AsyncCarbodyWorldTransform,
 		Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
 		float InDeltaTime,
 		float InSwaybarForce,
 		FVehicleSuspensionSimContext& Ctx,
 		const FVector& InKnuckleWorldPos,
-		const FVector& InAxleWorldDirection
+		const FVector& InAxleWorldDirection,
+		const FVector3f& TireForce
 	);
 	void ApplySuspensionStateDirect(
 		const float WheelRadius,
@@ -158,7 +158,6 @@ public:
 		State.WheelRelativeRotation = FQuat4f(Context.WheelRelativeTransform.GetRotation());
 		State.AntiPitchScale = Context.AntiPitchScale;
 		State.AntiRollScale = Context.AntiRollScale;
-		State.Compression = 1.f - Context.SuspensionExtensionRatio;
 
 		State.ImpactFriction = Context.ImpactFriction;
 		
@@ -178,14 +177,11 @@ public:
 	FORCEINLINE void CopyStateToContext(FVehicleSuspensionSimContext& Context)
 	{
 		Context.SuspensionCurrentLength = State.SuspensionCurrentLength;
-		Context.SuspensionExtensionRatio = 1.f - State.Compression;
 		Context.SprungMass = State.SprungMass;
 		Context.KnucklePos2D = State.KnucklePos2D;
 		Context.WheelCenterToKnuckle = State.WheelCenterToKnuckle;
 		Context.WheelRelativeTransform.SetRotation(State.WheelRelativeRotation);
 		Context.WheelRelativeTransform.SetLocation(State.WheelCenterToKnuckle + State.KnuckleRelativePos);
-		Context.HitStruct.Normal = FVector(State.ImpactNormal);
-		Context.HitStruct.ImpactPoint = State.ImpactPoint;
 	}
 
 	static FORCEINLINE FVector3f GetCamberToeCasterFromCurve(

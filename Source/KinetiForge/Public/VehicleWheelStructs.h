@@ -45,7 +45,7 @@ struct KINETIFORGE_API FVehicleTireConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0", ToolTip = "if value is 1, the wheel load will be proportional to suspension force. If value is 0, the wheel load will be constant (gravity of sprungmass)."))
 	float WheelLoadInfluenceFactor = 0.8f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0", DisplayName = "Grip Distribution Bias", ToolTip = "Balances grip between turning and accelerating.\n0.5 = Balanced.\n>0.5 = Prioritizes Turning (Easier to corner while braking).\n<0.5 = Prioritizes Acceleration."))
-	float CombinedSlipBias = 0.6f;
+	float CombinedSlipBias = 0.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0", DisplayName = "Accel Affects Turning", ToolTip = "How much longitudinal slip (spinning) reduces lateral grip.\n1.0 = Realistic (Spinning wheels can't turn).\n0.0 = Arcade (Full turning grip even when burning out)."))
 	float LongitudinalToLateralInterference = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0", DisplayName = "Turning Affects Accel", ToolTip = "How much lateral slip (drifting) reduces forward acceleration.\nLower values (e.g., 0.8) make it easier to maintain speed while drifting."))

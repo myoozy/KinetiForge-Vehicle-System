@@ -147,8 +147,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float ForceAlongImpactNormal = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	float Compression = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float AntiPitchScale = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float AntiRollScale = 0.f;
@@ -164,14 +162,14 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	FVector3f TopMountRelativePos = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "the strut also represents the kingpin, if it is macpherson or straight line"))
 	FVector3f StrutDirection = FVector3f(0.f);	// strut direction in world space
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	float ImpactFriction = 1.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector3f ImpactPointWorldVelocity = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector3f ImpactNormal = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector ImpactPoint = FVector(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	float ImpactFriction = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Position")
 	bool bIsRightWheel = true;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
