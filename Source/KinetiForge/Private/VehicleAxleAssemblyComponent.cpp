@@ -244,28 +244,41 @@ void UVehicleAxleAssemblyComponent::UpdateSteeringAssist(float InSteeringInput)
 {
 	if (SteeringAssistConfig.bSteeringAssistEnabled)
 	{
-		float TargetSteeringAssistInput = 0.f;
+		float TargetInput = 0.f;
+
 		FVector2D LocalVelocity2D = FVector2D(State.LocalLinearVelocity.X, State.LocalLinearVelocity.Y);
-		LocalVelocity2D = LocalVelocity2D.GetSafeNormal();
+		FVector2D LocalVelocityDirection = LocalVelocity2D.GetSafeNormal();
 
 		//get the slip angle of the carbody
-		float CarbodySlipAngle = FMath::Asin(LocalVelocity2D.Y);
+		float CarbodySlipAngle = FMath::Asin(LocalVelocityDirection.Y);
 		CarbodySlipAngle = FMath::RadiansToDegrees(CarbodySlipAngle);
-
-		//because sin(x)¡Öx when x is small, and we don't need this to be accurate
-		//float CarbodySlipAngle = FMath::RadiansToDegrees(LocalVelocity2D.Y);
-		//CarbodySlipAngle = FMath::Clamp(CarbodySlipAngle, -90.f, 90.f);
 
 		if (State.LocalLinearVelocity.X > SteeringAssistConfig.ActivationSpeed
 			&& FMath::Abs(CarbodySlipAngle) > SteeringAssistConfig.ActivationAngle)
 		{
-			TargetSteeringAssistInput
-				= FMath::GetMappedRangeValueClamped(
-					FVector2D(-AxleSteeringConfig.MaxSteeringAngle, AxleSteeringConfig.MaxSteeringAngle), FVector2D(-1.f, 1.f), CarbodySlipAngle * SteeringAssistConfig.Level);
+			TargetInput  = FMath::GetMappedRangeValueClamped(
+				FVector2D(-AxleSteeringConfig.MaxSteeringAngle, AxleSteeringConfig.MaxSteeringAngle), 
+				FVector2D(-1.f, 1.f), 
+				CarbodySlipAngle * SteeringAssistConfig.Level
+			);
 		}
 
-		float SmoothFactor = FMath::Clamp(SteeringAssistConfig.Smoothing, 0.f, 1.f);
-		State.SteeringAssistInput = FMath::Clamp(TargetSteeringAssistInput + (State.SteeringAssistInput - TargetSteeringAssistInput) * SmoothFactor, -1.f, 1.f);
+		if (SteeringAssistConfig.MaxSteerRate > SMALL_NUMBER)
+		{
+			State.SteeringAssistInput = FMath::FInterpConstantTo(
+				State.SteeringAssistInput,
+				TargetInput,
+				State.PhysicsDeltaTime,
+				SteeringAssistConfig.MaxSteerRate
+			);
+		}
+		else
+		{
+			// teleport if max steer rate is not valid
+			State.SteeringAssistInput = TargetInput;
+		}
+
+		State.SteeringAssistInput = FMath::Clamp(State.SteeringAssistInput, -1.f, 1.f);
 		State.RealSteeringValue = FMath::Clamp(InSteeringInput + State.SteeringAssistInput, -1.f, 1.f);
 	}
 	else
@@ -275,7 +288,7 @@ void UVehicleAxleAssemblyComponent::UpdateSteeringAssist(float InSteeringInput)
 	}
 }
 
-void UVehicleAxleAssemblyComponent::CalculateLinearVelocity(
+void UVehicleAxleAssemblyComponent::UpdateLinearVelocity(
 	UVehicleWheelComponent* WheelL, 
 	UVehicleWheelComponent* WheelR)
 {
@@ -302,7 +315,9 @@ void UVehicleAxleAssemblyComponent::UpdateSwaybarForce(
 	UVehicleWheelComponent* WheelL, 
 	UVehicleWheelComponent* WheelR)
 {
-	State.SwaybarForce = AxleConfig.SwaybarStiffness * 0.5 * (WheelR->GetSuspensionLength() - WheelL->GetSuspensionLength());
+	float HeightL = WheelL->GetKnuckleRelativePosition().Z;
+	float HeightR = WheelR->GetKnuckleRelativePosition().Z;
+	State.SwaybarForce = AxleConfig.SwaybarStiffness * 0.5f * (HeightL - HeightR);
 }
 
 void UVehicleAxleAssemblyComponent::UpdateTCS(
@@ -513,7 +528,7 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 		State.HandbrakeTorque = 0;
 	}
 
-	CalculateLinearVelocity(WheelL, WheelR);
+	UpdateLinearVelocity(WheelL, WheelR);
 
 	if (AxleSteeringConfig.bAffectedBySteering)
 	{
@@ -774,11 +789,11 @@ bool UVehicleAxleAssemblyComponent::SearchExistingWheels()
 	{
 		if (!LeftWheel.IsValid())
 		{
-			LeftWheel = VehicleUtil::GetComponentByName<UVehicleWheelComponent>(Owner, LeftWheelComponentName);
+			LeftWheel = UVehicleUtil::GetComponentByName<UVehicleWheelComponent>(Owner, LeftWheelComponentName);
 		}
 		if (!RightWheel.IsValid())
 		{
-			RightWheel = VehicleUtil::GetComponentByName<UVehicleWheelComponent>(Owner, RightWheelComponentName);
+			RightWheel = UVehicleUtil::GetComponentByName<UVehicleWheelComponent>(Owner, RightWheelComponentName);
 		}
 		bool bIsLeftValid = LeftWheel.IsValid();
 		if (bIsLeftValid)
@@ -807,7 +822,7 @@ bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 		bool bExistingDiffFound = false;
 		if (bUseExistingDifferentialComponent)
 		{
-			Differential = VehicleUtil::GetComponentByName<UVehicleDifferentialComponent>(Owner, DifferentialComponentName);
+			Differential = UVehicleUtil::GetComponentByName<UVehicleDifferentialComponent>(Owner, DifferentialComponentName);
 			bExistingDiffFound = Differential.IsValid();
 		}
 
@@ -833,10 +848,10 @@ bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 
 TArray<FName> UVehicleAxleAssemblyComponent::GetNamesOfWheelsOfOwner()
 {
-	return VehicleUtil::GetNamesOfComponentsOfActor<UVehicleWheelComponent>(this);
+	return UVehicleUtil::GetNamesOfComponentsOfActor<UVehicleWheelComponent>(this);
 }
 
 TArray<FName> UVehicleAxleAssemblyComponent::GetNamesOfDifferentialsOfOwner()
 {
-	return VehicleUtil::GetNamesOfComponentsOfActor<UVehicleDifferentialComponent>(this);
+	return UVehicleUtil::GetNamesOfComponentsOfActor<UVehicleDifferentialComponent>(this);
 }

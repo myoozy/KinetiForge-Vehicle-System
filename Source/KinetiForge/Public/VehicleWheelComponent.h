@@ -203,9 +203,6 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetP4MotorTorque() { return Wheel.State.P4MotorTorque; }
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleWheel", meta = (ToolTip = "kg/m^2"))
-	static void SetInertiaTensor(UPrimitiveComponent* InComponent, FVector InInertia);
-
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void GetWheelMovement(FVehicleWheelSimState& Out) { Out = Wheel.State; }
 

@@ -71,11 +71,11 @@ struct FVehicleSteeringAssistConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SteeringSetup", meta = (ToolTip = "reduce steering angle when understeering or oversteering"))
 	bool bSteeringAssistEnabled = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SteeringSetup", meta = (ClampMin = "0.0"))
-	float Level = 0.5;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SteeringSetup", meta = (ClampMin = "0.0", ClampMax = "0.99999", ToolTip = "steering assist smoothing(0 = immediately, 1 = never)"))
-	float Smoothing = 0.8;
+	float Level = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SteeringSetup", meta = (ClampMin = "0.0", ToolTip = "Maximum steering speed of steering assist. If MaxSteerRate <= 0, it will teleport steering."))
+	float MaxSteerRate = 30.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SteeringSetup", meta = (ClampMin = "0.0", ToolTip = "minimum speed(m / s) to activate assist"))
-	float ActivationSpeed = 0.5;
+	float ActivationSpeed = 0.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SteeringSetup", meta = (ClampMin = "0.0", ToolTip = "minimum angle(degrees) to activate assist"))
 	float ActivationAngle = 1.f;
 };

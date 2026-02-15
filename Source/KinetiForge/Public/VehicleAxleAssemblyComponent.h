@@ -83,7 +83,7 @@ protected:
 	);
 	void UpdateSteering(float InSteeringInput);
 	void UpdateSteeringAssist(float InSteeringInput);
-	void CalculateLinearVelocity(
+	void UpdateLinearVelocity(
 		UVehicleWheelComponent* WheelL, 
 		UVehicleWheelComponent* WheelR
 	);

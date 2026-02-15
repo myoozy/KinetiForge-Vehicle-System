@@ -56,7 +56,7 @@ void UVehicleDifferentialComponent::UpdateInputShaft(float InLeftOutputShaftAngu
 {
 	OutInputShaftVelocity = GetInputShaftVelocity(InLeftOutputShaftAngularVelocity, InRightOutputShaftAngularVelocity);
 
-	OutReflectedInertia = VehicleUtil::SafeDivide(InLeftWheelInertia + InRightWheelInertia, Config.GearRatio * Config.GearRatio);
+	OutReflectedInertia = UVehicleUtil::SafeDivide(InLeftWheelInertia + InRightWheelInertia, Config.GearRatio * Config.GearRatio);
 }
 
 int32 UVehicleDifferentialComponent::UpdateTransferCase(
@@ -86,13 +86,13 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 		SumAngVel += IsDriveAxle * Axle->GetAngularVelocity();
 	}
 	float FloatNumOfDriveAxles = (float)NumOfDriveAxles;
-	float AverageAxleAngularVelocity = VehicleUtil::SafeDivide(SumAngVel, FloatNumOfDriveAxles);
+	float AverageAxleAngularVelocity = UVehicleUtil::SafeDivide(SumAngVel, FloatNumOfDriveAxles);
 
 	//update axles
 	float DriveTorque = Config.GearRatio * InGearboxOutputTorque;
 	float ReflInertia = Config.GearRatio * Config.GearRatio * InReflectedInertia;
 	//reflected inertia
-	float ReflectedInertiaOnAxle = VehicleUtil::SafeDivide(ReflInertia, FloatNumOfDriveAxles);
+	float ReflectedInertiaOnAxle = UVehicleUtil::SafeDivide(ReflInertia, FloatNumOfDriveAxles);
 
 	SumAngVel = 0.f;
 	float SumDriveAxleInertia = 0.f;
@@ -107,8 +107,8 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 		{
 			//central diff
 			float AngVelDifference = AverageAxleAngularVelocity - Axle->GetAngularVelocity();
-			float TorqueBias = VehicleUtil::SafeDivide(AngVelDifference * Axle->GetTotalAxleInertia() * Config.LockRatio, InDeltaTime);
-			float NormTorqueWeight = VehicleUtil::SafeDivide(Axle->AxleConfig.TorqueWeight, SumTorqueWeight);
+			float TorqueBias = UVehicleUtil::SafeDivide(AngVelDifference * Axle->GetTotalAxleInertia() * Config.LockRatio, InDeltaTime);
+			float NormTorqueWeight = UVehicleUtil::SafeDivide(Axle->AxleConfig.TorqueWeight, SumTorqueWeight);
 			float AxleDriveTorque = DriveTorque * NormTorqueWeight + TorqueBias;
 
 			//burnout assist
@@ -142,8 +142,8 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	}
 
 	//get average angular velocity of all drive axles
-	OutGearboxOutputShaftAngularVelocity = VehicleUtil::SafeDivide(SumAngVel * Config.GearRatio, FloatNumOfDriveAxles);
-	OutTotalInertia = VehicleUtil::SafeDivide(SumDriveAxleInertia, Config.GearRatio * Config.GearRatio);
+	OutGearboxOutputShaftAngularVelocity = UVehicleUtil::SafeDivide(SumAngVel * Config.GearRatio, FloatNumOfDriveAxles);
+	OutTotalInertia = UVehicleUtil::SafeDivide(SumDriveAxleInertia, Config.GearRatio * Config.GearRatio);
 
 	//return the number of drive axles
 	return NumOfDriveAxles;
@@ -179,13 +179,13 @@ float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(
 				SumR += RightWheel->WheelConfig.Radius;
 				n++;
 			}
-			float avgR = VehicleUtil::SafeDivide(SumR, (float)n);
-			effectiveR += VehicleUtil::SafeDivide(avgR, Diff->Config.GearRatio);
+			float avgR = UVehicleUtil::SafeDivide(SumR, (float)n);
+			effectiveR += UVehicleUtil::SafeDivide(avgR, Diff->Config.GearRatio);
 
 			driveAxleNum++;
 		}
 	}
-	effectiveR = VehicleUtil::SafeDivide(effectiveR, (float)driveAxleNum * Config.GearRatio);
+	effectiveR = UVehicleUtil::SafeDivide(effectiveR, (float)driveAxleNum * Config.GearRatio);
 
 	return effectiveR;
 }

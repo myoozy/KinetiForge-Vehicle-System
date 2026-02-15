@@ -129,14 +129,14 @@ void UVehicleGearboxComponent::UpdateInputShaft(
 )
 {
 	OutClutchVelocity = InAxleVelocity * CurrentGearRatio;
-	OutReflectedInertia = VehicleUtil::SafeDivide(InAxleInertia, CurrentGearRatio * CurrentGearRatio);
+	OutReflectedInertia = UVehicleUtil::SafeDivide(InAxleInertia, CurrentGearRatio * CurrentGearRatio);
 	OutInputShaftInertia = Config.InputShaftInertia;
 	OutCurrentGearRatio = CurrentGearRatio;
 	int32 ForwardGearAmount = GearRatios.Num();
 	int32 BackWardGearAmount = ReverseGearRatios.Num();
 	float HighestGearRatio = ForwardGearAmount > BackWardGearAmount ? 
 		GearRatios[ForwardGearAmount - 1] : ReverseGearRatios[BackWardGearAmount - 1];
-	GearboxReflectedInertia_HighestGear = VehicleUtil::SafeDivide(InAxleInertia, FMath::Square(HighestGearRatio));	
+	GearboxReflectedInertia_HighestGear = UVehicleUtil::SafeDivide(InAxleInertia, FMath::Square(HighestGearRatio));	
 }
 
 float UVehicleGearboxComponent::GetGearRatio(int InTarget)
@@ -168,8 +168,8 @@ void UVehicleGearboxComponent::CalculateSpeedRangeOfEachGear(
 	{
 		FVector2D SpeedRangeOfCurrentGear;
 		float GearRatio = GetGearRatio(i);
-		SpeedRangeOfCurrentGear.X = VehicleUtil::SafeDivide(InEngineIdleRPM * avgRPM, GearRatio);
-		SpeedRangeOfCurrentGear.Y = VehicleUtil::SafeDivide(InEngineMaxRPM * avgRPM, GearRatio);
+		SpeedRangeOfCurrentGear.X = UVehicleUtil::SafeDivide(InEngineIdleRPM * avgRPM, GearRatio);
+		SpeedRangeOfCurrentGear.Y = UVehicleUtil::SafeDivide(InEngineMaxRPM * avgRPM, GearRatio);
 
 		OutSpeedRanges[i] = SpeedRangeOfCurrentGear;
 	}

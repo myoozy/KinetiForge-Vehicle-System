@@ -41,9 +41,9 @@ void FVehicleWheelSolver::UpdateWheel(
 
 	//divide something...	to avoid 0
 	State.PhysicsDeltaTime = InPhysicsDeltaTime;
-	State.PhysicsDeltaTimeInv = VehicleUtil::SafeDivide(1.f, State.PhysicsDeltaTime);
+	State.PhysicsDeltaTimeInv = UVehicleUtil::SafeDivide(1.f, State.PhysicsDeltaTime);
 	State.R = Config.Radius * 0.01;
-	State.RInv = VehicleUtil::SafeDivide(1.f, State.R);
+	State.RInv = UVehicleUtil::SafeDivide(1.f, State.R);
 	State.TotalInertia = Config.Inertia + InReflectedInertia;
 	State.DriveTorque = InDriveTorque + State.P4MotorTorque;
 
@@ -326,7 +326,7 @@ void FVehicleWheelSolver::WheelAcceleration(
 	float ExcessFrictionTorque = FMath::Clamp(FrictionTorque - ClampedFrictionTorque, -State.BrakeTorque, State.BrakeTorque);
 
 	// avoid divided by 0
-	float TotalInertiaInv = VehicleUtil::SafeDivide(1.f, State.TotalInertia);
+	float TotalInertiaInv = UVehicleUtil::SafeDivide(1.f, State.TotalInertia);
 
 	//get the angular velocity without braking
 	State.AngularVelocity += State.PhysicsDeltaTime * TotalInertiaInv * (State.DriveTorque - ClampedFrictionTorque);
@@ -458,7 +458,7 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 float FVehicleWheelSolver::CalculateScaledWheelLoad(float SprungMass, float WheelLoad, float Saturation)
 {
 	float NormWheelLoad = SprungMass * 9.8;
-	float LoadRatio = VehicleUtil::SafeDivide(WheelLoad, NormWheelLoad);
+	float LoadRatio = UVehicleUtil::SafeDivide(WheelLoad, NormWheelLoad);
 	float b = (1.f - Saturation) / (2.f + 2.f * Saturation);
 	float LoadScale = LoadRatio / (1.f + b * LoadRatio);
 	return LoadScale * NormWheelLoad;
@@ -508,11 +508,11 @@ void FVehicleWheelSolver::UpdateTireForce(
 	
 	// get combined slip direction
 	FVector2f WeightXY = FVector2f(1.f - TireConfig.CombinedSlipBias, TireConfig.CombinedSlipBias);
-	WeightXY *= FVector2f(VehicleUtil::SafeDivide(1.f, TireConfig.MaxFx), VehicleUtil::SafeDivide(1.f, TireConfig.MaxFy));
+	WeightXY *= FVector2f(UVehicleUtil::SafeDivide(1.f, TireConfig.MaxFx), UVehicleUtil::SafeDivide(1.f, TireConfig.MaxFy));
 	FVector2f ScDirection = (NormalizedSlip * WeightXY).GetSafeNormal();
 
 	// the tangent of the linear region should not be changed, if the vehicle is driving on a surface with high friction multiplier
-	float SlipInputScale = VehicleUtil::SafeDivide(TireConfig.FrictionMultiplier, State.DynFrictionMultiplier);
+	float SlipInputScale = UVehicleUtil::SafeDivide(TireConfig.FrictionMultiplier, State.DynFrictionMultiplier);
 	FVector2f SlipInput = SlipInputScale * ScalarNormSlip * OptimalSlip;
 	
 	// if the user has only setup one of the Fx or Fy curve, the Constraint force on the other direction should be cut, before computing combined slip
@@ -583,7 +583,7 @@ void FVehicleWheelSolver::UpdateTireForce(
 	State.TireForce2D = State.MFTireForce2D + State.GravityCompensationForce;
 
 	// cut with friction ellipse again to prevent overshoot
-	FVector2f MaxForceInv = FVector2f(VehicleUtil::SafeDivide(1.f, MaxFx), VehicleUtil::SafeDivide(1.f, MaxFy));
+	FVector2f MaxForceInv = FVector2f(UVehicleUtil::SafeDivide(1.f, MaxFx), UVehicleUtil::SafeDivide(1.f, MaxFy));
 	FVector2f NormalizedForce = State.TireForce2D * MaxForceInv;
 	if (NormalizedForce.SquaredLength() > 1.f)
 	{

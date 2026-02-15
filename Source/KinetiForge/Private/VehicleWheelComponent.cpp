@@ -352,7 +352,8 @@ FTransform3f UVehicleWheelComponent::GetWheelRelativeTransform()
 
 	return FTransform3f(
 		Suspension.State.WheelRelativeRotation,
-		Suspension.State.KnuckleRelativePos + Suspension.State.WheelCenterToKnuckle);
+		Suspension.State.KnuckleRelativePos + Suspension.State.WheelCenterToKnuckle
+	);
 }
 
 float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float LateralScale)
@@ -399,7 +400,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheel);
 
 	// get rigid handle to get world com position
-	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = VehicleUtil::GetInternalHandle(Carbody.Get());
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = UVehicleUtil::GetInternalHandle(Carbody.Get());
 	if (!CarbodyHandle)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CarBody!!!"));
@@ -450,7 +451,7 @@ void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
 	FVehicleSuspensionSimContext& Ctx
 )
 {
-	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = VehicleUtil::GetInternalHandle(Carbody.Get());
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = UVehicleUtil::GetInternalHandle(Carbody.Get());
 	if (!CarbodyHandle)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CarBody!!!"));
@@ -590,38 +591,6 @@ float UVehicleWheelComponent::ComputeFeedBackTorque()
 	FVector3f Arm = WheelConfig.Radius * Suspension.State.StrutDirection.ProjectOnToNormal(Suspension.State.ImpactNormal);
 	FVector3f Torque = FVector3f::CrossProduct(Arm, Wheel.State.TireForce);
 	return FVector3f::DotProduct(Suspension.State.StrutDirection, Torque);
-}
-
-void UVehicleWheelComponent::SetInertiaTensor(UPrimitiveComponent* InComponent, FVector InInertia)
-{
-	if (!IsValid(InComponent)) return;
-	FBodyInstance* BI = InComponent->GetBodyInstance();
-	if (!BI || !BI->IsValidBodyInstance()) return;
-
-	if (!FPhysicsInterface::IsValid(BI->ActorHandle) || !FPhysicsInterface::IsRigidBody(BI->ActorHandle))
-	{
-		// actor is not created, maybe try again later
-		return;
-	}
-
-
-	// cm^2 to m^2
-	InInertia *= 10000;
-
-	// input check
-	if (InInertia.X <= 0.f || InInertia.Y <= 0.f || InInertia.Z <= 0.f)
-	{
-		FVector OriginalInertia = BI->GetBodyInertiaTensor();
-		if (InInertia.X <= 0)InInertia.X = OriginalInertia.X;
-		if (InInertia.Y <= 0)InInertia.Y = OriginalInertia.X;
-		if (InInertia.Z <= 0)InInertia.Z = OriginalInertia.X;
-	}
-
-	// setup in physical callback
-	FPhysicsCommand::ExecuteWrite(BI->ActorHandle, [&](FPhysicsActorHandle& Actor)
-	{
-		FPhysicsInterface::SetMassSpaceInertiaTensor_AssumesLocked(Actor, InInertia);
-	});
 }
 
 FTransform UVehicleWheelComponent::GetCarbodyWorldTransform()
@@ -850,7 +819,7 @@ FTransform3f UVehicleWheelComponent::UpdateSuspensionSpringAnim(
 	float InitialLength = (SpringMeshRelativePos - OffsetInitialJointPos).Length();
 	float CurrentLength = AnimStrut.Length();
 
-	float Scale = VehicleUtil::SafeDivide(CurrentLength, InitialLength);
+	float Scale = UVehicleUtil::SafeDivide(CurrentLength, InitialLength);
 	FVector3f Scale3D = FVector3f(1.f) + (FVector3f)InScaleAxis * (Scale - 1.f);
 	Scale3D *= (FVector3f)InInitialScale;
 

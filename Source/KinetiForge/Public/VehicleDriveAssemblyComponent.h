@@ -223,12 +223,6 @@ public:
     EVehicleEngineOperationMode StartVehicleEngine();
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     EVehicleEngineOperationMode ShutVehicleEngine();
-    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
-    static void RotateCamera(
-        USceneComponent* InSpringArm,
-        FVector2D InMouseInput,
-        bool bInvertYAxis = false, 
-        float InMaxPitch = 80);
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly", meta = (ToolTip = "Unit of speed: m/s"))
     void StretchSpringArmBySpeed(
         USpringArmComponent* InSpringArm,
@@ -239,7 +233,7 @@ public:
         USceneComponent* InSpringArm, 
         float InPitch, 
         float InSensitivity = 1.f,
-        float InInterpSpeed = 5.f, 
+        float InInterpSpeed = 0.f, 
         float InStartSpeed_mps = 5.f);
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void GetInputValues(FVehicleInputPipeline& Out) { Out = InputValues; }
