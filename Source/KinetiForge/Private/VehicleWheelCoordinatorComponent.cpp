@@ -5,6 +5,7 @@
 #include "VehicleWheelComponent.h"
 #include "VehicleAxleAssemblyComponent.h"
 #include "VehicleDriveAssemblyComponent.h"
+#include "VehicleUtil.h"
 
 DEFINE_LOG_CATEGORY(LogWheelCoordinator);
 
@@ -34,7 +35,7 @@ void UVehicleWheelCoordinatorComponent::BeginPlay()
 void UVehicleWheelCoordinatorComponent::OnRegister()
 {
 	Super::OnRegister();
-	Carbody = FindPhysicalParent(this);
+	Carbody = UVehicleUtil::FindPhysicalParent(this);
 }
 
 void UVehicleWheelCoordinatorComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
@@ -136,34 +137,6 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 		bWheelBaseDataDirty = false;
 		UpdateWheelBase();
 	}
-}
-
-UPrimitiveComponent* UVehicleWheelCoordinatorComponent::FindPhysicalParent(USceneComponent* ChildSceneComponent)
-{
-	if (!IsValid(ChildSceneComponent))return nullptr;
-
-	TArray<USceneComponent*> AllParentComponents;
-	ChildSceneComponent->GetParentComponents(AllParentComponents);
-
-	// search for all possible components
-	for (USceneComponent* SceneComp : AllParentComponents)
-	{
-		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(SceneComp))
-		{
-			return Primitive;
-		}
-	}
-
-	// Fallback: try to find root component (usually primitive)
-	if (AActor* CompOwner = ChildSceneComponent->GetOwner())
-	{
-		if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(CompOwner->GetRootComponent()))
-		{
-			return RootPrimitive;
-		}
-	}
-
-	return nullptr;
 }
 
 UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelCoordinator(USceneComponent* Carbody)

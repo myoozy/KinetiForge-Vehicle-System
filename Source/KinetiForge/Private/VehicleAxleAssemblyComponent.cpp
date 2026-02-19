@@ -34,7 +34,7 @@ void UVehicleAxleAssemblyComponent::OnRegister()
 	Super::OnRegister();
 
 	//...
-	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
+	Carbody = UVehicleUtil::FindPhysicalParent(this);
 	//PreviewWheelMesh();
 	InitializeWheels();
 }

@@ -46,6 +46,9 @@ public:
         float InInterpSpeed = 0.f,
         float InStartSpeed_mps = 5.f);
 
+    UFUNCTION(BlueprintCallable, Category = "VehicleUtility")
+    static UPrimitiveComponent* FindPhysicalParent(USceneComponent* ChildSceneComponent);
+
     template<typename T>
     static FORCEINLINE T SafeDivide(const T& A, const T& B)
     {

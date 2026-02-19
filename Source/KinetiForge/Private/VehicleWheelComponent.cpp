@@ -322,7 +322,7 @@ void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Sourc
 
 void UVehicleWheelComponent::InitializeWheel()
 {
-	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
+	Carbody = UVehicleUtil::FindPhysicalParent(this);
 	if (Carbody.IsValid() && Carbody != GetAttachParent())
 	{
 		AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepWorldTransform);

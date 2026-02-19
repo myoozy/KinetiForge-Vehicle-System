@@ -83,3 +83,31 @@ void UVehicleUtil::CameraLookAtVelocity(UPrimitiveComponent* InPrimitiveComponen
 		InSpringArm->SetRelativeRotation(NewRot);
 	}
 }
+
+UPrimitiveComponent* UVehicleUtil::FindPhysicalParent(USceneComponent* ChildSceneComponent)
+{
+	if (!IsValid(ChildSceneComponent))return nullptr;
+
+	TArray<USceneComponent*> AllParentComponents;
+	ChildSceneComponent->GetParentComponents(AllParentComponents);
+
+	// search for all possible components
+	for (USceneComponent* SceneComp : AllParentComponents)
+	{
+		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(SceneComp))
+		{
+			return Primitive;
+		}
+	}
+
+	// Fallback: try to find root component (usually primitive)
+	if (AActor* CompOwner = ChildSceneComponent->GetOwner())
+	{
+		if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(CompOwner->GetRootComponent()))
+		{
+			return RootPrimitive;
+		}
+	}
+
+	return nullptr;
+}

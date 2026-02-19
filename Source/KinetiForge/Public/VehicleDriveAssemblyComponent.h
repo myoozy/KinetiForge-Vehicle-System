@@ -234,7 +234,7 @@ public:
         float InPitch, 
         float InSensitivity = 1.f,
         float InInterpSpeed = 0.f, 
-        float InStartSpeed_mps = 5.f);
+        FVector2D InStartSpeed_meter_per_second = FVector2D(1.f, 5.f));
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void GetInputValues(FVehicleInputPipeline& Out) { Out = InputValues; }
     UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator.Get(); }

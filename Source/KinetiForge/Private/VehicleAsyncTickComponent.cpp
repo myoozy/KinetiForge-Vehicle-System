@@ -2,12 +2,52 @@
 
 #include "VehicleAsyncTickComponent.h"
 #include "VehicleDriveAssemblyComponent.h"
+#include "VehicleAsyncSpringArmComponent.h"
 #include "AsyncTickManager.h"
+
+UVehicleAsyncTickComponent* UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(AActor* VehicleActor)
+{
+	if (!IsValid(VehicleActor))return nullptr;
+
+	//if found
+	if(UVehicleAsyncTickComponent* AsyncTickComp = 
+		Cast<UVehicleAsyncTickComponent>(VehicleActor->GetComponentByClass(UVehicleAsyncTickComponent::StaticClass())))
+	{
+		return AsyncTickComp;
+	}
+	else
+	{
+		//if not found
+		AsyncTickComp =
+			Cast<UVehicleAsyncTickComponent>(VehicleActor->AddComponentByClass(UVehicleAsyncTickComponent::StaticClass(), false, FTransform(), false));
+		return AsyncTickComp;
+	}
+}
+
+void UVehicleAsyncTickComponent::Register(UVehicleDriveAssemblyComponent* newDriveAssembly)
+{
+	DriveAssemblies.AddUnique(newDriveAssembly);
+}
+
+void UVehicleAsyncTickComponent::UnRegister(UVehicleDriveAssemblyComponent* targetDriveAssembly)
+{
+	DriveAssemblies.Remove(targetDriveAssembly);
+}
+
+void UVehicleAsyncTickComponent::Register(UVehicleAsyncSpringArmComponent* newAsyncSpringArm)
+{
+	AsyncSpringArms.AddUnique(newAsyncSpringArm);
+}
+
+void UVehicleAsyncTickComponent::UnRegister(UVehicleAsyncSpringArmComponent* targetAsyncSpringArm)
+{
+	AsyncSpringArms.Remove(targetAsyncSpringArm);
+}
 
 void UVehicleAsyncTickComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
 	// ...
 	//make sure the component is registered and active
 	SetActive(true);
@@ -57,6 +97,9 @@ void UVehicleAsyncTickComponent::NativeAsyncTick(float DeltaTime)
 	{
 		UpdateVehiclePhysics(DeltaTime);
 	}
+
+	// just update this in worker thread because it doesn't hold any uobject pointer
+	UpdateAsyncSpringArms(DeltaTime);
 }
 
 void UVehicleAsyncTickComponent::AsyncPhysicsTickComponent(float DeltaTime, float SimTime)
@@ -67,30 +110,6 @@ void UVehicleAsyncTickComponent::AsyncPhysicsTickComponent(float DeltaTime, floa
 	{
 		UpdateVehiclePhysics(DeltaTime);
 	}
-}
-
-UVehicleAsyncTickComponent* UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(AActor* VehicleActor)
-{
-	if (!IsValid(VehicleActor))return nullptr;
-
-	//if found
-	if(UVehicleAsyncTickComponent* AsyncTickComp = 
-		Cast<UVehicleAsyncTickComponent>(VehicleActor->GetComponentByClass(UVehicleAsyncTickComponent::StaticClass())))
-	{
-		return AsyncTickComp;
-	}
-	else
-	{
-		//if not found
-		AsyncTickComp =
-			Cast<UVehicleAsyncTickComponent>(VehicleActor->AddComponentByClass(UVehicleAsyncTickComponent::StaticClass(), false, FTransform(), false));
-		return AsyncTickComp;
-	}
-}
-
-void UVehicleAsyncTickComponent::UnRegister(UVehicleDriveAssemblyComponent* targetDriveAssembly)
-{
-	DriveAssemblies.Remove(targetDriveAssembly);
 }
 
 void UVehicleAsyncTickComponent::UpdateVehiclePhysics(float DeltaTime)
@@ -107,7 +126,13 @@ void UVehicleAsyncTickComponent::UpdateVehiclePhysics(float DeltaTime)
 	}
 }
 
-void UVehicleAsyncTickComponent::Register(UVehicleDriveAssemblyComponent* newDriveAssembly)
+void UVehicleAsyncTickComponent::UpdateAsyncSpringArms(float DeltaTime)
 {
-	DriveAssemblies.AddUnique(newDriveAssembly);
+	for (TWeakObjectPtr<UVehicleAsyncSpringArmComponent> AsyncSpringArmPtr : AsyncSpringArms)
+	{
+		if (UVehicleAsyncSpringArmComponent* SpringArm = AsyncSpringArmPtr.Get())
+		{
+			SpringArm->UpdatePhysics(DeltaTime);
+		}
+	}
 }

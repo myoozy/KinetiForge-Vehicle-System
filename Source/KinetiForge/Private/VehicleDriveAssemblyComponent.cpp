@@ -87,7 +87,7 @@ void UVehicleDriveAssemblyComponent::OnRegister()
 {
 	Super::OnRegister();
 	//...
-	Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
+	Carbody = UVehicleUtil::FindPhysicalParent(this);
 	GetOwner()->bRunConstructionScriptOnDrag = false;	//to improve performance
 	GetOwner()->SetReplicates(true);
 	GenerateAxles();
@@ -933,7 +933,10 @@ EVehicleEngineOperationMode UVehicleDriveAssemblyComponent::ShutVehicleEngine()
 	}
 }
 
-void UVehicleDriveAssemblyComponent::StretchSpringArmBySpeed(USpringArmComponent* InSpringArm, float InInitialSpringArmLength, UCurveFloat* InScaleCurve)
+void UVehicleDriveAssemblyComponent::StretchSpringArmBySpeed(
+	USpringArmComponent* InSpringArm, 
+	float InInitialSpringArmLength, 
+	UCurveFloat* InScaleCurve)
 {
 	if (IsValid(InSpringArm) && IsValid(InScaleCurve))
 	{
@@ -943,11 +946,26 @@ void UVehicleDriveAssemblyComponent::StretchSpringArmBySpeed(USpringArmComponent
 	}
 }
 
-void UVehicleDriveAssemblyComponent::CameraLookAtVelocity(USceneComponent* InSpringArm, float InPitch, float InSensitivity, float InInterpSpeed, float InStartSpeed_mps)
+void UVehicleDriveAssemblyComponent::CameraLookAtVelocity(
+	USceneComponent* InSpringArm, 
+	float InPitch, 
+	float InSensitivity, 
+	float InInterpSpeed, 
+	FVector2D InStartSpeed_meter_per_second)
 {
-	if (IsValid(InSpringArm) && LocalLinearVelocity.SquaredLength() > FMath::Square(InStartSpeed_mps))
+	if (IsValid(InSpringArm))
 	{
+		FVector2f LerpSpeedRange = (FVector2f)InStartSpeed_meter_per_second;
+		FVector2f LocalVelocity2D = FVector2f(LocalLinearVelocity.X, LocalLinearVelocity.Y);
+		float CurrSpeed = LocalVelocity2D.Length();
+		float Alpha = FMath::GetMappedRangeValueClamped(
+			LerpSpeedRange,
+			FVector2f(0.f, 1.f),
+			CurrSpeed
+		);
+
 		FRotator CurrentCamRot = InSpringArm->GetRelativeRotation();
+		FQuat CurrCamQuat = CurrentCamRot.Quaternion();
 
 		FVector ScaledLinearVelocity = (FVector)LocalVelocityClamped;
 		ScaledLinearVelocity.Y *= InSensitivity;
@@ -955,7 +973,10 @@ void UVehicleDriveAssemblyComponent::CameraLookAtVelocity(USceneComponent* InSpr
 		FRotator TargetRotator = FRotationMatrix::MakeFromX(ScaledLinearVelocity).Rotator();
 		TargetRotator.Pitch = InPitch;
 
-		FRotator NewRot = FMath::RInterpTo(CurrentCamRot, TargetRotator, GetWorld()->DeltaTimeSeconds, InInterpSpeed);
+		// remain rotation if speed too low
+		FQuat TargetQuat = FMath::Lerp(CurrCamQuat, TargetRotator.Quaternion(), Alpha);
+
+		FRotator NewRot = FMath::QInterpTo(CurrCamQuat, TargetQuat, GetWorld()->DeltaTimeSeconds, InInterpSpeed).Rotator();
 		NewRot.Roll = 0;
 
 		InSpringArm->SetRelativeRotation(NewRot);
@@ -1111,7 +1132,7 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 {
 	if (!Carbody.IsValid())
 	{
-		Carbody = UVehicleWheelCoordinatorComponent::FindPhysicalParent(this);
+		Carbody = UVehicleUtil::FindPhysicalParent(this);
 		if (!Carbody.IsValid())
 		{
 			return -1;
