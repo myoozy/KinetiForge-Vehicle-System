@@ -16,7 +16,8 @@ namespace Chaos
 }
 
 /**
- * 
+ * Did you asked why my name is not VehicleUtility ?
+ * Because there is already a VehicleUtility file for Chaos Vehicle.
  */
 UCLASS()
 class KINETIFORGE_API UVehicleUtil : public UBlueprintFunctionLibrary

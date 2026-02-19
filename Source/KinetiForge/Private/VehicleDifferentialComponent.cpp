@@ -71,7 +71,6 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	float& OutGearboxOutputShaftAngularVelocity,
 	float& OutTotalInertia)
 {
-	//首先遍历所有车轴，获取驱动轴的数量、扭矩权重、和平均角速度
 	//First iterate over all axles to obtain the number of drive axles, torque weights, and average angular velocity
 	int32 NumOfDriveAxles = 0;
 	float SumTorqueWeight = 0.f;
@@ -82,7 +81,7 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 
 		bool IsDriveAxle = Axle->AxleConfig.TorqueWeight > 0;
 		NumOfDriveAxles += IsDriveAxle;
-		SumTorqueWeight += IsDriveAxle * Axle->AxleConfig.TorqueWeight;
+		SumTorqueWeight += IsDriveAxle * FMath::Abs(Axle->AxleConfig.TorqueWeight);
 		SumAngVel += IsDriveAxle * Axle->GetAngularVelocity();
 	}
 	float FloatNumOfDriveAxles = (float)NumOfDriveAxles;

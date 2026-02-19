@@ -11,6 +11,25 @@ class UVehicleDifferentialComponent;
 class UVehicleWheelCoordinatorComponent;
 class UVehicleWheelComponent;
 
+/**
+* The AxleAssemblyComponent holds (weak) pointer to (up to) two wheels and one differential.
+* Please attach this to a primitive component.
+* 
+* To make the axle functional, it requires at least one wheel and one differential.
+* The wheels and the differential can be automatically generated or selected from existing components.
+* 
+* If the axle is connected to a DriveAssemblyComponent, axle physics will be updated automatically.
+* Otherwise it will not update physics by itself.
+* 
+* To use the axle independently (e.g. to build aeroplane), please call the UpdatePhysics function manually.
+* Please use the AsyncPhysicsTick event (or any other physics callback) to update physics.
+* 
+* This AxleAssemblyComponent will automatically attach itself to the closest primitive component .
+* (usually the vehicle chassis / car body)
+* 
+* A WheelCoordinatorComponent will be automatically generated if needed.
+* The WheelCoordinatorComponent will update wheelbase for every axle automatically.
+*/
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), BlueprintType, Blueprintable )
 class KINETIFORGE_API UVehicleAxleAssemblyComponent : public USceneComponent
 {
@@ -20,26 +39,62 @@ public:
 	// Sets default values for this component's properties
 	UVehicleAxleAssemblyComponent();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ToolTip = "Select whether to use existing Components. If not, dynamically created wheels can still be correctly identified and have their animations recorded by the level sequence."))
+	/**
+	* Select whether to use existing wheel components. 
+	* If not, wheels will be automatically created from the subclass.
+	* The dynamically created wheels can also be recorded in the level sequence.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	bool bUseExistingWheelComponent = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfWheelsOfOwner", EditCondition = "bUseExistingWheelComponent", EditConditionHides))
 	FName LeftWheelComponentName = FName();
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfWheelsOfOwner", EditCondition = "bUseExistingWheelComponent", EditConditionHides))
 	FName RightWheelComponentName = FName();
+
+	/**
+	* Wheel components will be automatically generated from this subclass.
+	* If the value is empty, it will generate a default wheel.
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelComponent", EditConditionHides))
 	TSubclassOf<UVehicleWheelComponent> WheelConfig;
+
+	/**
+	* The rotation of the wheel component.
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelComponent", EditConditionHides))
 	FRotator VehicleWheelComponentSetupRotation;
+
+	/**
+	* Select whether to use existing differential component.
+	* If not, a differential will be automatically created from the subclass.
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	bool bUseExistingDifferentialComponent = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfDifferentialsOfOwner", EditCondition = "bUseExistingDifferentialComponent", EditConditionHides))
 	FName DifferentialComponentName = FName();
+
+	/**
+	* Differential will be generated from this subclass.
+	* If the value is empty, it will generate a default differential.
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingDifferentialComponent", EditConditionHides))
 	TSubclassOf<UVehicleDifferentialComponent> DifferentialConfig;
+
+	/**
+	* Decides wether the axle has two wheels or only one wheel.
+	* This can not be modified in realtime.
+	* If you want to destroy a wheel in realtime, just call destroy component to destroy the wheel component.
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	EVehicleAxleLayout AxleLayout = EVehicleAxleLayout::TwoWheels;
+
+	/**
+	* To simulate solid axle, the axle needs two wheels.
+	* If there is only one wheel, it will switch to independent suspension.
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	EVehicleAxleSuspensionType SuspensionType = EVehicleAxleSuspensionType::Independent;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleAxleConfig AxleConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")

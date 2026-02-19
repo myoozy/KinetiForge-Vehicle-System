@@ -17,17 +17,34 @@ class UVehicleClutchComponent;
 class UVehicleGearboxComponent;
 class UVehicleAsyncTickComponent;
 
+/**
+* This is config for each axle under the DriveAssemblyComponent.
+* 
+* This is NOT the struct "AxleConfig". (sorry for the naming issue)
+*/
 USTRUCT(BlueprintType)
 struct KINETIFORGE_API FAxleAssemblyConfig
 {
     GENERATED_USTRUCT_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Only by using existing manually created Components can the level sequence correctly recognize and record its animations."))
+    /**
+    * Decide whether to use an existing AxleAssemblyComponent.
+    * 
+    * If using existing manually created AxleAssemblyComponent, 
+    * the level sequence correctly recognize and record its animations.
+    * 
+    * Otherwise the level sequence will not record it.
+    */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool bUseExistingComponent = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (GetOptions = "GetNamesOfAxlesOfOwner", EditCondition = "bUseExistingComponent", EditConditionHides))
     FName AxleComponentName = FName();
 
+    /**
+    * Axle will be automatically generated from this subclass.
+    * If the value is empty, a default axle will be generated.
+    */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
     TSubclassOf<UVehicleAxleAssemblyComponent> AxleConfig;
 
@@ -56,6 +73,23 @@ struct KINETIFORGE_API FAxleAssemblyConfig
     TSubclassOf<UVehicleDifferentialComponent> DifferentialOverride = nullptr;
 };
 
+/**
+* The DriveAssemblyComponent holds a a complete drivetrain. Including:
+* - One Engine
+* - One Clutch
+* - One Transmission
+* - One TransferCase
+* - Any amount of Axles
+*
+* All the components above can be automatically generated or selected from existing components.
+*
+* Please attach this to a primitive component.
+* 
+* The vehicle physics will be automatically updated.
+*
+* A WheelCoordinatorComponent will be automatically generated if needed.
+* A VehicleAsyncTickComponent will be automatically generated if needed.
+*/
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), BlueprintType, Blueprintable )
 class KINETIFORGE_API UVehicleDriveAssemblyComponent : public USceneComponent
 {

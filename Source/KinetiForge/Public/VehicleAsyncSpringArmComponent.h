@@ -14,7 +14,9 @@ class UVehicleAsyncTickComponent;
  * This is a spring arm component supporting camera lag with async physics enabled.
  * The native spring arm component of unreal engine does'nt support async physics very well.
  * When async physics and camera lag are enabled at same time, the native spring arm will jitter.
- * This component fixed that issue.
+ * This component fixed that issue (almost).
+ * 
+ * VehicleAsyncTickComponent will be automatically generated if needed.
  * 
  * Here is description of the native spring arm:
  * 
@@ -23,7 +25,6 @@ class UVehicleAsyncTickComponent;
  *
  * Example: Use as a 'camera boom' or 'selfie stick' to keep the follow camera for a player from colliding into the world.
  */
-
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class KINETIFORGE_API UVehicleAsyncSpringArmComponent : public USpringArmComponent
 {

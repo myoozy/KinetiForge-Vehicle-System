@@ -19,6 +19,9 @@ struct FVehicleLimitedSlipDifferentialConfig
 	float LockRatio = 0.f;	//range: 0 - 1
 };
 
+/**
+* Surprise! I'm also a transfer case.
+*/
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), BlueprintType, Blueprintable )
 class KINETIFORGE_API UVehicleDifferentialComponent : public UActorComponent
 {
