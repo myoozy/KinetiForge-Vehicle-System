@@ -35,7 +35,7 @@ void FVehicleWheelSolver::UpdateWheel(
 	const FVehicleABSConfig& ABSConfig,
 	const FVehicleSuspensionSimState& SuspensionState)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelSolver);
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
 
 	const FVehicleWheelConfig& Config = WheelConfig;
 

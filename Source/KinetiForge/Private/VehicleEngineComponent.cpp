@@ -347,6 +347,8 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque, bool bDisableSpark)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Engine_UpdatePhysics);
+
 	State.PhysicsDeltaTime = InDeltaTime;
 	State.RawThrottleInput = FMath::Clamp(InThrottle, 0.f, 1.f);
 	State.LoadTorque = InLoadTorque;

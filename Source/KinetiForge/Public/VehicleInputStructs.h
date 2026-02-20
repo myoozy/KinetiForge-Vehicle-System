@@ -117,4 +117,14 @@ struct FVehicleInputPipeline
     FVehicleInputState Final;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool bSwitchThrottleAndBrake = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bDirectInputThrottle = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bDirectInputBrake = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bDirectInputClutch = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bDirectInputHandbrake = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bDirectInputSteering = false;
 };

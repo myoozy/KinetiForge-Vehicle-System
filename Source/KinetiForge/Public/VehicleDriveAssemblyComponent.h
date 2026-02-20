@@ -150,6 +150,7 @@ protected:
     void UpdateBrake(float InDeltaTime);
     void UpdateClutch(float InDeltaTime);
     void UpdateSteering(float InDeltaTime);
+    void UpdateHandbrake(float InDeltaTime);
     void UpdateAutomaticGearbox(float InDeltaTime);
 
     UFUNCTION(Server, Reliable, Category = "Input")
@@ -271,6 +272,7 @@ public:
         FVector2D InStartSpeed_meter_per_second = FVector2D(1.f, 5.f));
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void GetInputValues(FVehicleInputPipeline& Out) { Out = InputValues; }
+    UFUNCTION()
     UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator.Get(); }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
     void GetAxles(TArray<UVehicleAxleAssemblyComponent*>& OutAxles);
@@ -318,6 +320,8 @@ public:
     float GetHandbrakeValue() { return InputValues.Final.Handbrake; }
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     int32 GetCurrentGear();
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    float GetSteeringValueFromAxles();
 
 private:
     bool GeneratePowerUnit();

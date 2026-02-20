@@ -120,6 +120,8 @@ void UVehicleClutchComponent::UpdatePhysics(
 	const FVehicleNaturallyAspiratedEngineConfig& NAConfig,
 	const FVehicleEngineTurboConfig& TurboConfig)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Clutch_UpdatePhysics);
+
 	float ClutchValue = FMath::Clamp(InClutchValue, 0.f, 1.f);
 
 	// get some data from engine

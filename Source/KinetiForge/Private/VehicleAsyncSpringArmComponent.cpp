@@ -9,6 +9,8 @@
 
 void UVehicleAsyncSpringArmComponent::UpdatePhysics(float DeltaTime)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(AsyncSpringArmComponent_PhysicsThreadUpdate);
+
 	// update cache
 	LastPhysicsDeltaTime = DeltaTime;
 	TimeSinceLastPhysTick = 0.f;
@@ -135,6 +137,8 @@ void UVehicleAsyncSpringArmComponent::UpdateDesiredArmLocation(
 	bool bDoRotationLag,
 	float DeltaTime)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(AsyncSpringArmComponent_GameThreadUpdate);
+
 	/*----- code from spring arm class: -----*/
 	
 	// Get the spring arm 'origin', the target we want to look at

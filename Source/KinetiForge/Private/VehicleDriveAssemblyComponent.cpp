@@ -146,16 +146,19 @@ void UVehicleDriveAssemblyComponent::GetLifetimeReplicatedProps(TArray<FLifetime
 
 void UVehicleDriveAssemblyComponent::UpdateInput(float InDeltaTime)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleInput);
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_UpdateInput);
 
 	UpdateThrottle(InDeltaTime);
 	UpdateBrake(InDeltaTime);
 	UpdateClutch(InDeltaTime);
 	UpdateSteering(InDeltaTime);
+	UpdateHandbrake(InDeltaTime);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 {
+	if (InputValues.bDirectInputThrottle)return;
+
 	float RealThrottleInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Brake : InputValues.Raw.Throttle;
 	
 	if (UVehicleGearboxComponent* GearboxRaw = Gearbox.Get())
@@ -204,7 +207,8 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 
 void UVehicleDriveAssemblyComponent::UpdateBrake(float InDeltaTime)
 {
-	float RealThrottleInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Brake : InputValues.Raw.Throttle;
+	if (InputValues.bDirectInputBrake)return;
+
 	float RealBrakeInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Throttle : InputValues.Raw.Brake;
 
 	//update brake
@@ -218,27 +222,12 @@ void UVehicleDriveAssemblyComponent::UpdateBrake(float InDeltaTime)
 	{
 		InputValues.Final.Brake = InputValues.Smoothened.Brake;
 	}
-
-	//update handbrake
-	float HandbrakeTarget = InputValues.Raw.Handbrake;
-	if (InputAssistConfig.bAutoHold
-		&& FMath::Abs(LocalLinearVelocity.X) < 0.1
-		&& RealThrottleInput < SMALL_NUMBER
-		&& !bIsInAir)HandbrakeTarget = 1.f;
-	InputValues.Smoothened.Handbrake = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Handbrake, HandbrakeTarget, InDeltaTime, InputConfig.Handbrake.InterpSpeed);
-
-	if (IsValid(InputConfig.Handbrake.ResponseCurve))
-	{
-		InputValues.Final.Handbrake = InputConfig.Handbrake.ResponseCurve->GetFloatValue(InputValues.Smoothened.Handbrake);
-	}
-	else
-	{
-		InputValues.Final.Handbrake = InputValues.Smoothened.Handbrake;
-	}
 }
 
 void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 {
+	if (InputValues.bDirectInputClutch)return;
+
 	UVehicleGearboxComponent* GearboxRaw = Gearbox.Get();
 	UVehicleEngineComponent * EngineRaw = Engine.Get();
 
@@ -282,6 +271,8 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 
 void UVehicleDriveAssemblyComponent::UpdateSteering(float InDeltaTime)
 {
+	if (InputValues.bDirectInputSteering)return;
+
 	float RealSteeringInput = InputValues.Raw.Steering;
 	float Scale = 1.f;
 
@@ -301,6 +292,30 @@ void UVehicleDriveAssemblyComponent::UpdateSteering(float InDeltaTime)
 	else
 	{
 		InputValues.Final.Steering = InputValues.Smoothened.Steering * Scale;
+	}
+}
+
+void UVehicleDriveAssemblyComponent::UpdateHandbrake(float InDeltaTime)
+{
+	if (InputValues.bDirectInputHandbrake)return;
+
+	float RealThrottleInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Brake : InputValues.Raw.Throttle;
+
+	//update handbrake
+	float HandbrakeTarget = InputValues.Raw.Handbrake;
+	if (InputAssistConfig.bAutoHold
+		&& FMath::Abs(LocalLinearVelocity.X) < 0.1
+		&& RealThrottleInput < SMALL_NUMBER
+		&& !bIsInAir)HandbrakeTarget = 1.f;
+	InputValues.Smoothened.Handbrake = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Handbrake, HandbrakeTarget, InDeltaTime, InputConfig.Handbrake.InterpSpeed);
+
+	if (IsValid(InputConfig.Handbrake.ResponseCurve))
+	{
+		InputValues.Final.Handbrake = InputConfig.Handbrake.ResponseCurve->GetFloatValue(InputValues.Smoothened.Handbrake);
+	}
+	else
+	{
+		InputValues.Final.Handbrake = InputValues.Smoothened.Handbrake;
 	}
 }
 
@@ -439,6 +454,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 void UVehicleDriveAssemblyComponent::ServerInputThrottle_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Throttle = InValue;
+	InputValues.bDirectInputThrottle = bDirectInput;
 	if (bDirectInput)
 	{
 		InputValues.Smoothened.Throttle = InValue;
@@ -453,6 +469,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputThrottle_Implementation(float
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Throttle = InValue;
+		InputValues.bDirectInputThrottle = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Throttle = InValue;
@@ -464,6 +481,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputThrottle_Implementation(float
 void UVehicleDriveAssemblyComponent::ServerInputBrake_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Brake = InValue;
+	InputValues.bDirectInputBrake = bDirectInput;
 	if (bDirectInput)
 	{
 		InputValues.Smoothened.Brake = InValue;
@@ -478,6 +496,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputBrake_Implementation(float In
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Brake = InValue;
+		InputValues.bDirectInputBrake = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Brake = InValue;
@@ -489,6 +508,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputBrake_Implementation(float In
 void UVehicleDriveAssemblyComponent::ServerInputClutch_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Clutch = InValue;
+	InputValues.bDirectInputClutch = bDirectInput;
 	if (bDirectInput)
 	{
 		InputValues.Smoothened.Clutch = InValue;
@@ -503,6 +523,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputClutch_Implementation(float I
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Clutch = InValue;
+		InputValues.bDirectInputClutch = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Clutch = InValue;
@@ -514,6 +535,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputClutch_Implementation(float I
 void UVehicleDriveAssemblyComponent::ServerInputSteering_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Steering = InValue;
+	InputValues.bDirectInputSteering = bDirectInput;
 	if (bDirectInput)
 	{
 		InputValues.Smoothened.Steering = InValue;
@@ -528,6 +550,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputSteering_Implementation(float
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Steering = InValue;
+		InputValues.bDirectInputSteering = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Steering = InValue;
@@ -539,6 +562,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputSteering_Implementation(float
 void UVehicleDriveAssemblyComponent::ServerInputHandbrake_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Handbrake = InValue;
+	InputValues.bDirectInputHandbrake = bDirectInput;
 	if (bDirectInput)
 	{
 		InputValues.Smoothened.Handbrake = InValue;
@@ -553,6 +577,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputHandbrake_Implementation(floa
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Handbrake = InValue;
+		InputValues.bDirectInputHandbrake = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Handbrake = InValue;
@@ -686,9 +711,9 @@ void UVehicleDriveAssemblyComponent::TickComponent(float DeltaTime, ELevelTick T
 
 void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 {
-	UpdateInput(InDeltaTime);
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_UpdatePhysics);
 
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehiclePhysics);
+	UpdateInput(InDeltaTime);
 
 	PhysicsDeltaTime = InDeltaTime;
 
@@ -800,6 +825,7 @@ void UVehicleDriveAssemblyComponent::InputThrottle(float InValue, bool bDirectIn
 	if (!GetOwner()->HasAuthority())
 	{
 		InputValues.Raw.Throttle = InValue;
+		InputValues.bDirectInputThrottle = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Throttle = InValue;
@@ -814,6 +840,7 @@ void UVehicleDriveAssemblyComponent::InputBrake(float InValue, bool bDirectInput
 	if (!GetOwner()->HasAuthority())
 	{
 		InputValues.Raw.Brake = InValue;
+		InputValues.bDirectInputBrake = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Brake = InValue;
@@ -828,6 +855,7 @@ void UVehicleDriveAssemblyComponent::InputClutch(float InValue, bool bDirectInpu
 	if (!GetOwner()->HasAuthority())
 	{
 		InputValues.Raw.Clutch = InValue;
+		InputValues.bDirectInputClutch = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Clutch = InValue;
@@ -842,6 +870,7 @@ void UVehicleDriveAssemblyComponent::InputSteering(float InValue, bool bDirectIn
 	if (!GetOwner()->HasAuthority())
 	{
 		InputValues.Raw.Steering = InValue;
+		InputValues.bDirectInputSteering = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Steering = InValue;
@@ -856,6 +885,7 @@ void UVehicleDriveAssemblyComponent::InputHandbrake(float InValue, bool bDirectI
 	if (!GetOwner()->HasAuthority())
 	{
 		InputValues.Raw.Handbrake = InValue;
+		InputValues.bDirectInputHandbrake = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Handbrake = InValue;
@@ -1021,6 +1051,26 @@ void UVehicleDriveAssemblyComponent::DestroyTargetAxle(UVehicleAxleAssemblyCompo
 int32 UVehicleDriveAssemblyComponent::GetCurrentGear()
 {
 	return Gearbox.IsValid() ? Gearbox->GetCurrentGear() : 0;
+}
+
+float UVehicleDriveAssemblyComponent::GetSteeringValueFromAxles()
+{
+	float Sum = 0.f;
+	float Num = 0.f;
+
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxlePtr : Axles)
+	{
+		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
+		{
+			if (Axle->AxleSteeringConfig.bAffectedBySteering)
+			{
+				Num += 1.f;
+				Sum += Axle->GetSteeringValue();
+			}
+		}
+	}
+
+	return UVehicleUtil::SafeDivide(Sum, Num);
 }
 
 bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()

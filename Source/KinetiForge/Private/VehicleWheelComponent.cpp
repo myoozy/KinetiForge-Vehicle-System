@@ -188,7 +188,7 @@ bool UVehicleWheelComponent::GenerateMeshComponents()
 
 void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* CarbodyHandle)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelAddForce);
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_ApplyForce);
 
 	if (!Suspension.State.bHitGround)return;
 
@@ -397,7 +397,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 	float InSwaybarForce, 
 	float InReflectedInertia)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheel);
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
 
 	// get rigid handle to get world com position
 	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = UVehicleUtil::GetInternalHandle(Carbody.Get());
@@ -451,6 +451,8 @@ void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
 	FVehicleSuspensionSimContext& Ctx
 )
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
+
 	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = UVehicleUtil::GetInternalHandle(Carbody.Get());
 	if (!CarbodyHandle)
 	{
@@ -484,6 +486,8 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 	const FVector& InAxleWorldDirection
 )
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
+
 	// get rigid handle to get world com position
 	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = nullptr;
 	if (Carbody.IsValid())
@@ -683,7 +687,7 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 {
 	if (!IsValid(WheelKnuckleComponent) || !IsValid(WheelMeshComponent))return;
 
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelAnimation);
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdateAnimation);
 
 	// update wheel position & alignment
 	if (DeltaTime > 0)

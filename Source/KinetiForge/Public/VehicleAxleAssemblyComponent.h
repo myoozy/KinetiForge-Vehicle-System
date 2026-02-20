@@ -210,12 +210,33 @@ public:
 		float SteeringAngle = 0.f
 	);
 
+	UFUNCTION()
 	void SetWheelBase(float NewWheelBase) { State.WheelBase = NewWheelBase; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void GetLinearVelocity(FVector3f& OutLocalVelocity, FVector3f& OutWorldVelocity);
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	float GetAngularVelocity() { return State.AxleAngularVelocity; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	float GetTotalAxleInertia() { return State.AxleTotalInertia; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	int32 GetNumOfWheelsOnGround() { return State.NumOfWheelOnGround; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	FVector3f GetAxleCenter();
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	float GetSteeringValue() { return State.RealSteeringValue; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	void GetSteeringAngle(float& OutLeft, float& OutRight) 
+	{
+		OutLeft = State.LeftWheelSteeringAngle; 
+		OutRight = State.RightWheelSteeringAngle;
+	}
 
 private:
 	bool GenerateWheels();

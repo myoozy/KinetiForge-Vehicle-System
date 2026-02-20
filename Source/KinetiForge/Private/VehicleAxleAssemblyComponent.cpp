@@ -491,7 +491,7 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 	float& OutAxleTotalInertia,
 	float& OutAngularVelocity)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleAxle);
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_UpdatePhysics);
 
 	if (!Carbody.IsValid())
 	{

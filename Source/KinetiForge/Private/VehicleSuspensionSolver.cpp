@@ -287,7 +287,7 @@ static void SuspensionRayCast(
 	const FCollisionResponseParams& ResponseParams,
 	const FVehicleSuspensionKinematicsConfig& Config)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleSuspensionRayCast);
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_RayCast);
 
 	// savety check
 	if (Ctx.RayCastStartPos.ContainsNaN()
@@ -544,7 +544,7 @@ static void UpdateImpactPointWorldVelocity(
 	FVehicleSuspensionSimContext& Ctx,
 	Chaos::FRigidBodyHandle_Internal* CarbodyHandle)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleWheelLinearVelocity);
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_GetVelocity);
 
 	if (Ctx.HitStruct.bBlockingHit)
 	{
@@ -619,7 +619,8 @@ static void ComputeSuspensionForce(
 	Ctx.SuspensionCurrentLength = SuspensionStroke * Ctx.SuspensionExtensionRatio;
 	Ctx.CriticalDamping = GetCriticalDamping(SpringConfig.SpringStiffness, Ctx.SprungMass);
 
-	const float MotionRatio = KineCurves.MotionRatioCurve.Eval(1.f - Ctx.SuspensionExtensionRatio);
+	float MotionRatio = 1.f;
+	if (KineConfig.SpringMotionRatioCurve)MotionRatio = KineCurves.MotionRatioCurve.Eval(1.f - Ctx.SuspensionExtensionRatio);
 
 	//check suspension preload
 	//preload should not be greater than gravity force on the wheel
@@ -740,7 +741,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	float InSteeringAngle, 
 	float InSwaybarForce)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UpdateVehicleSuspensionSolver);
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_UpdateSuspension);
 
 	FVehicleSuspensionSimContext Ctx;
 
@@ -823,6 +824,8 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 	FVector& OutApporximatedWheelWorldPos,
 	FVehicleSuspensionSimContext& Ctx)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_UpdateSuspension);
+
 	CopyStateToContext(Ctx);
 
 	Ctx.SteeringAngle = InSteeringAngle;
@@ -857,6 +860,8 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	const FVector& InAxleWorldDirection,
 	const FVector3f& TireForce)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_UpdateSuspension);
+
 	Ctx.PhysicsDelatTime = InDeltaTime;
 	Ctx.SwaybarForce = InSwaybarForce;
 
