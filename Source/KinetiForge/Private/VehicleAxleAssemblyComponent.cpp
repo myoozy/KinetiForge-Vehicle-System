@@ -748,21 +748,34 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 		RightWheel->DestroyComponent();
 	}
 
-	AActor* Owner = GetOwner();
-	if (!IsValid(Owner))return false;
+	UObject* Outer = nullptr;
+	if (AActor* Owner = GetOwner())Outer = Owner;
+
+	if (!IsValid(Outer))return false;
+
+	FString ThisName = FString();
+	GetName(ThisName);
 
 	//Generate left wheel
 	if (!LeftWheel.IsValid() && AxleLayout != EVehicleAxleLayout::SingleRight)
 	{
-		LeftWheel = Cast<UVehicleWheelComponent>
-			(Owner->AddComponentByClass(UVehicleWheelComponent::StaticClass(), false, FTransform(), false));
+		FName Name = FName(ThisName + "_Wheel_L");
+		LeftWheel = UVehicleUtil::CreateComponentByClass<UVehicleWheelComponent>(
+			Outer,
+			nullptr,
+			Name
+		);
 	}
 
 	//Generate right wheel
 	if (!RightWheel.IsValid() && AxleLayout != EVehicleAxleLayout::SingleLeft)
 	{
-		RightWheel = Cast<UVehicleWheelComponent>
-			(Owner->AddComponentByClass(UVehicleWheelComponent::StaticClass(), false, FTransform(), false));
+		FName Name = FName(ThisName + "_Wheel_R");
+		RightWheel = UVehicleUtil::CreateComponentByClass<UVehicleWheelComponent>(
+			Outer,
+			nullptr,
+			Name
+		);
 	}
 
 	switch (AxleLayout)

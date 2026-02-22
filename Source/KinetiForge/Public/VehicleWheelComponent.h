@@ -58,6 +58,8 @@ public:
 	bool bUpdateAnimAutomatically = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
 	float AnimInterpSpeed = 50.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	float AnimWheelMaxRotationSpeed = 0.f;
 
 	// Mesh Setup
 
@@ -75,7 +77,7 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void OnRegister() override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
-	bool GenerateMeshComponents();
+	bool InitializeMeshComponents();
 	void ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* CarbodyHandle);
 
 	UPROPERTY()

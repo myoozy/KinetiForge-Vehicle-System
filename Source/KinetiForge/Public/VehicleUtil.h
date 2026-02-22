@@ -140,4 +140,54 @@ public:
         return nullptr;
     }
 
+    template<typename T>
+    static T* CreateComponentByClass(
+        UObject* Outer,
+        const TSubclassOf<UActorComponent> Subclass = nullptr,
+        const FName Name = NAME_None,
+        const EComponentCreationMethod CreationMethod = EComponentCreationMethod::UserConstructionScript,
+        const EObjectFlags Flags = RF_NoFlags,
+        const bool bAddInstanceComponent = true,
+        const bool bActorAsOuter = true)
+    {
+        if (!IsValid(Outer)) return nullptr;
+
+        UClass* ClassToSpawn = Subclass ? Subclass.Get() : T::StaticClass();
+
+        if (UWorld* World = Outer->GetWorld())
+        {
+            AActor* Actor = nullptr;
+
+            if (AActor* a = Cast<AActor>(Outer))
+            {
+                Actor = a;
+            }
+            else if (UActorComponent* c = Cast<UActorComponent>(Outer))
+            {
+                Actor = c->GetOwner();
+            }
+
+            UObject* FinalOuter = Outer;
+            if (Actor && bActorAsOuter)
+            {
+                FinalOuter = Actor;
+            }
+
+            if (T* Obj = NewObject<T>(FinalOuter, ClassToSpawn, Name, Flags))
+            {
+                Obj->CreationMethod = CreationMethod;
+
+                if (Actor && bAddInstanceComponent)
+                {
+                    Actor->AddInstanceComponent(Obj);
+                }
+
+                Obj->RegisterComponent();
+
+                return Obj;
+            }
+        }
+
+        return nullptr;
+    }
 };

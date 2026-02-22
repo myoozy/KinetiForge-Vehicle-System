@@ -55,16 +55,22 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 	TArray<FVector3f> Positions;
 	for (TWeakObjectPtr<UVehicleWheelComponent> Wheel : RegisteredWheels)
 	{
-		FVector3f RelativePos = Wheel->GetTopMountRelativeLocation();
-		Positions.Add(RelativePos);
+		if (UVehicleWheelComponent* p = Wheel.Get())
+		{
+			FVector3f RelativePos = p->GetTopMountRelativeLocation();
+			Positions.Add(RelativePos);
+		}
 	}
 
 	TArray<float> SprungMasses;
-	if (ComputeSprungMasses(Positions, CarbodyCOM, Carbody->GetMass(), SprungMasses))
+	if (Carbody.IsValid() && ComputeSprungMasses(Positions, CarbodyCOM, Carbody->GetMass(), SprungMasses))
 	{
 		for (int32 i = 0; i < RegisteredWheels.Num(); i++)
 		{
-			RegisteredWheels[i]->SetSprungMass(SprungMasses[i]);
+			if (UVehicleWheelComponent* p = RegisteredWheels[i].Get())
+			{
+				p->SetSprungMass(SprungMasses[i]);
+			}
 		}
 		return true;
 	}
@@ -72,7 +78,10 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 	{
 		for (TWeakObjectPtr<UVehicleWheelComponent> Wheel : RegisteredWheels)
 		{
-			Wheel->SetSprungMass(0);
+			if (UVehicleWheelComponent* p = Wheel.Get())
+			{
+				p->SetSprungMass(0);
+			}
 		}
 		return false;
 	}
@@ -87,14 +96,20 @@ void UVehicleWheelCoordinatorComponent::UpdateWheelBase()
 	FVector3f AveragePos = FVector3f(0.f);
 	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> Axle : RegisteredAxles)
 	{
-		AveragePos += Axle->GetAxleCenter();
+		if (UVehicleAxleAssemblyComponent* p = Axle.Get())
+		{
+			AveragePos += p->GetAxleCenter();
+		}
 	}
 	int32 NumOfAxles = RegisteredAxles.Num();
 	if (!NumOfAxles)return;
 	AveragePos = AveragePos / NumOfAxles;
 	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> Axle : RegisteredAxles)
 	{
-		Axle->SetWheelBase((AveragePos - (FVector3f)Axle->GetRelativeLocation()).Length() * 2);
+		if (UVehicleAxleAssemblyComponent* p = Axle.Get())
+		{
+			p->SetWheelBase((AveragePos - (FVector3f)p->GetRelativeLocation()).Length() * 2);
+		}
 	}
 }
 

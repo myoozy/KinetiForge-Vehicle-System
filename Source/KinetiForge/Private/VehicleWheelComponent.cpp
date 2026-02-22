@@ -15,6 +15,16 @@ UVehicleWheelComponent::UVehicleWheelComponent()
 	PrimaryComponentTick.TickGroup = ETickingGroup::TG_PrePhysics;
 
 	// ...
+	// add meshes
+	FString ThisName = FString();
+	GetName(ThisName);
+	FName NameKnuckle = FName(ThisName + "_Knuckle");
+	FName NameWheelMesh = FName(ThisName + "_Wheel_Mesh");
+	FName NameBrakeMesh = FName(ThisName + "_Brake_Mesh");
+	WheelKnuckleComponent = Cast<USceneComponent>(CreateDefaultSubobject<USceneComponent>(NameKnuckle));
+	WheelMeshComponent = Cast<UStaticMeshComponent>(CreateDefaultSubobject<UStaticMeshComponent>(NameWheelMesh));
+	BrakeMeshComponent = Cast<UStaticMeshComponent>(CreateDefaultSubobject<UStaticMeshComponent>(NameBrakeMesh));
+
 	//load default curves
 	if (!TireConfig.Fx)
 	{
@@ -160,27 +170,17 @@ void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
 
-bool UVehicleWheelComponent::GenerateMeshComponents()
+bool UVehicleWheelComponent::InitializeMeshComponents()
 {
-	if (!IsValid(WheelKnuckleComponent))
-	{
-		WheelKnuckleComponent = Cast<USceneComponent>
-			(GetOwner()->AddComponentByClass(USceneComponent::StaticClass(), false, FTransform(), false));
-	}
+	if (!IsValid(WheelKnuckleComponent) || !IsValid(WheelMeshComponent) || !IsValid(BrakeMeshComponent))return false;
+
+	if (WheelKnuckleComponent->GetAttachParent() != this)
 	WheelKnuckleComponent->AttachToComponent(this, FAttachmentTransformRules::KeepRelativeTransform);
 
-	if (!IsValid(WheelMeshComponent) && WheelKnuckleComponent)
-	{
-		WheelMeshComponent = Cast<UStaticMeshComponent>
-			(GetOwner()->AddComponentByClass(UStaticMeshComponent::StaticClass(), false, FTransform(), false));
-	}
+	if (WheelMeshComponent->GetAttachParent() != WheelKnuckleComponent)
 	WheelMeshComponent->AttachToComponent(WheelKnuckleComponent, FAttachmentTransformRules::KeepRelativeTransform);
 
-	if (!IsValid(BrakeMeshComponent) && WheelKnuckleComponent)
-	{
-		BrakeMeshComponent = Cast<UStaticMeshComponent>
-			(GetOwner()->AddComponentByClass(UStaticMeshComponent::StaticClass(), false, FTransform(), false));
-	}
+	if (BrakeMeshComponent->GetAttachParent() != WheelKnuckleComponent)
 	BrakeMeshComponent->AttachToComponent(WheelKnuckleComponent, FAttachmentTransformRules::KeepRelativeTransform);
 
 	return RefreshWheelMesh();
@@ -289,7 +289,7 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	// update animation
 	if (bUpdateAnimAutomatically)
 	{
-		UpdateWheelAnim(DeltaTime, 0);
+		UpdateWheelAnim(DeltaTime, AnimWheelMaxRotationSpeed);
 	}
 
 	// smoothen the slip
@@ -309,6 +309,7 @@ void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Sourc
 	Target->SuspensionSpringConfig = Source->SuspensionSpringConfig;
 	Target->bUpdateAnimAutomatically = Source->bUpdateAnimAutomatically;
 	Target->AnimInterpSpeed = Source->AnimInterpSpeed;
+	Target->AnimWheelMaxRotationSpeed = Source->AnimWheelMaxRotationSpeed;
 	Target->WheelMesh = Source->WheelMesh;
 	Target->WheelMeshTransform = Source->WheelMeshTransform;
 	Target->BrakeMesh = Source->BrakeMesh;
@@ -333,7 +334,7 @@ void UVehicleWheelComponent::InitializeWheel()
 	}
 
 	//initialize meshes
-	GenerateMeshComponents();
+	InitializeMeshComponents();
 
 	Suspension.Initialize(this);
 	Wheel.Initialize(this);

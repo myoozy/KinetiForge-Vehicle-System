@@ -1202,14 +1202,21 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 	AActor* Owner = GetOwner();
 	if (!IsValid(Owner))return 0;
 
+	FString ThisName = FString();
+	GetName(ThisName);
+
 	int32 n = 0;
 	for (FAxleAssemblyConfig AxleConfig : AxleConfigs)
 	{
 		if (!AxleConfig.bUseExistingComponent)
 		{
 			// generate new axle
-			UVehicleAxleAssemblyComponent* Axle = Cast<UVehicleAxleAssemblyComponent>
-				(Owner->AddComponentByClass(UVehicleAxleAssemblyComponent::StaticClass(), false, FTransform(), false));
+			FName Name = FName(ThisName + "_Axle_"+ FString::FromInt(n));
+			UVehicleAxleAssemblyComponent* Axle = UVehicleUtil::CreateComponentByClass<UVehicleAxleAssemblyComponent>(
+					Owner,
+					nullptr,
+					Name
+				);
 			if (IsValid(Axle))
 			{
 				Axle->AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepRelativeTransform);
