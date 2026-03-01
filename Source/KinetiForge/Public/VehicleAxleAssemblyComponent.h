@@ -178,32 +178,42 @@ public:
 		float InReflectedInertia,
 		float& OutAxleTotalInertia, 
 		float& OutAngularVelocity);
+
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	void GetWheels(UVehicleWheelComponent*& OutLeftWheel, UVehicleWheelComponent*& OutRightWheel)
 	{ OutLeftWheel = LeftWheel.Get(); OutRightWheel = RightWheel.Get(); }
+
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	void GetDifferential(UVehicleDifferentialComponent*& OutDifferential)
 	{ OutDifferential = Differential.Get(); }
+
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void GetAxleMovement(FVehicleAxleSimState& Out) { Out = State; }
+
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void SetP3MotorTorque(float NewTorque) { State.P3MotorTorque = NewTorque; }
+
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	float GetP3MotorTorque() { return State.P3MotorTorque; }
+
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void SetWheelPosition(float NewTrackWidth);
+
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void UpdateTrackWidth();
+
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void UpdateSolidAxleAnim(
 		USceneComponent* InSolidAxleMesh,
 		EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint = EVehicleSolidAxleAnimPivot::Center
 	);
+
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void ApplySolidAxleStateDirect(
 		float InExtensionRatio = 1.f,
 		float SteeringAngle = 0.f
 	);
+
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void ApplySuspensionStateDirect(
 		float InExtensionRatio = 1.f,

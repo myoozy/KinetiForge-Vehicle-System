@@ -39,13 +39,13 @@ public:
 		bool bDrawSlip = true,
 		bool bDrawInertia = true);
 	void SmoothenSlip(float InDeltaTime, float InInterpSpeed);
-	void UpdateCachedRichCurves(const FVehicleTireConfig& Config);
+	void UpdateCachedLUTs(const FVehicleTireConfig& Config);
 
 	static float GetTangentAtOrigin(const FRichCurve& Curve);
 
 	// all data during simulation
 	FVehicleWheelSimState State;
-	FVehicleWheelCachedRichCurves CachedCurves;
+	FVehicleWheelCachedLUTs CachedLUTs;
 
 	// e.g. for skid mark / sound
 	float SmoothenedSlipRatio = 0.f;

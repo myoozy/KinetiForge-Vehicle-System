@@ -405,7 +405,7 @@ static void ComputeDoubleWishbone(
 	FVehicleSuspensionSimContext& Ctx,
 	const float WheelRadius,
 	const FVehicleSuspensionKinematicsConfig& Config,
-	const FVehicleSuspensionCachedRichCurves& KineCurves)
+	const FVehicleSuspensionCachedLUTs& LUTs)
 {
 	//Compute the position of the Knuckle on the suspension plane
 	Ctx.KnucklePos2D.X = Ctx.RayCastStart2D.X - FMath::Max(0.f, Ctx.HitDistance - WheelRadius);
@@ -418,8 +418,8 @@ static void ComputeDoubleWishbone(
 	Ctx.StrutRelativeDirection = (Ctx.TopMountRelativePos - Ctx.KnuckleRelativePos).GetSafeNormal();
 
 	FVector3f WheelAlignmentEuler =	
-		FVehicleSuspensionSolver::GetCamberToeCasterFromCurve(
-			KineCurves,
+		FVehicleSuspensionSolver::GetCamberToeCasterFromLUTs(
+			LUTs,
 			1.f - Ctx.SuspensionExtensionRatio, 
 			Ctx.WheelPos, 
 			Config.SpindleMountRotation.Roll,
@@ -484,7 +484,7 @@ static void ComputeSolidAxle(
 static void UpdateAntiPitchRollGeometry(
 	FVehicleSuspensionSimContext& Ctx,
 	Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
-	const FVehicleSuspensionCachedRichCurves& KineCurves,
+	const FVehicleSuspensionCachedLUTs& LUTs,
 	const FTransform& AsyncCarbodyWorldTransform,
 	const FVector3f& TireForce)
 {
@@ -513,11 +513,11 @@ static void UpdateAntiPitchRollGeometry(
 	// get anti-pitch value
 	bool bIsDiving = InducedTorqueLocal.Y > 0.f;
 	Ctx.AntiPitchScale = bIsDiving ?
-		KineCurves.AntiDiveCurve.Eval(Compression) :
-		KineCurves.AntiSquatCurve.Eval(Compression);
+		LUTs.AntiDiveCurve.FastEval(Compression).Value :
+		LUTs.AntiSquatCurve.FastEval(Compression).Value;
 
 	// get anti-roll value
-	Ctx.AntiRollScale = KineCurves.AntiRollCurve.Eval(Compression);
+	Ctx.AntiRollScale = LUTs.AntiRollCurve.FastEval(Compression).Value;
 
 	// get counter torque
 	Chaos::FVec3 TargetCounterTorqueLocal =
@@ -608,7 +608,7 @@ static void ComputeSuspensionForce(
 	const float WheelRadius,
 	const FVehicleSuspensionSpringConfig& SpringConfig,
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
-	const FVehicleSuspensionCachedRichCurves& KineCurves)
+	const FVehicleSuspensionCachedLUTs& LUTs)
 {
 	float DeltaTimeInv = UVehicleUtil::SafeDivide(1.f, Ctx.PhysicsDelatTime);
 
@@ -619,8 +619,7 @@ static void ComputeSuspensionForce(
 	Ctx.SuspensionCurrentLength = SuspensionStroke * Ctx.SuspensionExtensionRatio;
 	Ctx.CriticalDamping = GetCriticalDamping(SpringConfig.SpringStiffness, Ctx.SprungMass);
 
-	float MotionRatio = 1.f;
-	if (KineConfig.SpringMotionRatioCurve)MotionRatio = KineCurves.MotionRatioCurve.Eval(1.f - Ctx.SuspensionExtensionRatio);
+	float MotionRatio = LUTs.MotionRatioCurve.FastEval(1.f - Ctx.SuspensionExtensionRatio).Value;
 
 	//check suspension preload
 	//preload should not be greater than gravity force on the wheel
@@ -683,7 +682,7 @@ bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* WheelComponent
 {
 	if (WheelComponent != nullptr)
 	{
-		UpdateCachedRichCurves(WheelComponent->SuspensionKinematicsConfig);
+		UpdateCachedLUTs(WheelComponent->SuspensionKinematicsConfig);
 
 		QueryParams.AddIgnoredActor(WheelComponent->GetOwner());
 		QueryParams.bReturnPhysicalMaterial = true;
@@ -702,9 +701,6 @@ bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* WheelComponent
 			0.f
 		);
 
-		//initialize the cache, so that damping will not be Computed twice when game starts
-		CachedSpringStiffness  = WheelComponent->SuspensionSpringConfig.SpringStiffness;
-		
 		return true;
 	}
 	else
@@ -782,7 +778,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 		ComputeMacpherson(Ctx, WheelRadius, KineConfig);
 		break;
 	case ESuspensionType::DoubleWishbone:
-		ComputeDoubleWishbone(Ctx, WheelRadius, KineConfig, CachedCurves);
+		ComputeDoubleWishbone(Ctx, WheelRadius, KineConfig, CachedLUTs);
 		break;
 	default:
 		ComputeStraightSuspension(Ctx, WheelRadius, KineConfig);
@@ -792,7 +788,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	UpdateAntiPitchRollGeometry(
 		Ctx,
 		CarbodyHandle,
-		CachedCurves,
+		CachedLUTs,
 		AsyncCarbodyWorldTransform,
 		TireForce
 	);
@@ -807,7 +803,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 		WheelRadius, 
 		SpringConfig, 
 		KineConfig, 
-		CachedCurves
+		CachedLUTs
 	);
 
 	CopyContextToState(Ctx);
@@ -876,7 +872,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	UpdateAntiPitchRollGeometry(
 		Ctx,
 		CarbodyHandle,
-		CachedCurves,
+		CachedLUTs,
 		AsyncCarbodyWorldTransform,
 		TireForce
 	);
@@ -893,7 +889,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 		WheelRadius, 
 		SpringConfig, 
 		KineConfig, 
-		CachedCurves
+		CachedLUTs
 	);
 
 	CopyContextToState(Ctx);
@@ -911,8 +907,6 @@ void FVehicleSuspensionSolver::ApplySuspensionStateDirect(
 	CopyStateToContext(Ctx);
 	Ctx.SuspensionExtensionRatio = InExtensionRatio;
 	Ctx.SteeringAngle = InSteeringAngle;
-
-	const FVehicleSuspensionCachedRichCurves& CachedKineCurves = CachedCurves;
 
 	PrepareSimulation(
 		Ctx,
@@ -933,7 +927,7 @@ void FVehicleSuspensionSolver::ApplySuspensionStateDirect(
 		ComputeMacpherson(Ctx, WheelRadius, KineConfig);
 		break;
 	case ESuspensionType::DoubleWishbone:
-		ComputeDoubleWishbone(Ctx, WheelRadius, KineConfig, CachedKineCurves);
+		ComputeDoubleWishbone(Ctx, WheelRadius, KineConfig, CachedLUTs);
 		break;
 	default:
 		ComputeStraightSuspension(Ctx, WheelRadius, KineConfig);
@@ -956,8 +950,6 @@ void FVehicleSuspensionSolver::StartApplySolidAxleStateDirect(
 	CopyStateToContext(Ctx);
 	Ctx.SuspensionExtensionRatio = InExtensionRatio;
 	Ctx.SteeringAngle = InSteeringAngle;
-
-	const FVehicleSuspensionCachedRichCurves& CachedKineCurves = CachedCurves;
 
 	PrepareSimulation(
 		Ctx, 
@@ -1092,67 +1084,66 @@ void FVehicleSuspensionSolver::DrawSuspensionForce(
 	DrawDebugLine(TempWorld, TempStart, TempEnd, TempColor, false, Duration, 0, Thickness);
 }
 
-void FVehicleSuspensionSolver::UpdateCachedRichCurves(
+void FVehicleSuspensionSolver::UpdateCachedLUTs(
 	FVehicleSuspensionKinematicsConfig& KineConfig)
 {
 	const FVehicleSuspensionKinematicsConfig& Config = KineConfig;
 
 	if (IsValid(Config.CamberCurve))
 	{
-		CachedCurves.CamberCurve = Config.CamberCurve->FloatCurve;
+		CachedLUTs.CamberCurve.CopyFromRichCurve(Config.CamberCurve->FloatCurve);
 	}
 	else
 	{
-		CachedCurves.CamberCurve.Reset();
+		CachedLUTs.CamberCurve.SetAllTo(0.f);
 	}
 	if (IsValid(Config.ToeCurve))
 	{
-		CachedCurves.ToeCurve = Config.ToeCurve->FloatCurve;
+		CachedLUTs.ToeCurve.CopyFromRichCurve(Config.ToeCurve->FloatCurve);
 	}
 	else
 	{
-		CachedCurves.ToeCurve.Reset();
+		CachedLUTs.ToeCurve.SetAllTo(0.f);
 	}
 	if (IsValid(Config.CasterCurve))
 	{
-		CachedCurves.CasterCurve = Config.CasterCurve->FloatCurve;
+		CachedLUTs.CasterCurve.CopyFromRichCurve(Config.CasterCurve->FloatCurve);
 	}
 	else
 	{
-		CachedCurves.CasterCurve.Reset();
+		CachedLUTs.CasterCurve.SetAllTo(0.f);
 	}
 	if (IsValid(Config.AntiDiveCurve))
 	{
-		CachedCurves.AntiDiveCurve = Config.AntiDiveCurve->FloatCurve;
+		CachedLUTs.AntiDiveCurve.CopyFromRichCurve(Config.AntiDiveCurve->FloatCurve);
 	}
 	else
 	{
-		CachedCurves.AntiDiveCurve.Reset();
+		CachedLUTs.AntiDiveCurve.SetAllTo(0.f);
 	}
 	if (IsValid(Config.AntiSquatCurve))
 	{
-		CachedCurves.AntiSquatCurve = Config.AntiSquatCurve->FloatCurve;
+		CachedLUTs.AntiSquatCurve.CopyFromRichCurve(Config.AntiSquatCurve->FloatCurve);
 	}
 	else
 	{
-		CachedCurves.AntiSquatCurve.Reset();
+		CachedLUTs.AntiSquatCurve.SetAllTo(0.f);
 	}
 	if (IsValid(Config.AntiRollCurve))
 	{
-		CachedCurves.AntiRollCurve = Config.AntiRollCurve->FloatCurve;
+		CachedLUTs.AntiRollCurve.CopyFromRichCurve(Config.AntiRollCurve->FloatCurve);
 	}
 	else
 	{
-		CachedCurves.AntiRollCurve.Reset();
+		CachedLUTs.AntiRollCurve.SetAllTo(0.f);
 	}
 	if (IsValid(Config.SpringMotionRatioCurve))
 	{
-		CachedCurves.MotionRatioCurve = Config.SpringMotionRatioCurve->FloatCurve;
+		CachedLUTs.MotionRatioCurve.CopyFromRichCurve(Config.SpringMotionRatioCurve->FloatCurve);
 	}
 	else
 	{
-		CachedCurves.MotionRatioCurve.Reset();
-		CachedCurves.MotionRatioCurve.AddKey(0.f, 1.f);
+		CachedLUTs.MotionRatioCurve.SetAllTo(1.f);
 	}
 }
 
@@ -1312,8 +1303,8 @@ void FVehicleSuspensionSolver::CopyStateToContext(FVehicleSuspensionSimContext& 
 	Context.WheelRelativeTransform.SetLocation(State.WheelCenterToKnuckle + State.KnuckleRelativePos);
 }
 
-FVector3f FVehicleSuspensionSolver::GetCamberToeCasterFromCurve(
-	const FVehicleSuspensionCachedRichCurves& Curves,
+FVector3f FVehicleSuspensionSolver::GetCamberToeCasterFromLUTs(
+	const FVehicleSuspensionCachedLUTs& LUTs,
 	float CompressionRatio,
 	float WheelYPosSign,
 	float BaseCamber,
@@ -1325,13 +1316,13 @@ FVector3f FVehicleSuspensionSolver::GetCamberToeCasterFromCurve(
 	v.Y = BaseToe;
 	v.Z = BaseCamber;
 
-	v.Y += Curves.ToeCurve.Eval(CompressionRatio);
-	v.Z += Curves.CamberCurve.Eval(CompressionRatio);
+	v.Y += LUTs.ToeCurve.FastEval(CompressionRatio).Value;
+	v.Z += LUTs.CamberCurve.FastEval(CompressionRatio).Value;
 
 	// flip the caster and toe if necessary
 	v *= WheelYPosSign;
 
-	v.X += Curves.CasterCurve.Eval(CompressionRatio);
+	v.X += LUTs.CasterCurve.FastEval(CompressionRatio).Value;
 
 	return v;
 }

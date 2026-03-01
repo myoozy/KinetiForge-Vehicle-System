@@ -258,31 +258,16 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	// ...
 
-	TimeSinceLastConfigSync += DeltaTime;
-	if (TimeSinceLastConfigSync > ConfigSyncInterval)
+	if (ConfigSyncInterval >= 0)
 	{
-		TimeSinceLastConfigSync -= ConfigSyncInterval;
-
-		// update cached curves
-		Suspension.UpdateCachedRichCurves(SuspensionKinematicsConfig);
-		Wheel.UpdateCachedRichCurves(TireConfig);
-
-		// check if sprungmass should be updated
-		FVector NewRelativeLocation = GetRelativeLocation();
-		if ((CachedComponentRelativeLocation - NewRelativeLocation).SquaredLength() > 1.f)
+		TimeSinceLastConfigSync += DeltaTime;
+		if (TimeSinceLastConfigSync > ConfigSyncInterval)
 		{
-			if (WheelCoordinator.IsValid())
-			{
-				WheelCoordinator->NotifyWheelMoved();
-			}
-			else
-			{
-				WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
-				if (WheelCoordinator.IsValid())
-				{
-					WheelCoordinator->NotifyWheelMoved();
-				}
-			}
+			TimeSinceLastConfigSync -= ConfigSyncInterval;
+
+			// update cached curves
+			Suspension.UpdateCachedLUTs(SuspensionKinematicsConfig);
+			Wheel.UpdateCachedLUTs(TireConfig);
 		}
 	}
 	
@@ -359,12 +344,9 @@ FTransform3f UVehicleWheelComponent::GetWheelRelativeTransform()
 
 float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float LateralScale)
 {
-	const FRichCurve& FxCurve = Wheel.CachedCurves.Fx;
-	const FRichCurve& FyCurve = Wheel.CachedCurves.Fy;
-
 	// get tire stiffness
-	float Cx = FVehicleWheelSolver::GetTangentAtOrigin(FxCurve);
-	float Cy = FVehicleWheelSolver::GetTangentAtOrigin(FyCurve) * 90.f;
+	float Cx = Wheel.CachedLUTs.Fx.FastEval(0.f).RightTangent;
+	float Cy = Wheel.CachedLUTs.Fy.FastEval(0.f).RightTangent * 90.f;
 
 	Cx = Cx > SMALL_NUMBER ? Cx : 1.f;
 	Cy = Cy > SMALL_NUMBER ? Cy : 1.f;
@@ -444,6 +426,30 @@ void UVehicleWheelComponent::UpdatePhysics(
 		Suspension.State);
 
 	ApplyWheelForce(CarbodyHandle);
+}
+
+bool UVehicleWheelComponent::CheckHasBeenMoved()
+{
+	const float Tolerance = 1.f;
+	bool bIsMoved = (CachedComponentRelativeLocation - GetRelativeLocation()).SquaredLength() > Tolerance;
+	if (bIsMoved)
+	{
+		CachedComponentRelativeLocation = GetRelativeLocation();
+
+		if (WheelCoordinator.IsValid())
+		{
+			WheelCoordinator->NotifyWheelMoved();
+		}
+		else
+		{
+			WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
+			if (WheelCoordinator.IsValid())
+			{
+				WheelCoordinator->NotifyWheelMoved();
+			}
+		}
+	}
+	return bIsMoved;
 }
 
 void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(

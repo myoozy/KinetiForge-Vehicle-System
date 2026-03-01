@@ -124,6 +124,17 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 	if (TimeSinceLastRefresh > RefreshInterval)
 	{
 		TimeSinceLastRefresh -= RefreshInterval;
+
+		// check every wheel
+		for (TWeakObjectPtr<UVehicleWheelComponent> WheelPtr : RegisteredWheels)
+		{
+			if (UVehicleWheelComponent* Wheel = WheelPtr.Get())
+			{
+				Wheel->CheckHasBeenMoved();
+			}
+		}
+
+		// check carbody com and mass
 		if (UPrimitiveComponent* CarbodyRaw = Carbody.Get())
 		{
 			if (CarbodyRaw->IsPhysicsStateCreated())

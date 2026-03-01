@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Curves/CurveFloat.h"
+#include "VehicleUtil.h"
 #include "VehicleDrivetrainStructs.h"
 #include "VehicleEngineComponent.generated.h"
 
@@ -22,8 +23,13 @@ public:
 	// Sets default values for this component's properties
 	UVehicleEngineComponent();
 
+	/**
+	* Determines how often the look up tables will be synced.
+	* Set to 0 to sync in every frame.
+	* Set to <0 to disable sync (for performance).
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
-	float ConfigSyncInterval = 1.f;
+	float ConfigSyncInterval = -1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleNaturallyAspiratedEngineConfig NAConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -40,7 +46,7 @@ protected:
 	TArray<FOnTurboBlowOffDelegate> TurboBlowOffCallbacks;
 	TArray<FOnBackfiringDelegate> BackfiringCallbacks;
 	FVehicleEngineSimState State;
-	FRichCurve CachedTorqueCurve;
+	FVehicleLUT<32> CachedTorqueLUT = FVehicleLUT<32>(1.f);
 	float TimeSinceLastConfigSync = 0.f;
 
 	void EngineAcceleration();
@@ -63,10 +69,7 @@ public:
 	float GetP1MotorTorque() { return State.P1MotorTorque; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
-	void Initialize();
-
-	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
-	void UpdateCachedRichCurve();
+	void UpdateCachedLUT();
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	EVehicleEngineOperationMode StartVehicleEngine();
@@ -113,15 +116,4 @@ public:
 private:
 	float RPMToRad = PI / 30;
 	float RadToRPM = 30 / PI;
-
-
-	//cache
-	float CachedStartFriction;
-	float CachedEngineIdleRPM;
-	float CachedFrictionCoefficient;
-	float CachedMaxEngineTorque;
-	float CachedTurboLag;
-	float CachedTurboWasteGateLag;
-	float CachedTurboNegPressure;
-	float CachedTurboMaxPressure;
 };

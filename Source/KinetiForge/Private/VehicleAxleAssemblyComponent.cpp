@@ -427,7 +427,6 @@ void UVehicleAxleAssemblyComponent::TickComponent(float DeltaTime, ELevelTick Ti
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	// ...
-	//make sure the wheel preview is destoryed
 }
 
 void UVehicleAxleAssemblyComponent::CopyAxleConfig(const UVehicleAxleAssemblyComponent* Source, UVehicleAxleAssemblyComponent* Target, bool bReInitializeWheel)

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "VehicleUtil.h"
 #include "VehicleSuspensionStructs.generated.h"
 
 UENUM(BlueprintType)
@@ -160,24 +161,17 @@ struct KINETIFORGE_API FVehicleSuspensionSpringConfig
 };
 
 USTRUCT()
-struct KINETIFORGE_API FVehicleSuspensionCachedRichCurves
+struct KINETIFORGE_API FVehicleSuspensionCachedLUTs
 {
 	GENERATED_BODY()
 
-	UPROPERTY()
-	FRichCurve CamberCurve;
-	UPROPERTY()
-	FRichCurve ToeCurve;
-	UPROPERTY()
-	FRichCurve CasterCurve;
-	UPROPERTY()
-	FRichCurve AntiDiveCurve;
-	UPROPERTY()
-	FRichCurve AntiSquatCurve;
-	UPROPERTY()
-	FRichCurve AntiRollCurve;
-	UPROPERTY()
-	FRichCurve MotionRatioCurve;
+	FVehicleLUT<16> CamberCurve = FVehicleLUT<16>(0.f);
+	FVehicleLUT<16> ToeCurve = FVehicleLUT<16>(0.f);
+	FVehicleLUT<16> CasterCurve = FVehicleLUT<16>(0.f);
+	FVehicleLUT<16> AntiDiveCurve = FVehicleLUT<16>(0.f);
+	FVehicleLUT<16> AntiSquatCurve = FVehicleLUT<16>(0.f);
+	FVehicleLUT<16> AntiRollCurve = FVehicleLUT<16>(0.f);
+	FVehicleLUT<16> MotionRatioCurve = FVehicleLUT<16>(1.f);
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "A simplified HitResult"))

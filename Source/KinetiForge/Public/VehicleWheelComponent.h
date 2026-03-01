@@ -36,8 +36,13 @@ public:
 	// Sets default values for this component's properties
 	UVehicleWheelComponent();
 
+	/**
+	* Determines how often the look up tables will be synced.
+	* Set to 0 to sync in every frame.
+	* Set to <0 to disable sync (for performance).
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
-	float ConfigSyncInterval = 1.f;
+	float ConfigSyncInterval = -1.f;
 
 	// Physics Setup
 
@@ -147,7 +152,8 @@ public:
 	float GetPredictedSlipRatio() { return Wheel.State.PredictedSlipRatio; }
 
 	/**
-	* Obtain a normalized tire combination slip value. This function can be used for tire skid particles or tire sound effects.
+	* Obtain a normalized tire combination slip value. 
+	* This function can be used for tire skid particles or tire sound effects.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	float GetNormalizedSlip(float LongitudinalScale = 1.f, float LateralScale = 1.f);
@@ -175,6 +181,17 @@ public:
 		float InSteeringAngle, 
 		float InSwaybarForce, 
 		float InReflectedInertia);
+
+	/**
+	* This function checks if the wheel has been moved.
+	* If the wheel is moved, the sprung mass and the critical damping need to be updated.
+	* 
+	* If the wheel found its wheel coordinator:
+	* This function will be called by the wheel coordinator automatically.
+	* And the sprung mass and critical damping will automatically be updated.
+	*/
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	bool CheckHasBeenMoved();
 
 	/**
 	* Start updating the solid axle physics, 

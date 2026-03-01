@@ -191,3 +191,166 @@ public:
         return nullptr;
     }
 };
+
+
+/*
+* The result of evaluation
+*/
+USTRUCT(BlueprintType)
+struct FVehicleLUT_EvalResult
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    float Value;
+
+    /*
+    * This may not be the actual tangent, 
+    * since the time axis of look up table is normalized
+    */
+    UPROPERTY()
+    float RightTangent;
+};
+
+/*
+* A simple look up table.
+* The time axis is normalized. ( 0 <= Time <=1 )
+*/
+template <int32 NumSamples>
+struct KINETIFORGE_API FVehicleLUT
+{
+private:
+    /**
+    * Data array
+    */
+    TStaticArray<float, NumSamples> Samples;
+
+public:
+    /*
+    * Get number of elements
+    */
+    int32 Num() const { return Samples.Num(); }
+
+    /*
+    * Set value of all samples to a given constant
+    */
+    void SetAllTo(const float NewValue)
+    {
+        const int32 NumOfSamples = Samples.Num();
+        for (int32 i = 0; i < NumOfSamples; i++)
+        {
+            Samples[i] = NewValue;
+        }
+    }
+
+    /*
+    * Copy data from a FRichCurve.
+    * Time interval is optional. Only data in the interval will be copied.
+    * If the interval is too small, the interval will be the time interval of first and the lasy key of the FRichCurve
+    */
+    void CopyFromRichCurve(const FRichCurve& RichCurve, const FVector2f SelectedTimeInterval = FVector2f(0.f, 1.f))
+    {
+        float TimeMin = 0.f;
+        float TimeMax = 1.f;
+
+        if (FMath::Abs(SelectedTimeInterval.Y - SelectedTimeInterval.X) > SMALL_NUMBER)
+        {
+            // make sure TimeMin <= TimeMax
+            TimeMin = SelectedTimeInterval.GetMin();
+            TimeMax = SelectedTimeInterval.GetMax();
+        }
+        else
+        {
+            int32 NumOfKeys = RichCurve.Keys.Num();
+            /*
+            * If there is only one key or if there is no key,
+            * the time interval doesn't really matter.
+            * We only care when there're more than 1 key.
+            */
+            if (NumOfKeys > 1)
+            {
+                TimeMin = RichCurve.Keys[0].Time;
+                TimeMax = RichCurve.Keys[NumOfKeys - 1].Time;
+            }
+        }
+
+        /*
+        * Save the data
+        */
+        const int32 NumOfSamples = Samples.Num();
+        const int32 LastKeyIdx = NumOfSamples - 1;
+        const float dt = UVehicleUtil::SafeDivide((TimeMax - TimeMin), (float)LastKeyIdx);
+        for (int32 i = 0; i < NumOfSamples; i++)
+        {
+            float CurrTime = TimeMin + dt * (float)i;
+            Samples[i] = RichCurve.Eval(CurrTime);
+        }
+    }
+
+    /*
+    * Use interpolation only once to evaluate.
+    * Returns value and tagent (right side)
+    */
+    FVehicleLUT_EvalResult FastEval(float Progress) const
+    {
+        Progress = FMath::Clamp(Progress, 0.f, 1.f);
+
+        const int32 NumOfSamples = Samples.Num();
+        const int32 LastKeyIdx = NumOfSamples - 1;
+
+        constexpr float FloatLastIdx = (float)(NumSamples - 1);
+        const float FloatIndex = Progress * FloatLastIdx;
+
+        // get the range of index
+        int32 idx_low = (int32)FloatIndex;
+        int32 idx_high = idx_low + 1 - (idx_low == LastKeyIdx);
+
+        // read value
+        const float Val_Low = Samples[idx_low];
+        const float Val_High = Samples[idx_high];
+
+        // get bias
+        float Bias = Progress * LastKeyIdx - (float)idx_low;
+
+        // get value
+        float Value = FMath::Lerp(
+            Val_Low,
+            Val_High,
+            Bias
+        );
+
+        // get tangent
+        float RightTangent = (Val_High - Val_Low) * FloatLastIdx;
+
+        return FVehicleLUT_EvalResult(Value, RightTangent);
+    }
+
+    FVehicleLUT_EvalResult FastEval(const float Time, const FVector2f& TimeInterval) const
+    {
+        const float Progress = FMath::GetMappedRangeValueUnclamped(
+            TimeInterval,
+            FVector2f(0.f, 1.f),
+            Time
+        );
+
+        FVehicleLUT_EvalResult Result = FastEval(Progress);
+
+        const float TimeIntervalLength = TimeInterval.Y - TimeInterval.X;
+
+        Result.RightTangent = UVehicleUtil::SafeDivide(Result.RightTangent, TimeIntervalLength);
+
+        return Result;
+    }
+
+    /*----- CONSTRUCTION -----*/
+
+    FVehicleLUT(const float InitValue = 0.f)
+    {
+        SetAllTo(InitValue);
+    }
+
+    FVehicleLUT(const FRichCurve& RichCurve, const FVector2f SelectedTimeInterval = FVector2f(0.f))
+    {
+        CopyFromRichCurve(RichCurve, SelectedTimeInterval);
+    }
+};

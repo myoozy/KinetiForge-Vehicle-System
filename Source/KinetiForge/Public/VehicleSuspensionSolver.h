@@ -96,7 +96,7 @@ public:
 		float Thickness = 5, 
 		float Length = 1);
 
-	void UpdateCachedRichCurves(
+	void UpdateCachedLUTs(
 		FVehicleSuspensionKinematicsConfig& KineConfig);
 
 	bool CheckAndFixTriangle(
@@ -110,8 +110,8 @@ public:
 
 	void CopyStateToContext(FVehicleSuspensionSimContext& Context);
 
-	static FVector3f GetCamberToeCasterFromCurve(
-		const FVehicleSuspensionCachedRichCurves& Curves,
+	static FVector3f GetCamberToeCasterFromLUTs(
+		const FVehicleSuspensionCachedLUTs& LUTs,
 		float CompressionRatio,
 		float WheelYPosSign,
 		float BaseCamber = 0.f,
@@ -133,7 +133,7 @@ public:
 	}
 
 	FVehicleSuspensionSimState State;
-	FVehicleSuspensionCachedRichCurves CachedCurves;
+	FVehicleSuspensionCachedLUTs CachedLUTs;
 	FVehicleSuspensionHitResult RayCastResult;
 
 protected:
@@ -141,6 +141,4 @@ protected:
 	FCollisionResponseParams ResponseParams = FCollisionResponseParams::DefaultResponseParam;
 
 private:
-	//cache
-	float CachedSpringStiffness = -1;
 };

@@ -32,7 +32,11 @@ void UVehicleEngineComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	Initialize();
+
+	UpdateCachedLUT();
+
+	// reset rev-limiter
+	State.RevLimiterTimer = NAConfig.RevLimiterTime;
 
 	TimeSinceLastConfigSync = FMath::FRandRange(0.f, ConfigSyncInterval);
 }
@@ -50,8 +54,13 @@ void UVehicleEngineComponent::EngineAcceleration()
 	bool bCombustion = State.bFuelInjection && State.bSpark;
 
 	// torque generated inside of the engine
+	const float TorqueLUT_Value = CachedTorqueLUT.FastEval(
+		AbsolutRPM,
+		FVector2f(NAConfig.EngineIdleRPM, NAConfig.EngineMaxRPM)
+	).Value;
+
 	float IndicatedTorque = 
-		State.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque * CachedTorqueCurve.Eval(AbsolutRPM));
+		State.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque * TorqueLUT_Value);
 	
 	// no combustion, no torque
 	IndicatedTorque *= bCombustion;
@@ -296,19 +305,13 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 	// ...
 
-	TimeSinceLastConfigSync += DeltaTime;
-	if (TimeSinceLastConfigSync > ConfigSyncInterval)
+	if (ConfigSyncInterval >= 0.f)
 	{
-		TimeSinceLastConfigSync -= ConfigSyncInterval;
-
-		UpdateCachedRichCurve();
-
-		if (CachedEngineIdleRPM != NAConfig.EngineIdleRPM ||
-			CachedStartFriction != NAConfig.StartFriction ||
-			CachedFrictionCoefficient != NAConfig.FrictionCoefficient ||
-			CachedMaxEngineTorque != NAConfig.MaxEngineTorque)
+		TimeSinceLastConfigSync += DeltaTime;
+		if (TimeSinceLastConfigSync > ConfigSyncInterval)
 		{
-			Initialize();
+			TimeSinceLastConfigSync -= ConfigSyncInterval;
+			UpdateCachedLUT();
 		}
 	}
 	
@@ -352,6 +355,26 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 	State.PhysicsDeltaTime = InDeltaTime;
 	State.RawThrottleInput = FMath::Clamp(InThrottle, 0.f, 1.f);
 	State.LoadTorque = InLoadTorque;
+
+	// get torque required to start engine
+	State.TorqueRequiredToStartEngine = NAConfig.StartFriction + NAConfig.EngineIdleRPM * NAConfig.FrictionCoefficient;
+
+	//check if idle rpm is valid
+	if (NAConfig.EngineIdleRPM > 0)
+	{
+		State.EngineOffRPM = 0.7 * NAConfig.EngineIdleRPM;
+
+		//get idle throttle
+		State.IdleThrottle = FMath::Clamp(
+			UVehicleUtil::SafeDivide(State.TorqueRequiredToStartEngine,
+				State.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque * CachedTorqueLUT.FastEval(0.f).Value),
+			0.f, 1.f);
+	}
+	else
+	{
+		State.IdleThrottle = 0;
+		State.EngineOffRPM = -BIG_NUMBER;
+	}
 
 	// true if rpm > max rpm
 	bool bRevLimit = State.EngineRPM > NAConfig.EngineMaxRPM;
@@ -440,45 +463,18 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 	UpdateExhaust();
 }
 
-void UVehicleEngineComponent::Initialize()
-{
-	//get required torque to start engine
-	NAConfig.StartFriction = FMath::Max(NAConfig.StartFriction, SMALL_NUMBER);
-	NAConfig.FrictionCoefficient = FMath::Max(NAConfig.FrictionCoefficient, SMALL_NUMBER);
-	State.TorqueRequiredToStartEngine = NAConfig.StartFriction + NAConfig.EngineIdleRPM * NAConfig.FrictionCoefficient;
-	
-	UpdateCachedRichCurve();
-
-	//get idle throttle
-	State.IdleThrottle = FMath::Clamp(
-		UVehicleUtil::SafeDivide(State.TorqueRequiredToStartEngine,
-			State.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque * CachedTorqueCurve.Eval(NAConfig.EngineIdleRPM)),
-		0.f, 1.f);
-
-	//check if idle rpm is valid
-	if (NAConfig.EngineIdleRPM > 0)
-	{
-		State.EngineOffRPM = 0.7 * NAConfig.EngineIdleRPM;
-	}
-	else
-	{
-		State.IdleThrottle = 0;
-		State.EngineOffRPM = -BIG_NUMBER;
-	}
-
-	// reset rev-limiter
-	State.RevLimiterTimer = NAConfig.RevLimiterTime;
-}
-
-void UVehicleEngineComponent::UpdateCachedRichCurve()
+void UVehicleEngineComponent::UpdateCachedLUT()
 {
 	if (IsValid(NAConfig.EngineTorqueCurve))
 	{
-		CachedTorqueCurve = NAConfig.EngineTorqueCurve->FloatCurve;
+		CachedTorqueLUT.CopyFromRichCurve(
+			NAConfig.EngineTorqueCurve->FloatCurve,
+			FVector2f(NAConfig.EngineIdleRPM, NAConfig.EngineMaxRPM)
+		);
 	}
 	else
 	{
-		CachedTorqueCurve.Reset();
+		CachedTorqueLUT.SetAllTo(1.f);
 	}
 }
 

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "VehicleUtil.h"
 #include "VehicleWheelStructs.generated.h"
 
 UENUM(BlueprintType)
@@ -141,14 +142,12 @@ struct KINETIFORGE_API FVehicleABSConfig
 };
 
 USTRUCT()
-struct KINETIFORGE_API FVehicleWheelCachedRichCurves
+struct KINETIFORGE_API FVehicleWheelCachedLUTs
 {
 	GENERATED_BODY()
 
-	UPROPERTY()
-	FRichCurve Fx;
-	UPROPERTY()
-	FRichCurve Fy;
+	FVehicleLUT<64> Fx = FVehicleLUT<64>(1.f);
+	FVehicleLUT<64> Fy = FVehicleLUT<64>(1.f);
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "wheel state in simulation"))
