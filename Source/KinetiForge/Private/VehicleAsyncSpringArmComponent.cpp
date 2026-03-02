@@ -15,6 +15,7 @@ void UVehicleAsyncSpringArmComponent::UpdatePhysics(float DeltaTime)
 	LastPhysicsDeltaTime = DeltaTime;
 	TimeSinceLastPhysTick = 0.f;
 	PrevDesiredTransformToPhysParent = DesiredTransformToPhysParent;
+	PrevDynArmRotOffset = DynArmRotOffset;
 
 	// get rigid handle to get world com position
 	UPrimitiveComponent* p = PhysicalParent.Get();
@@ -187,7 +188,7 @@ void UVehicleAsyncSpringArmComponent::UpdateDesiredArmLocation(
 	float Alpha = FMath::Clamp(UVehicleUtil::SafeDivide(TimeSinceLastPhysTick, LastPhysicsDeltaTime), 0.0f, 1.0f);
 
 	// get the offset and normalize it
-	FQuat LocalArmRotOffset = DynArmRotOffset;
+	FQuat LocalArmRotOffset = FMath::Lerp(PrevDynArmRotOffset, DynArmRotOffset, Alpha);
 	if (!LocalArmRotOffset.IsNormalized())LocalArmRotOffset.Normalize();
 
 	// If the spring arm inherits all Euler angles from its parent component

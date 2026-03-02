@@ -291,26 +291,26 @@ public:
     * Use interpolation only once to evaluate.
     * Returns value and tagent (right side)
     */
-    FVehicleLUT_EvalResult FastEval(float Progress) const
+    FORCEINLINE FVehicleLUT_EvalResult FastEval(float Progress) const
     {
         Progress = FMath::Clamp(Progress, 0.f, 1.f);
 
         const int32 NumOfSamples = Samples.Num();
-        const int32 LastKeyIdx = NumOfSamples - 1;
+        const int32 LastIdx = NumOfSamples - 1;
 
-        constexpr float FloatLastIdx = (float)(NumSamples - 1);
+        const float FloatLastIdx = (float)(LastIdx);
         const float FloatIndex = Progress * FloatLastIdx;
 
         // get the range of index
         int32 idx_low = (int32)FloatIndex;
-        int32 idx_high = idx_low + 1 - (idx_low == LastKeyIdx);
+        int32 idx_high = idx_low + 1 - (idx_low == LastIdx);
 
         // read value
         const float Val_Low = Samples[idx_low];
         const float Val_High = Samples[idx_high];
 
         // get bias
-        float Bias = Progress * LastKeyIdx - (float)idx_low;
+        float Bias = Progress * LastIdx - (float)idx_low;
 
         // get value
         float Value = FMath::Lerp(
@@ -325,7 +325,7 @@ public:
         return FVehicleLUT_EvalResult(Value, RightTangent);
     }
 
-    FVehicleLUT_EvalResult FastEval(const float Time, const FVector2f& TimeInterval) const
+    FORCEINLINE FVehicleLUT_EvalResult FastEval(const float Time, const FVector2f& TimeInterval) const
     {
         const float Progress = FMath::GetMappedRangeValueUnclamped(
             TimeInterval,
@@ -334,6 +334,76 @@ public:
         );
 
         FVehicleLUT_EvalResult Result = FastEval(Progress);
+
+        const float TimeIntervalLength = TimeInterval.Y - TimeInterval.X;
+
+        Result.RightTangent = UVehicleUtil::SafeDivide(Result.RightTangent, TimeIntervalLength);
+
+        return Result;
+    }
+
+    /*
+    * Using Catmull-Rom cubic interpolation for evaluation
+    * Advantages: Delivers perfectly smooth curves and continuous derivatives even with very few sampling points (e.g., 16 or 32)
+    * Disadvantages: More computationally intensive than linear interpolation
+    */
+    FORCEINLINE FVehicleLUT_EvalResult CubicEval(float Progress) const
+    {
+        Progress = FMath::Clamp(Progress, 0.f, 1.f);
+        const int32 NumOfSamples = Samples.Num();
+        const int32 LastIdx = NumOfSamples - 1;
+        const float FloatLastIdx = (float)(LastIdx);
+        const float FloatIndex = Progress * FloatLastIdx;
+
+        // Two key points
+        const int32 idx1 = (int32)FloatIndex;
+        const int32 idx2 = idx1 + 1 - (idx1 == LastIdx);
+
+        // Acquire two additional control points before and after (note boundary constraints)
+        const int32 idx0 = idx1 - 1 + (idx1 == 0);
+        const int32 idx3 = idx2 + 1 - (idx2 == LastIdx);
+
+        // read value of 4 points
+        const float p0 = Samples[idx0];
+        const float p1 = Samples[idx1];
+        const float p2 = Samples[idx2];
+        const float p3 = Samples[idx3];
+
+        // Calculate the fractional part t and its powers
+        const float t = FloatIndex - (float)idx1;
+        const float t2 = t * t;
+        const float t3 = t2 * t;
+
+        // Catmull-Rom polynom (Value)
+        const float Value = 0.5f * (
+            (2.f * p1) +
+            (-p0 + p2) * t +
+            (2.f * p0 - 5.f * p1 + 4.f * p2 - p3) * t2 +
+            (-p0 + 3.f * p1 - 3.f * p2 + p3) * t3
+            );
+
+        // Derive polynomials to obtain accurate tangents.
+        const float Tangent_t = 0.5f * (
+            (-p0 + p2) +
+            2.f * (2.f * p0 - 5.f * p1 + 4.f * p2 - p3) * t +
+            3.f * (-p0 + 3.f * p1 - 3.f * p2 + p3) * t2
+            );
+
+        // Chain Rule: Multiply by the scaling factor of the index to restore the tangent to its correct spatial proportion.
+        const float RightTangent = Tangent_t * FloatLastIdx;
+
+        return FVehicleLUT_EvalResult(Value, RightTangent);
+    }
+
+    FORCEINLINE FVehicleLUT_EvalResult CubicEval(const float Time, const FVector2f& TimeInterval) const
+    {
+        const float Progress = FMath::GetMappedRangeValueUnclamped(
+            TimeInterval,
+            FVector2f(0.f, 1.f),
+            Time
+        );
+
+        FVehicleLUT_EvalResult Result = CubicEval(Progress);
 
         const float TimeIntervalLength = TimeInterval.Y - TimeInterval.X;
 

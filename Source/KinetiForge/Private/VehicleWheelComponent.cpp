@@ -346,7 +346,7 @@ float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float L
 {
 	// get tire stiffness
 	float Cx = Wheel.CachedLUTs.Fx.FastEval(0.f).RightTangent;
-	float Cy = Wheel.CachedLUTs.Fy.FastEval(0.f).RightTangent * 90.f;
+	float Cy = Wheel.CachedLUTs.Fy.FastEval(0.f).RightTangent;
 
 	Cx = Cx > SMALL_NUMBER ? Cx : 1.f;
 	Cy = Cy > SMALL_NUMBER ? Cy : 1.f;

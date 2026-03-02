@@ -45,6 +45,7 @@ public:
 protected:
 	/** rotational bias in realtime **/
 	FQuat DynArmRotOffset = FQuat::Identity;
+	FQuat PrevDynArmRotOffset = FQuat::Identity;
 
 	/** only use in physics thread **/
 	FTransform AsyncDesiredArmOriginWorldTransform;
