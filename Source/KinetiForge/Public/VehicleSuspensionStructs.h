@@ -1,9 +1,9 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "VehicleUtil.h"
+#include "VehicleUtilities.h"
 #include "VehicleSuspensionStructs.generated.h"
 
 UENUM(BlueprintType)

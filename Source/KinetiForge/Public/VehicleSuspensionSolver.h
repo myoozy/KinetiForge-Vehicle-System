@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 #pragma once
 
@@ -141,4 +141,126 @@ protected:
 	FCollisionResponseParams ResponseParams = FCollisionResponseParams::DefaultResponseParam;
 
 private:
+	static void PrepareSimulation(
+		FVehicleSuspensionSimContext& Ctx,
+		const FTransform& ComponentRelativeTransform,
+		const FTransform& AsyncCarbodyWorldTransform,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static void ComputeRayCastLocation(
+		FVehicleSuspensionSimContext& Ctx,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static bool ShouldDoRefinedTrace(
+		FVehicleSuspensionSimContext& Ctx,
+		const float HalfWheelWidth,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static void ComputeHitDistance(
+		FVehicleSuspensionSimContext& Ctx,
+		const float WheelRadius,
+		const float EquivalentSphereTraceRadius
+	);
+	static void CacheImpactFriction(
+		FVehicleSuspensionSimContext& Ctx
+	);
+	static float SuspensionLineTrace(
+		FVehicleSuspensionSimContext& Ctx,
+		const UWorld* World,
+		const float WheelRadius,
+		const float HalfWheelWidth,
+		const FCollisionQueryParams& QueryParams,
+		const FCollisionResponseParams& ResponseParams,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static float SuspensionSphereTrace(
+		FVehicleSuspensionSimContext& Ctx,
+		const UWorld* World,
+		const float WheelRadius,
+		const float HalfWheelWidth,
+		const FCollisionQueryParams& QueryParams,
+		const FCollisionResponseParams& ResponseParams,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static float SuspensionBoxTrace(
+		FVehicleSuspensionSimContext& Ctx,
+		const UWorld* World,
+		const float WheelRadius,
+		const float HalfWheelWidth,
+		const FCollisionQueryParams& QueryParams,
+		const FCollisionResponseParams& ResponseParams,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static float SuspensionSphereTraceNoRefinement(
+		FVehicleSuspensionSimContext& Ctx,
+		const UWorld* World,
+		const float WheelRadius,
+		const float HalfWheelWidth,
+		const FCollisionQueryParams& QueryParams,
+		const FCollisionResponseParams& ResponseParams,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static float SuspensionMultiSphereTrace(
+		FVehicleSuspensionSimContext& Ctx,
+		const UWorld* World,
+		const float WheelRadius,
+		const float HalfWheelWidth,
+		const FCollisionQueryParams& QueryParams,
+		const FCollisionResponseParams& ResponseParams,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static void SuspensionRayCast(
+		FVehicleSuspensionSimContext& Ctx,
+		const UWorld* World,
+		const float WheelRadius,
+		const float HalfWheelWidth,
+		const FCollisionQueryParams& QueryParams,
+		const FCollisionResponseParams& ResponseParams,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static void ComputeStraightSuspension(
+		FVehicleSuspensionSimContext& Ctx,
+		const float WheelRadius,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static void ComputeMacpherson(
+		FVehicleSuspensionSimContext& Ctx,
+		const float WheelRadius,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static void ComputeDoubleWishbone(
+		FVehicleSuspensionSimContext& Ctx,
+		const float WheelRadius,
+		const FVehicleSuspensionKinematicsConfig& Config,
+		const FVehicleSuspensionCachedLUTs& LUTs
+	);
+	static void ComputeSolidAxle(
+		FVehicleSuspensionSimContext& Ctx,
+		const float WheelRadius,
+		const FVehicleSuspensionKinematicsConfig& Config,
+		const FVector& InKnuckleWorldPos,
+		const FVector& InAxleWorldDirection
+	);
+	static void UpdateAntiPitchRollGeometry(
+		FVehicleSuspensionSimContext& Ctx,
+		Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
+		const FVehicleSuspensionCachedLUTs& LUTs,
+		const FTransform& AsyncCarbodyWorldTransform,
+		const FVector3f& TireForce
+	);
+	static void UpdateImpactPointWorldVelocity(
+		FVehicleSuspensionSimContext& Ctx,
+		Chaos::FRigidBodyHandle_Internal* CarbodyHandle
+	);
+	static float GetCriticalDamping(
+		const float SpringStiffness,
+		const float SprungMass
+	);
+	static void ComputeSuspensionForce(
+		FVehicleSuspensionSimContext& Ctx,
+		const float WheelRadius,
+		const FVehicleSuspensionSpringConfig& SpringConfig,
+		const FVehicleSuspensionKinematicsConfig& KineConfig,
+		const FVehicleSuspensionCachedLUTs& LUTs
+	);
 };

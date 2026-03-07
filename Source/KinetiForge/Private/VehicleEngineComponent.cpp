@@ -1,8 +1,8 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 
 #include "VehicleEngineComponent.h"
-#include "VehicleUtil.h"
+#include "VehicleUtilities.h"
 
 // Sets default values for this component's properties
 UVehicleEngineComponent::UVehicleEngineComponent()
@@ -39,6 +39,7 @@ void UVehicleEngineComponent::BeginPlay()
 	State.RevLimiterTimer = NAConfig.RevLimiterTime;
 
 	TimeSinceLastConfigSync = FMath::FRandRange(0.f, ConfigSyncInterval);
+	TimeSinceLastConfigSync += ConfigSyncInterval;
 }
 
 
@@ -185,12 +186,12 @@ void UVehicleEngineComponent::EngineAcceleration()
 	IndicatedTorque += State.P1MotorTorque;
 
 	// accelerate engine
-	State.EngineAngularVelocity += UVehicleUtil::SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * (IndicatedTorque - State.LoadTorque + State.StarterMotorTorque);
+	State.EngineAngularVelocity += UVehicleUtilities::SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * (IndicatedTorque - State.LoadTorque + State.StarterMotorTorque);
 	
 	// get the direction of friction torque
 	float AngVelSignWithoutFriction = FMath::Sign(State.EngineAngularVelocity);
 	FrictionTorque = FrictionTorque * AngVelSignWithoutFriction;
-	State.EngineAngularVelocity -= UVehicleUtil::SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * FrictionTorque;
+	State.EngineAngularVelocity -= UVehicleUtilities::SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * FrictionTorque;
 	
 	// zero cross check
 	bool bCrossZero = FMath::Sign(State.EngineAngularVelocity) != AngVelSignWithoutFriction;
@@ -209,7 +210,7 @@ void UVehicleEngineComponent::UpdateExhaust()
 	float AbsolutRPM = FMath::Abs(State.EngineRPM);
 
 	// normalized rpm
-	float NormalizedRPM = UVehicleUtil::SafeDivide(AbsolutRPM, NAConfig.EngineMaxRPM);
+	float NormalizedRPM = UVehicleUtilities::SafeDivide(AbsolutRPM, NAConfig.EngineMaxRPM);
 
 	// check if engine is slowing down (and not idling)
 	bool bIsDecelerating =
@@ -366,7 +367,7 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 
 		//get idle throttle
 		State.IdleThrottle = FMath::Clamp(
-			UVehicleUtil::SafeDivide(State.TorqueRequiredToStartEngine,
+			UVehicleUtilities::SafeDivide(State.TorqueRequiredToStartEngine,
 				State.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque * CachedTorqueLUT.FastEval(0.f).Value),
 			0.f, 1.f);
 	}

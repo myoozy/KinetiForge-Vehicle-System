@@ -1,10 +1,10 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 
 #include "VehicleClutchComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
 #include "VehicleEngineComponent.h"
-#include "VehicleUtil.h"
+#include "VehicleUtilities.h"
 
 // Sets default values for this component's properties
 UVehicleClutchComponent::UVehicleClutchComponent()
@@ -37,22 +37,22 @@ float UVehicleClutchComponent::GetTorqueSpringModel(
 {
 	float J_Gearbox = GearboxReflectedInertia + GearboxInputShaftInertia;
 	float J_Engine = EngineInertia;
-	float J_Total = UVehicleUtil::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
+	float J_Total = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
 	float J_ToGetStiffness = 0.f;
 
 	// to simulate torson spring on drive shaft
 	J_Gearbox = GearboxReflectedInertia;
 	J_Engine = EngineInertia + GearboxInputShaftInertia;
-	J_ToGetStiffness = UVehicleUtil::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
+	J_ToGetStiffness = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
 	float K_Shaft = CalculateStiffness(Config.NaturalFrequency, J_ToGetStiffness);
 
 	// to simulate torson spring on clutch
 	J_Gearbox = GearboxInputShaftInertia + GearboxReflectedInertia_HighestGear;
 	J_Engine = EngineInertia;
-	J_ToGetStiffness = UVehicleUtil::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
+	J_ToGetStiffness = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
 	float K_Clutch = CalculateStiffness(Config.NaturalFrequency, J_ToGetStiffness);
 
-	float SpringStiffness = UVehicleUtil::SafeDivide(K_Shaft * K_Clutch, K_Shaft + K_Clutch);
+	float SpringStiffness = UVehicleUtilities::SafeDivide(K_Shaft * K_Clutch, K_Shaft + K_Clutch);
 	float CriticalDamping = 2.0f * FMath::Sqrt(SpringStiffness * J_Total);
 	float SpringDamping = CriticalDamping * Config.Damping;
 	
@@ -61,7 +61,7 @@ float UVehicleClutchComponent::GetTorqueSpringModel(
 
 	float DontKnowWhatItIs = SpringStiffness * DeltaTime + SpringDamping;
 	float TorqueNumerator = SpringStiffness * CurrentAngleDiff + DontKnowWhatItIs * ClutchSlipScaled;
-	float TorqueDenominator = 1.0f + UVehicleUtil::SafeDivide(DontKnowWhatItIs * DeltaTime, J_Total);
+	float TorqueDenominator = 1.0f + UVehicleUtilities::SafeDivide(DontKnowWhatItIs * DeltaTime, J_Total);
 
 	float SpringModelTorque = TorqueNumerator / TorqueDenominator;
 
@@ -91,8 +91,8 @@ float UVehicleClutchComponent::GetTorqueDampingModel(
 	float J_Gearbox = GearboxReflectedInertia + GearboxInputShaftInertia;
 	float J_Engine = EngineInertia;
 
-	float J = UVehicleUtil::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
-	float GameFrequency = UVehicleUtil::SafeDivide(1.f, DeltaTime);
+	float J = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
+	float GameFrequency = UVehicleUtilities::SafeDivide(1.f, DeltaTime);
 	float CriticalDamping = 2.f * J * GameFrequency;
 
 	float UnSmoothenedTorque = FMath::Clamp(ClutchSlip * CriticalDamping, -State.MaxClutchTorque, State.MaxClutchTorque);

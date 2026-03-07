@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 #pragma once
 
@@ -61,8 +61,8 @@ protected:
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-	
-	static UVehicleWheelCoordinatorComponent* FindWheelCoordinator(USceneComponent* Carbody);
+
+	static UVehicleWheelCoordinatorComponent* FindWheelCoordinator(USceneComponent* InCarbody);
 
 	void NotifyWheelMoved();
 	void RegisterWheel(UVehicleWheelComponent* NewWheel);
@@ -71,5 +71,11 @@ public:
 	static bool ComputeSprungMasses(const TArray<FVector3f>& MassSpringPositions, const float TotalMass, TArray<float>& OutSprungMasses);
 	static bool ComputeSprungMasses(const TArray<FVector3f>& LocalSpringPositions, const FVector3f& LocalCenterOfMass, const float TotalMass, TArray<float>& OutSprungMasses);
 
-		
+	float GetMinTurningRadius();
+	float GetMaxTrackWidth();
+	float GetMaxWheelBase();
+
+	UFUNCTION(BlueprintCallable, Category = "WheelCoordinator")
+	TArray<UVehicleAxleAssemblyComponent*> GetRegisteredAxles();
+
 };

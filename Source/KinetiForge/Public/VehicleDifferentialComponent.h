@@ -1,23 +1,13 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "VehicleDrivetrainStructs.h"
 #include "VehicleDifferentialComponent.generated.h"
 
 class UVehicleAxleAssemblyComponent;
-
-USTRUCT(BlueprintType)
-struct FVehicleLimitedSlipDifferentialConfig
-{
-	GENERATED_USTRUCT_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
-	float GearRatio = 3.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
-	float LockRatio = 0.f;	//range: 0 - 1
-};
 
 /**
 * Surprise! I'm also a transfer case.

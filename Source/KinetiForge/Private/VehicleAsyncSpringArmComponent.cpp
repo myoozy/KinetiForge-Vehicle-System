@@ -1,10 +1,10 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 
 #include "VehicleAsyncSpringArmComponent.h"
 #include "PhysicsEngine/PhysicsSettings.h"
 #include "VehicleWheelCoordinatorComponent.h"
-#include "VehicleUtil.h"
+#include "VehicleUtilities.h"
 #include "VehicleAsyncTickComponent.h"
 
 void UVehicleAsyncSpringArmComponent::UpdatePhysics(float DeltaTime)
@@ -20,7 +20,7 @@ void UVehicleAsyncSpringArmComponent::UpdatePhysics(float DeltaTime)
 	// get rigid handle to get world com position
 	UPrimitiveComponent* p = PhysicalParent.Get();
 	if (!p)return;
-	Chaos::FRigidBodyHandle_Internal* RigidHandle = UVehicleUtil::GetInternalHandle(p);
+	Chaos::FRigidBodyHandle_Internal* RigidHandle = UVehicleUtilities::GetInternalHandle(p);
 	if (!RigidHandle)return;
 
 	// get relative transform to primitive component
@@ -116,7 +116,7 @@ void UVehicleAsyncSpringArmComponent::BeginPlay()
 	);
 
 	// find physical parent
-	PhysicalParent = UVehicleUtil::FindPhysicalParent(this);
+	PhysicalParent = UVehicleUtilities::FindPhysicalParent(this);
 
 	// find async tick component
 	AActor* Owner = GetOwner();
@@ -185,7 +185,7 @@ void UVehicleAsyncSpringArmComponent::UpdateDesiredArmLocation(
 	/*----- new code: -----*/
 	
 	TimeSinceLastPhysTick += DeltaTime;
-	float Alpha = FMath::Clamp(UVehicleUtil::SafeDivide(TimeSinceLastPhysTick, LastPhysicsDeltaTime), 0.0f, 1.0f);
+	float Alpha = FMath::Clamp(UVehicleUtilities::SafeDivide(TimeSinceLastPhysTick, LastPhysicsDeltaTime), 0.0f, 1.0f);
 
 	// get the offset and normalize it
 	FQuat LocalArmRotOffset = FMath::Lerp(PrevDynArmRotOffset, DynArmRotOffset, Alpha);

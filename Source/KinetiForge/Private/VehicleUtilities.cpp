@@ -1,16 +1,16 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
-#include "VehicleUtil.h"
+#include "VehicleUtilities.h"
 
-UVehicleUtil::UVehicleUtil()
+UVehicleUtilities::UVehicleUtilities()
 {
 }
 
-UVehicleUtil::~UVehicleUtil()
+UVehicleUtilities::~UVehicleUtilities()
 {
 }
 
-void UVehicleUtil::SetInertiaTensor(UPrimitiveComponent* InComponent, FVector InInertia)
+void UVehicleUtilities::SetInertiaTensor(UPrimitiveComponent* InComponent, FVector InInertia)
 {
 	if (!IsValid(InComponent)) return;
 	FBodyInstance* BI = InComponent->GetBodyInstance();
@@ -42,7 +42,7 @@ void UVehicleUtil::SetInertiaTensor(UPrimitiveComponent* InComponent, FVector In
 		});
 }
 
-void UVehicleUtil::RotateCamera(USceneComponent* InSpringArm, FVector2D InMouseInput, bool bInvertYAxis, float InMaxPitch)
+void UVehicleUtilities::RotateCamera(USceneComponent* InSpringArm, FVector2D InMouseInput, bool bInvertYAxis, float InMaxPitch)
 {
 	if (IsValid(InSpringArm))
 	{
@@ -57,7 +57,7 @@ void UVehicleUtil::RotateCamera(USceneComponent* InSpringArm, FVector2D InMouseI
 	}
 }
 
-void UVehicleUtil::CameraLookAtVelocity(UPrimitiveComponent* InPrimitiveComponent, USceneComponent* InSpringArm, float InPitch, float InSensitivity, float InInterpSpeed, float InStartSpeed_mps)
+void UVehicleUtilities::CameraLookAtVelocity(UPrimitiveComponent* InPrimitiveComponent, USceneComponent* InSpringArm, float InPitch, float InSensitivity, float InInterpSpeed, float InStartSpeed_mps)
 {
 	if (IsValid(InSpringArm) && IsValid(InPrimitiveComponent))
 	{
@@ -84,7 +84,7 @@ void UVehicleUtil::CameraLookAtVelocity(UPrimitiveComponent* InPrimitiveComponen
 	}
 }
 
-UPrimitiveComponent* UVehicleUtil::FindPhysicalParent(USceneComponent* ChildSceneComponent)
+UPrimitiveComponent* UVehicleUtilities::FindPhysicalParent(USceneComponent* ChildSceneComponent)
 {
 	if (!IsValid(ChildSceneComponent))return nullptr;
 
@@ -110,4 +110,20 @@ UPrimitiveComponent* UVehicleUtil::FindPhysicalParent(USceneComponent* ChildScen
 	}
 
 	return nullptr;
+}
+
+void UVehicleUtilities::DrawDebugCapsuleEasy(
+	UWorld* World, FVector Start, FVector End, float Radius, 
+	float Thickness, float LifeTime, FColor Color)
+{
+	if (!IsValid(World))return;
+
+	FVector Center = (Start + End) * 0.5f;
+	float HalfHeight = FVector::Dist(Start, End) * 0.5f + Radius;
+	FQuat Rotation = FQuat::FindBetween(FVector::UpVector, End - Start).GetNormalized();
+
+	DrawDebugCapsule(
+		World, Center, HalfHeight, Radius, Rotation,
+		Color, false, LifeTime, 0, Thickness
+	);
 }

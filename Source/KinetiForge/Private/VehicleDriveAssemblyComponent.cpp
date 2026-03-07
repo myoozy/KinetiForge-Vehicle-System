@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 
 #include "VehicleDriveAssemblyComponent.h"
@@ -11,7 +11,7 @@
 #include "VehicleClutchComponent.h"
 #include "VehicleGearboxComponent.h"
 #include "VehicleAsyncTickComponent.h"
-#include "VehicleUtil.h"
+#include "VehicleUtilities.h"
 #include "AsyncTickFunctions.h"
 #include "Net/UnrealNetwork.h" 
 #include "GameFramework/SpringArmComponent.h"
@@ -87,7 +87,7 @@ void UVehicleDriveAssemblyComponent::OnRegister()
 {
 	Super::OnRegister();
 	//...
-	Carbody = UVehicleUtil::FindPhysicalParent(this);
+	Carbody = UVehicleUtilities::FindPhysicalParent(this);
 	GetOwner()->bRunConstructionScriptOnDrag = false;	//to improve performance
 	GetOwner()->SetReplicates(true);
 	GenerateAxles();
@@ -148,6 +148,15 @@ void UVehicleDriveAssemblyComponent::UpdateInput(float InDeltaTime)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_UpdateInput);
 
+	if (AutoGearboxConfig.bAutomaticGearbox && AutoGearboxConfig.bArcadeAutoGearbox)
+	{
+		InputValues.bSwitchThrottleAndBrake = Gearbox->GetCurrentGear() < 0;
+	}
+	else
+	{
+		InputValues.bSwitchThrottleAndBrake = false;
+	}
+
 	UpdateThrottle(InDeltaTime);
 	UpdateBrake(InDeltaTime);
 	UpdateClutch(InDeltaTime);
@@ -157,8 +166,6 @@ void UVehicleDriveAssemblyComponent::UpdateInput(float InDeltaTime)
 
 void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 {
-	if (InputValues.bDirectInputThrottle)return;
-
 	float RealThrottleInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Brake : InputValues.Raw.Throttle;
 	
 	if (UVehicleGearboxComponent* GearboxRaw = Gearbox.Get())
@@ -170,7 +177,7 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 			InputAssistConfig.bRevMatching)
 		{
 			const float Rate = 5.f;
-			InputValues.Smoothened.Throttle += UVehicleUtil::SafeDivide(InDeltaTime * Rate, GearboxRaw->Config.ShiftDelay);
+			InputValues.Smoothened.Throttle += UVehicleUtilities::SafeDivide(InDeltaTime * Rate, GearboxRaw->Config.ShiftDelay);
 			InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
 		}
 		//if not in gear and no rev-matching and not sequential
@@ -194,6 +201,7 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 	{
 		InputValues.Smoothened.Throttle = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Throttle, RealThrottleInput, InDeltaTime, InputConfig.Throttle.InterpSpeed);
 	}
+	InputValues.Smoothened.Throttle = FMath::Clamp(InputValues.Smoothened.Throttle, 0.f, 1.f);
 
 	if (IsValid(InputConfig.Throttle.ResponseCurve))
 	{
@@ -203,16 +211,16 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 	{
 		InputValues.Final.Throttle = InputValues.Smoothened.Throttle;
 	}
+	InputValues.Final.Throttle = FMath::Clamp(InputValues.Final.Throttle, 0.f, 1.f);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateBrake(float InDeltaTime)
 {
-	if (InputValues.bDirectInputBrake)return;
-
 	float RealBrakeInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Throttle : InputValues.Raw.Brake;
 
 	//update brake
 	InputValues.Smoothened.Brake = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Brake, RealBrakeInput, InDeltaTime, InputConfig.Brake.InterpSpeed);
+	InputValues.Smoothened.Brake = FMath::Clamp(InputValues.Smoothened.Brake, 0.f, 1.f);
 
 	if (IsValid(InputConfig.Brake.ResponseCurve))
 	{
@@ -222,12 +230,11 @@ void UVehicleDriveAssemblyComponent::UpdateBrake(float InDeltaTime)
 	{
 		InputValues.Final.Brake = InputValues.Smoothened.Brake;
 	}
+	InputValues.Final.Brake = FMath::Clamp(InputValues.Final.Brake, 0.f, 1.f);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 {
-	if (InputValues.bDirectInputClutch)return;
-
 	UVehicleGearboxComponent* GearboxRaw = Gearbox.Get();
 	UVehicleEngineComponent * EngineRaw = Engine.Get();
 
@@ -250,7 +257,7 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 		FVector2f FinalInterpSpeed;
 		float Rate = 10.f;
 		FinalInterpSpeed.Y = InputConfig.Clutch.InterpSpeed.Y;
-		FinalInterpSpeed.X = bNotInGearAndNotSequential ? UVehicleUtil::SafeDivide(Rate, GearboxRaw->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
+		FinalInterpSpeed.X = bNotInGearAndNotSequential ? UVehicleUtilities::SafeDivide(Rate, GearboxRaw->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
 
 		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, TargetClutchValue, InDeltaTime, FinalInterpSpeed);
 	}
@@ -258,6 +265,7 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 	{
 		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, InputValues.Raw.Clutch, InDeltaTime, InputConfig.Clutch.InterpSpeed);
 	}
+	InputValues.Smoothened.Clutch = FMath::Clamp(InputValues.Smoothened.Clutch, 0.f, 1.f);
 
 	if (IsValid(InputConfig.Clutch.ResponseCurve))
 	{
@@ -267,12 +275,11 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 	{
 		InputValues.Final.Clutch = InputValues.Smoothened.Clutch;
 	}
+	InputValues.Final.Clutch = FMath::Clamp(InputValues.Final.Clutch, 0.f, 1.f);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateSteering(float InDeltaTime)
 {
-	if (InputValues.bDirectInputSteering)return;
-
 	float RealSteeringInput = InputValues.Raw.Steering;
 	float Scale = 1.f;
 
@@ -283,6 +290,7 @@ void UVehicleDriveAssemblyComponent::UpdateSteering(float InDeltaTime)
 	}
 
 	InputValues.Smoothened.Steering = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Steering, RealSteeringInput, InDeltaTime, InputConfig.Steering.InterpSpeed);
+	InputValues.Smoothened.Steering = FMath::Clamp(InputValues.Smoothened.Steering, -1.f, 1.f);
 
 	if (IsValid(InputConfig.Steering.ResponseCurve))
 	{
@@ -293,12 +301,11 @@ void UVehicleDriveAssemblyComponent::UpdateSteering(float InDeltaTime)
 	{
 		InputValues.Final.Steering = InputValues.Smoothened.Steering * Scale;
 	}
+	InputValues.Final.Steering = FMath::Clamp(InputValues.Final.Steering, -1.f, 1.f);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateHandbrake(float InDeltaTime)
 {
-	if (InputValues.bDirectInputHandbrake)return;
-
 	float RealThrottleInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Brake : InputValues.Raw.Throttle;
 
 	//update handbrake
@@ -308,6 +315,7 @@ void UVehicleDriveAssemblyComponent::UpdateHandbrake(float InDeltaTime)
 		&& RealThrottleInput < SMALL_NUMBER
 		&& !bIsInAir)HandbrakeTarget = 1.f;
 	InputValues.Smoothened.Handbrake = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Handbrake, HandbrakeTarget, InDeltaTime, InputConfig.Handbrake.InterpSpeed);
+	InputValues.Smoothened.Handbrake = FMath::Clamp(InputValues.Smoothened.Handbrake, 0.f, 1.f);
 
 	if (IsValid(InputConfig.Handbrake.ResponseCurve))
 	{
@@ -317,6 +325,7 @@ void UVehicleDriveAssemblyComponent::UpdateHandbrake(float InDeltaTime)
 	{
 		InputValues.Final.Handbrake = InputValues.Smoothened.Handbrake;
 	}
+	InputValues.Final.Handbrake = FMath::Clamp(InputValues.Final.Handbrake, 0.f, 1.f);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
@@ -415,7 +424,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	}
 
 	// should shift down if rpm is too low
-	float MinShiftUpFactor = UVehicleUtil::SafeDivide(EngineRaw->NAConfig.EngineIdleRPM, EngineRaw->NAConfig.EngineMaxRPM);
+	float MinShiftUpFactor = UVehicleUtilities::SafeDivide(EngineRaw->NAConfig.EngineIdleRPM, EngineRaw->NAConfig.EngineMaxRPM);
 	ShiftFactor = FMath::Max(MinShiftUpFactor, ShiftFactor);
 
 	int32 UnsignedCurrentGear = FMath::Abs(GearboxRaw->GetCurrentGear());
@@ -454,11 +463,16 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 void UVehicleDriveAssemblyComponent::ServerInputThrottle_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Throttle = InValue;
-	InputValues.bDirectInputThrottle = bDirectInput;
 	if (bDirectInput)
 	{
-		InputValues.Smoothened.Throttle = InValue;
-		InputValues.Final.Throttle = InValue;
+		if (InputValues.bSwitchThrottleAndBrake)
+		{
+			InputValues.Smoothened.Brake = InValue;
+		}
+		else
+		{
+			InputValues.Smoothened.Throttle = InValue;
+		}
 	}
 	MultiCastInputThrottle(InValue, bDirectInput);
 }
@@ -469,11 +483,16 @@ void UVehicleDriveAssemblyComponent::MultiCastInputThrottle_Implementation(float
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Throttle = InValue;
-		InputValues.bDirectInputThrottle = bDirectInput;
 		if (bDirectInput)
 		{
-			InputValues.Smoothened.Throttle = InValue;
-			InputValues.Final.Throttle = InValue;
+			if (InputValues.bSwitchThrottleAndBrake)
+			{
+				InputValues.Smoothened.Brake = InValue;
+			}
+			else
+			{
+				InputValues.Smoothened.Throttle = InValue;
+			}
 		}
 	}
 }
@@ -481,11 +500,16 @@ void UVehicleDriveAssemblyComponent::MultiCastInputThrottle_Implementation(float
 void UVehicleDriveAssemblyComponent::ServerInputBrake_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Brake = InValue;
-	InputValues.bDirectInputBrake = bDirectInput;
 	if (bDirectInput)
 	{
-		InputValues.Smoothened.Brake = InValue;
-		InputValues.Final.Brake = InValue;
+		if (InputValues.bSwitchThrottleAndBrake)
+		{
+			InputValues.Smoothened.Throttle = InValue;
+		}
+		else
+		{
+			InputValues.Smoothened.Brake = InValue;
+		}
 	}
 	MultiCastInputBrake(InValue, bDirectInput);
 }
@@ -496,11 +520,16 @@ void UVehicleDriveAssemblyComponent::MultiCastInputBrake_Implementation(float In
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Brake = InValue;
-		InputValues.bDirectInputBrake = bDirectInput;
 		if (bDirectInput)
 		{
-			InputValues.Smoothened.Brake = InValue;
-			InputValues.Final.Brake = InValue;
+			if (InputValues.bSwitchThrottleAndBrake)
+			{
+				InputValues.Smoothened.Throttle = InValue;
+			}
+			else
+			{
+				InputValues.Smoothened.Brake = InValue;
+			}
 		}
 	}
 }
@@ -508,11 +537,9 @@ void UVehicleDriveAssemblyComponent::MultiCastInputBrake_Implementation(float In
 void UVehicleDriveAssemblyComponent::ServerInputClutch_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Clutch = InValue;
-	InputValues.bDirectInputClutch = bDirectInput;
 	if (bDirectInput)
 	{
 		InputValues.Smoothened.Clutch = InValue;
-		InputValues.Final.Clutch = InValue;
 	}
 	MultiCastInputClutch(InValue, bDirectInput);
 }
@@ -523,11 +550,9 @@ void UVehicleDriveAssemblyComponent::MultiCastInputClutch_Implementation(float I
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Clutch = InValue;
-		InputValues.bDirectInputClutch = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Clutch = InValue;
-			InputValues.Final.Clutch = InValue;
 		}
 	}
 }
@@ -535,11 +560,9 @@ void UVehicleDriveAssemblyComponent::MultiCastInputClutch_Implementation(float I
 void UVehicleDriveAssemblyComponent::ServerInputSteering_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Steering = InValue;
-	InputValues.bDirectInputSteering = bDirectInput;
 	if (bDirectInput)
 	{
 		InputValues.Smoothened.Steering = InValue;
-		InputValues.Final.Steering = InValue;
 	}
 	MultiCastInputSteering(InValue, bDirectInput);
 }
@@ -550,11 +573,9 @@ void UVehicleDriveAssemblyComponent::MultiCastInputSteering_Implementation(float
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Steering = InValue;
-		InputValues.bDirectInputSteering = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Steering = InValue;
-			InputValues.Final.Steering = InValue;
 		}
 	}
 }
@@ -562,11 +583,9 @@ void UVehicleDriveAssemblyComponent::MultiCastInputSteering_Implementation(float
 void UVehicleDriveAssemblyComponent::ServerInputHandbrake_Implementation(float InValue, bool bDirectInput)
 {
 	InputValues.Raw.Handbrake = InValue;
-	InputValues.bDirectInputHandbrake = bDirectInput;
 	if (bDirectInput)
 	{
 		InputValues.Smoothened.Handbrake = InValue;
-		InputValues.Final.Handbrake = InValue;
 	}
 	MultiCastInputHandbrake(InValue, bDirectInput);
 }
@@ -577,11 +596,9 @@ void UVehicleDriveAssemblyComponent::MultiCastInputHandbrake_Implementation(floa
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
 		InputValues.Raw.Handbrake = InValue;
-		InputValues.bDirectInputHandbrake = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Handbrake = InValue;
-			InputValues.Final.Handbrake = InValue;
 		}
 	}
 }
@@ -692,19 +709,6 @@ void UVehicleDriveAssemblyComponent::TickComponent(float DeltaTime, ELevelTick T
 		if (AutoGearboxConfig.bAutomaticGearbox)
 		{
 			UpdateAutomaticGearbox(DeltaTime);
-
-			if (AutoGearboxConfig.bArcadeAutoGearbox)
-			{
-				InputValues.bSwitchThrottleAndBrake = Gearbox->GetCurrentGear() < 0;
-			}
-			else
-			{
-				InputValues.bSwitchThrottleAndBrake = false;
-			}
-		}
-		else
-		{
-			InputValues.bSwitchThrottleAndBrake = false;
 		}
 	}
 }
@@ -807,7 +811,7 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		SumWorldLinVel += WorldVel;
 	}
 	bIsInAir = !NumOfWheelsOnGround;
-	float NumGroundedWheelsInv = UVehicleUtil::SafeDivide(1.f, (float)NumOfWheelsOnGround);
+	float NumGroundedWheelsInv = UVehicleUtilities::SafeDivide(1.f, (float)NumOfWheelsOnGround);
 	LocalLinearVelocity = SumLocalLinVel * 2.f * NumGroundedWheelsInv;
 	WorldLinearVelocity = SumWorldLinVel * 2.f * NumGroundedWheelsInv;
 	LocalVelocityClamped = LocalLinearVelocity.SquaredLength() > 0.01f ? LocalLinearVelocity : FVector3f(0.f);
@@ -815,7 +819,7 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 	// get acceleration
 	FVector3f LastAbsVelocity = AbsoluteWorldLinearVelocity;
 	AbsoluteWorldLinearVelocity = 0.01f * (FVector3f)UAsyncTickFunctions::ATP_GetLinearVelocity(Carbody.Get());
-	WorldAcceleration = UVehicleUtil::SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, PhysicsDeltaTime);
+	WorldAcceleration = UVehicleUtilities::SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, PhysicsDeltaTime);
 	FQuat4f CarbodyRot = (FQuat4f)UAsyncTickFunctions::ATP_GetTransform(Carbody.Get()).GetRotation();
 	LocalAcceleration = CarbodyRot.UnrotateVector(WorldAcceleration);
 }
@@ -825,11 +829,16 @@ void UVehicleDriveAssemblyComponent::InputThrottle(float InValue, bool bDirectIn
 	if (!GetOwner()->HasAuthority())
 	{
 		InputValues.Raw.Throttle = InValue;
-		InputValues.bDirectInputThrottle = bDirectInput;
 		if (bDirectInput)
 		{
-			InputValues.Smoothened.Throttle = InValue;
-			InputValues.Final.Throttle = InValue;
+			if (InputValues.bSwitchThrottleAndBrake)
+			{
+				InputValues.Smoothened.Brake = InValue;
+			}
+			else
+			{
+				InputValues.Smoothened.Throttle = InValue;
+			}
 		}
 	}
 	ServerInputThrottle(InValue, bDirectInput);
@@ -840,11 +849,16 @@ void UVehicleDriveAssemblyComponent::InputBrake(float InValue, bool bDirectInput
 	if (!GetOwner()->HasAuthority())
 	{
 		InputValues.Raw.Brake = InValue;
-		InputValues.bDirectInputBrake = bDirectInput;
 		if (bDirectInput)
 		{
-			InputValues.Smoothened.Brake = InValue;
-			InputValues.Final.Brake = InValue;
+			if (InputValues.bSwitchThrottleAndBrake)
+			{
+				InputValues.Smoothened.Throttle = InValue;
+			}
+			else
+			{
+				InputValues.Smoothened.Brake = InValue;
+			}
 		}
 	}
 	ServerInputBrake(InValue, bDirectInput);
@@ -855,11 +869,9 @@ void UVehicleDriveAssemblyComponent::InputClutch(float InValue, bool bDirectInpu
 	if (!GetOwner()->HasAuthority())
 	{
 		InputValues.Raw.Clutch = InValue;
-		InputValues.bDirectInputClutch = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Clutch = InValue;
-			InputValues.Final.Clutch = InValue;
 		}
 	}
 	ServerInputClutch(InValue, bDirectInput);
@@ -870,11 +882,9 @@ void UVehicleDriveAssemblyComponent::InputSteering(float InValue, bool bDirectIn
 	if (!GetOwner()->HasAuthority())
 	{
 		InputValues.Raw.Steering = InValue;
-		InputValues.bDirectInputSteering = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Steering = InValue;
-			InputValues.Final.Steering = InValue;
 		}
 	}
 	ServerInputSteering(InValue, bDirectInput);
@@ -885,11 +895,9 @@ void UVehicleDriveAssemblyComponent::InputHandbrake(float InValue, bool bDirectI
 	if (!GetOwner()->HasAuthority())
 	{
 		InputValues.Raw.Handbrake = InValue;
-		InputValues.bDirectInputHandbrake = bDirectInput;
 		if (bDirectInput)
 		{
 			InputValues.Smoothened.Handbrake = InValue;
-			InputValues.Final.Handbrake = InValue;
 		}
 	}
 	ServerInputHandbrake(InValue, bDirectInput);
@@ -899,7 +907,10 @@ void UVehicleDriveAssemblyComponent::ShiftToTargetGear(int32 InTargetGear, float
 {
 	if (Gearbox.IsValid()) 
 	{
-		AutoGearboxCount = -InAutoShiftCoolDown;
+		if (AutoGearboxConfig.bAutomaticGearbox)
+		{
+			AutoGearboxCount = -InAutoShiftCoolDown;
+		}
 
 		//Client predict
 		if (!GetOwner()->HasAuthority())
@@ -924,6 +935,14 @@ void UVehicleDriveAssemblyComponent::ShiftDown(float InAutoShiftCoolDown, bool b
 	if (Gearbox.IsValid())
 	{
 		ShiftToTargetGear(Gearbox->GetCurrentGear() - 1, InAutoShiftCoolDown, bImmediate);
+	}
+}
+
+void UVehicleDriveAssemblyComponent::PauseAutoGearbox(float InCoolDownTime)
+{
+	if (AutoGearboxConfig.bAutomaticGearbox)
+	{
+		AutoGearboxCount = -InCoolDownTime;
 	}
 }
 
@@ -1025,6 +1044,18 @@ void UVehicleDriveAssemblyComponent::GetAxles(TArray<UVehicleAxleAssemblyCompone
 	}
 }
 
+TArray<UVehicleAxleAssemblyComponent*> UVehicleDriveAssemblyComponent::GetAxles()
+{
+	TArray<UVehicleAxleAssemblyComponent*> Result;
+	GetAxles(Result);
+	return Result;
+}
+
+TArray<TWeakObjectPtr<UVehicleAxleAssemblyComponent>>& UVehicleDriveAssemblyComponent::GetAxlesRef()
+{
+	return Axles;
+}
+
 void UVehicleDriveAssemblyComponent::GetWheels(TArray<UVehicleWheelComponent*>& OutWheels)
 {
 	OutWheels.Reset();
@@ -1042,10 +1073,64 @@ void UVehicleDriveAssemblyComponent::GetWheels(TArray<UVehicleWheelComponent*>& 
 	}
 }
 
+TArray<UVehicleWheelComponent*> UVehicleDriveAssemblyComponent::GetWheels()
+{
+	TArray<UVehicleWheelComponent*> Result;
+	GetWheels(Result);
+	return Result;
+}
+
 void UVehicleDriveAssemblyComponent::DestroyTargetAxle(UVehicleAxleAssemblyComponent* InTargetAxle)
 {
 	Axles.Remove(InTargetAxle);
 	InTargetAxle->DestroyComponent();
+}
+
+float UVehicleDriveAssemblyComponent::GetMaxTrackWidth()
+{
+	if (UVehicleWheelCoordinatorComponent* WheelCoord = WheelCoordinator.Get())
+	{
+		return WheelCoord->GetMaxTrackWidth();
+	}
+	return 0.f;
+}
+
+float UVehicleDriveAssemblyComponent::GetMaxWheelBase()
+{
+	if (UVehicleWheelCoordinatorComponent* WheelCoord = WheelCoordinator.Get())
+	{
+		return WheelCoord->GetMaxWheelBase();
+	}
+	return 0.f;
+}
+
+void UVehicleDriveAssemblyComponent:: GetVehicleBound(
+	FVector& OutExtent, 
+	FVector& OutOrigin, 
+	FTransform& OutTransform,
+	bool bReturnWorldTransform
+)
+{
+	if (UPrimitiveComponent* Prim = Carbody.Get())
+	{
+		FBoxSphereBounds CollisionBounds = Prim->CalcBounds(FTransform::Identity);
+		OutExtent = CollisionBounds.BoxExtent; // HalfSize
+		OutOrigin = CollisionBounds.Origin;
+
+		FTransform CompTransform = bReturnWorldTransform ?
+			Prim->GetComponentTransform() : Prim->GetRelativeTransform();
+
+		OutTransform = FTransform(
+			CompTransform.GetRotation(),
+			CompTransform.TransformPosition(CollisionBounds.Origin),
+			CompTransform.GetScale3D()
+		);
+	}
+}
+
+float UVehicleDriveAssemblyComponent::GetVehicleForwardSpeed()
+{
+	return LocalLinearVelocity.X;
 }
 
 int32 UVehicleDriveAssemblyComponent::GetCurrentGear()
@@ -1070,7 +1155,110 @@ float UVehicleDriveAssemblyComponent::GetSteeringValueFromAxles()
 		}
 	}
 
-	return UVehicleUtil::SafeDivide(Sum, Num);
+	return UVehicleUtilities::SafeDivide(Sum, Num);
+}
+
+float UVehicleDriveAssemblyComponent::GetMinTurningRadius()
+{
+	const float cm2m = 0.01f;
+
+	// Calculate the vehicle's maximum curvature
+	float MaxCurvature = 0.f;
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxlePtr : Axles)
+	{
+		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
+		{
+			if (Axle->AxleSteeringConfig.bAffectedBySteering)
+			{
+				float SteeringRad = FMath::DegreesToRadians(Axle->AxleSteeringConfig.MaxSteeringAngle);
+				float AxleWheelBase_m = Axle->GetWheelBase() * cm2m;
+				MaxCurvature += FMath::Abs(UVehicleUtilities::SafeDivide(FMath::Tan(SteeringRad), AxleWheelBase_m));
+			}
+		}
+	}
+	return UVehicleUtilities::SafeDivide(1.f, MaxCurvature);
+}
+
+float UVehicleDriveAssemblyComponent::GetMaxSteeringAngle()
+{
+	// Obtain the vehicle's maximum steering angle (for mapping to SteeringInput)
+	float MaxSteeringAngle = 0.f;
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxlePtr : Axles)
+	{
+		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
+		{
+			if (Axle->AxleSteeringConfig.bAffectedBySteering)
+			{
+				MaxSteeringAngle = FMath::Max(FMath::Abs(Axle->AxleSteeringConfig.MaxSteeringAngle), MaxSteeringAngle);
+			}
+		}
+	}
+	return MaxSteeringAngle;
+}
+
+TArray<AActor*> UVehicleDriveAssemblyComponent::GetRayCastHitActors()
+{
+	TArray<AActor*> HitActors;
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent>AxlePtr : Axles)
+	{
+		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
+		{
+			UVehicleWheelComponent* WheelL = nullptr;
+			UVehicleWheelComponent* WheelR = nullptr;
+			Axle->GetWheels(WheelL, WheelR);
+			if (WheelL)
+			{
+				if (UPrimitiveComponent* HitComponent = WheelL->GetRayCastHitComponent())
+				{
+					if (AActor* HitActor = HitComponent->GetOwner())
+					{
+						HitActors.AddUnique(HitActor);
+					}
+				}
+			}
+			if (WheelR)
+			{
+				if (UPrimitiveComponent* HitComponent = WheelR->GetRayCastHitComponent())
+				{
+					if (AActor* HitActor = HitComponent->GetOwner())
+					{
+						HitActors.AddUnique(HitActor);
+					}
+				}
+			}
+		}
+	}
+	return HitActors;
+}
+
+TArray<UPrimitiveComponent*> UVehicleDriveAssemblyComponent::GetRayCastHitComponents()
+{
+
+	TArray<UPrimitiveComponent*> HitComps;
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent>AxlePtr : Axles)
+	{
+		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
+		{
+			UVehicleWheelComponent* WheelL = nullptr;
+			UVehicleWheelComponent* WheelR = nullptr;
+			Axle->GetWheels(WheelL, WheelR);
+			if (WheelL)
+			{
+				if (UPrimitiveComponent* HitComponent = WheelL->GetRayCastHitComponent())
+				{
+					HitComps.AddUnique(HitComponent);
+				}
+			}
+			if (WheelR)
+			{
+				if (UPrimitiveComponent* HitComponent = WheelR->GetRayCastHitComponent())
+				{
+					HitComps.AddUnique(HitComponent);
+				}
+			}
+		}
+	}
+	return HitComps;
 }
 
 bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
@@ -1082,7 +1270,7 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (bUseExistingEngineComponent)
 		{
-			Engine = UVehicleUtil::GetComponentByName<UVehicleEngineComponent>(Owner, EngineComponentName);
+			Engine = UVehicleUtilities::GetComponentByName<UVehicleEngineComponent>(Owner, EngineComponentName);
 		}
 
 		if (!Engine.IsValid())
@@ -1106,7 +1294,7 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (bUseExistingClutchComponent)
 		{
-			Clutch = UVehicleUtil::GetComponentByName<UVehicleClutchComponent>(Owner, ClutchComponentName);
+			Clutch = UVehicleUtilities::GetComponentByName<UVehicleClutchComponent>(Owner, ClutchComponentName);
 		}
 
 		if (!Clutch.IsValid())
@@ -1130,7 +1318,7 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (bUseExistingGearboxComponent)
 		{
-			Gearbox = UVehicleUtil::GetComponentByName<UVehicleGearboxComponent>(Owner, GearboxComponentName);
+			Gearbox = UVehicleUtilities::GetComponentByName<UVehicleGearboxComponent>(Owner, GearboxComponentName);
 		}
 
 		if (!Gearbox.IsValid())
@@ -1154,7 +1342,7 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 	{
 		if (bUseExistingTransferCaseComponent)
 		{
-			TransferCase = UVehicleUtil::GetComponentByName<UVehicleDifferentialComponent>(Owner, TransferCaseComponentName);
+			TransferCase = UVehicleUtilities::GetComponentByName<UVehicleDifferentialComponent>(Owner, TransferCaseComponentName);
 		}
 
 		if (!TransferCase.IsValid())
@@ -1182,7 +1370,7 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 {
 	if (!Carbody.IsValid())
 	{
-		Carbody = UVehicleUtil::FindPhysicalParent(this);
+		Carbody = UVehicleUtilities::FindPhysicalParent(this);
 		if (!Carbody.IsValid())
 		{
 			return -1;
@@ -1212,7 +1400,7 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 		{
 			// generate new axle
 			FName Name = FName(ThisName + "_Axle_"+ FString::FromInt(n));
-			UVehicleAxleAssemblyComponent* Axle = UVehicleUtil::CreateComponentByClass<UVehicleAxleAssemblyComponent>(
+			UVehicleAxleAssemblyComponent* Axle = UVehicleUtilities::CreateComponentByClass<UVehicleAxleAssemblyComponent>(
 					Owner,
 					nullptr,
 					Name
@@ -1246,7 +1434,7 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 				// initialize
 				Axle->InitializeWheels();
 
-				Axles.Add(Axle);
+				Axles.AddUnique(Axle);
 				n++;
 			}
 		}		
@@ -1263,10 +1451,10 @@ int UVehicleDriveAssemblyComponent::SearchExistingAxles()
 		if (AxleConfig.bUseExistingComponent && IsValid(Owner))
 		{
 			UVehicleAxleAssemblyComponent* Axle =
-				UVehicleUtil::GetComponentByName<UVehicleAxleAssemblyComponent>(Owner, AxleConfig.AxleComponentName);
+				UVehicleUtilities::GetComponentByName<UVehicleAxleAssemblyComponent>(Owner, AxleConfig.AxleComponentName);
 			if (IsValid(Axle))
 			{
-				Axles.Add(Axle);
+				Axles.AddUnique(Axle);
 				n++;
 			}
 		}
@@ -1276,26 +1464,26 @@ int UVehicleDriveAssemblyComponent::SearchExistingAxles()
 
 TArray<FName> UVehicleDriveAssemblyComponent::GetNamesOfAxlesOfOwner()
 {
-	return UVehicleUtil::GetNamesOfComponentsOfActor<UVehicleAxleAssemblyComponent>(this);
+	return UVehicleUtilities::GetNamesOfComponentsOfActor<UVehicleAxleAssemblyComponent>(this);
 }
 
 TArray<FName> UVehicleDriveAssemblyComponent::GetNamesOfEnginesOfOwner()
 {
-	return UVehicleUtil::GetNamesOfComponentsOfActor<UVehicleEngineComponent>(this);
+	return UVehicleUtilities::GetNamesOfComponentsOfActor<UVehicleEngineComponent>(this);
 }
 
 TArray<FName> UVehicleDriveAssemblyComponent::GetNamesOfClutchesOfOwner()
 {
-	return UVehicleUtil::GetNamesOfComponentsOfActor<UVehicleClutchComponent>(this);
+	return UVehicleUtilities::GetNamesOfComponentsOfActor<UVehicleClutchComponent>(this);
 }
 
 TArray<FName> UVehicleDriveAssemblyComponent::GetNamesOfGearboxesOfOwner()
 {
-	return UVehicleUtil::GetNamesOfComponentsOfActor<UVehicleGearboxComponent>(this);
+	return UVehicleUtilities::GetNamesOfComponentsOfActor<UVehicleGearboxComponent>(this);
 }
 
 TArray<FName> UVehicleDriveAssemblyComponent::GetNamesOfTransferCasesOfOwner()
 {
-	return UVehicleUtil::GetNamesOfComponentsOfActor<UVehicleDifferentialComponent>(this);
+	return UVehicleUtilities::GetNamesOfComponentsOfActor<UVehicleDifferentialComponent>(this);
 }
 

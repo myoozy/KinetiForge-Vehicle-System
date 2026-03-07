@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 #pragma once
 
@@ -8,7 +8,7 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
-#include "VehicleUtil.generated.h"
+#include "VehicleUtilities.generated.h"
 
 namespace Chaos
 {
@@ -20,13 +20,13 @@ namespace Chaos
  * Because there is already a VehicleUtility file for Chaos Vehicle.
  */
 UCLASS()
-class KINETIFORGE_API UVehicleUtil : public UBlueprintFunctionLibrary
+class KINETIFORGE_API UVehicleUtilities : public UBlueprintFunctionLibrary
 {
     GENERATED_BODY()
 
 public:
-	UVehicleUtil();
-	~UVehicleUtil();
+	UVehicleUtilities();
+	~UVehicleUtilities();
 
     UFUNCTION(BlueprintCallable, Category = "VehicleUtility", meta = (ToolTip = "kg/m^2"))
     static void SetInertiaTensor(UPrimitiveComponent* InComponent, FVector InInertia);
@@ -50,10 +50,91 @@ public:
     UFUNCTION(BlueprintCallable, Category = "VehicleUtility")
     static UPrimitiveComponent* FindPhysicalParent(USceneComponent* ChildSceneComponent);
 
+    UFUNCTION(BlueprintCallable, Category = "VehicleUtility")
+    static void DrawDebugCapsuleEasy(
+        UWorld* World, FVector Start, FVector End, float Radius = 10.f,
+        float Thickness = 1.f, float LifeTime = -1.f, FColor Color = FColor::White
+    );
+
     template<typename T>
-    static FORCEINLINE T SafeDivide(const T& A, const T& B)
+    static T CatmullRom(T P0, T P1, T P2, T P3, float t)
     {
-        return FMath::IsNearlyZero(B) ? T(0) : A / B;
+        return 0.5f * (
+            (2.0f * P1) +
+            (-P0 + P2) * t +
+            (2.0f * P0 - 5.0f * P1 + 4.0f * P2 - P3) * (t * t) +
+            (-P0 + 3.0f * P1 - 3.0f * P2 + P3) * (t * t * t)
+            );
+    }
+
+    static void FindCatmullRomLocalMax(float P0, float P1, float P2, float P3, float& OutMax, float& OutTime)
+    {
+        float a = 0.5f * (-P0 + 3.0f * P1 - 3.0f * P2 + P3);
+        float b = 0.5f * (2.0f * P0 - 5.0f * P1 + 4.0f * P2 - P3);
+        float c = 0.5f * (-P0 + P2);
+        float d = P1;
+
+        // FirstDerivative
+        float A = 3.0f * a;
+        float B = 2.0f * b;
+        float C = c;
+
+        OutTime = 0.f;
+        OutMax = d; // f(0) = d = P1
+
+        float ValueAt1 = a + b + c + d; // f(1) = P2
+        if (ValueAt1 > OutMax)
+        {
+            OutMax = ValueAt1;
+            OutTime = 1.0f;
+        }
+
+        TArray<float> ValidRoots;
+
+        if (FMath::IsNearlyZero(A))
+        {
+            if (!FMath::IsNearlyZero(B))
+            {
+                float t = -C / B;
+                if (t > 0.f && t < 1.f) ValidRoots.Add(t);
+            }
+        }
+        else
+        {
+            float Delta = B * B - 4.0f * A * C;
+
+            if (Delta >= 0.f)
+            {
+                float SqrtDelta = FMath::Sqrt(Delta);
+                float t1 = (-B + SqrtDelta) / (2.0f * A);
+                float t2 = (-B - SqrtDelta) / (2.0f * A);
+
+                if (t1 > 0.f && t1 < 1.f) ValidRoots.Add(t1);
+                if (t2 > 0.f && t2 < 1.f) ValidRoots.Add(t2);
+            }
+        }
+
+        for (float t : ValidRoots)
+        {
+            float SecondDerivative = 2.0f * A * t + B;
+
+            if (SecondDerivative < 0.f)
+            {
+                float LocalMax = a * (t * t * t) + b * (t * t) + c * t + d;
+
+                if (LocalMax > OutMax)
+                {
+                    OutMax = LocalMax;
+                    OutTime = t;
+                }
+            }
+        }
+    }
+
+    template<typename T>
+    static FORCEINLINE T SafeDivide(const T& A, const T& B, const T DefaultValue = T(0))
+    {
+        return FMath::IsNearlyZero(B) ? DefaultValue : A / B;
     }
 
     template<typename T>
@@ -86,39 +167,43 @@ public:
     static TArray<FName> GetNamesOfComponentsOfActor(UObject* Obj)
     {
         TArray<FName> Names = { NAME_None };
-        bool bFound = false;
+        if (!Obj) return Names;
 
-        if (const AActor* Actor = Obj->GetTypedOuter<AActor>())
+        AActor* ActorOuter = Obj->GetTypedOuter<AActor>();
+        UClass* ActorClass = nullptr;
+        if (ActorOuter)
         {
-            for (UActorComponent* Comp : Actor->GetComponents())
+            ActorClass = ActorOuter->GetClass();
+
+            for (UActorComponent* Comp : ActorOuter->GetComponents())
             {
                 if (Comp && Comp->IsA<T>())
                 {
-                    Names.Add(Comp->GetFName());
-                    bFound = true;
+                    Names.AddUnique(Comp->GetFName());
                 }
             }
         }
-
-        if (bFound)return Names;
-
-        if (UObject* Outer = Obj->GetOuter())
+        else
         {
-            if (UBlueprintGeneratedClass* BPClass = Cast<UBlueprintGeneratedClass>(Outer))
+            ActorClass = Obj->GetTypedOuter<UClass>();
+        }
+
+        UBlueprintGeneratedClass* BPClass = Cast<UBlueprintGeneratedClass>(ActorClass);
+        while (BPClass)
+        {
+            if (USimpleConstructionScript* SCS = BPClass->SimpleConstructionScript)
             {
-                if (USimpleConstructionScript* SCS = BPClass->SimpleConstructionScript)
+                for (USCS_Node* Node : SCS->GetAllNodes())
                 {
-                    for (USCS_Node* Node : SCS->GetAllNodes())
+                    if (Node && Node->ComponentClass && Node->ComponentClass->IsChildOf(T::StaticClass()))
                     {
-                        if (Node && Node->ComponentClass && Node->ComponentClass->IsChildOf(T::StaticClass()))
-                        {
-                            Names.Add(Node->GetVariableName());
-                            bFound = true;
-                        }
+                        Names.AddUnique(Node->GetVariableName());
                     }
                 }
             }
+            BPClass = Cast<UBlueprintGeneratedClass>(BPClass->GetSuperClass());
         }
+
         return Names;
     }
 
@@ -279,7 +364,7 @@ public:
         */
         const int32 NumOfSamples = Samples.Num();
         const int32 LastKeyIdx = NumOfSamples - 1;
-        const float dt = UVehicleUtil::SafeDivide((TimeMax - TimeMin), (float)LastKeyIdx);
+        const float dt = UVehicleUtilities::SafeDivide((TimeMax - TimeMin), (float)LastKeyIdx);
         for (int32 i = 0; i < NumOfSamples; i++)
         {
             float CurrTime = TimeMin + dt * (float)i;
@@ -337,7 +422,7 @@ public:
 
         const float TimeIntervalLength = TimeInterval.Y - TimeInterval.X;
 
-        Result.RightTangent = UVehicleUtil::SafeDivide(Result.RightTangent, TimeIntervalLength);
+        Result.RightTangent = UVehicleUtilities::SafeDivide(Result.RightTangent, TimeIntervalLength);
 
         return Result;
     }
@@ -407,7 +492,7 @@ public:
 
         const float TimeIntervalLength = TimeInterval.Y - TimeInterval.X;
 
-        Result.RightTangent = UVehicleUtil::SafeDivide(Result.RightTangent, TimeIntervalLength);
+        Result.RightTangent = UVehicleUtilities::SafeDivide(Result.RightTangent, TimeIntervalLength);
 
         return Result;
     }

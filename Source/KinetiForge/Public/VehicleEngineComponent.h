@@ -1,18 +1,16 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Curves/CurveFloat.h"
-#include "VehicleUtil.h"
+#include "VehicleUtilities.h"
 #include "VehicleDrivetrainStructs.h"
 #include "VehicleEngineComponent.generated.h"
 
 DECLARE_DYNAMIC_DELEGATE(FOnTurboBlowOffDelegate);
 DECLARE_DYNAMIC_DELEGATE(FOnBackfiringDelegate);
-
-class UVehicleClutchComponent;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), BlueprintType, Blueprintable )
 class KINETIFORGE_API UVehicleEngineComponent : public UActorComponent
@@ -101,16 +99,30 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetTurboPressure() { return State.TurboPressure; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine", meta = (ToolTip = "Intensity < 0: no backfire; 0 <= Intensity < 1: backfiring, but only sound, no flame; Intensity >= 1: backfiring and flame is visible."))
+	/**
+	* Intensity < 0: no backfire; 
+	* 0 <= Intensity < 1: backfiring, but only sound, no flame; 
+	* Intensity >= 1: backfiring and flame is visible.
+	*/
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetBackfireIntensity() { return State.BackfireIntensity; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine", meta = (ToolTip = "Actual throttle valve opening"))
+	/*
+	* Actual throttle valve opening
+	*/
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetRealThrottleValue() { return State.RealThrottle; }
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleEngine", meta = (ToolTip = "Use the function 'GetTurboPressure' and 'GetTurboSpool' to determine the sound effect."))
+	/*
+	* Use the function 'GetTurboPressure' and 'GetTurboSpool' to determine the sound effect.
+	*/
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	void BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate InOnTurboBlowOff);
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleEngine", meta = (ToolTip = "Use the function 'GetBackfireIntensity' to determine the sound & visual effect."))
+	/*
+	* Use the function 'GetBackfireIntensity' to determine the sound & visual effect.
+	*/
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	void BindEventToOnBackfiring(FOnBackfiringDelegate InOnBackfiring);
 
 private:

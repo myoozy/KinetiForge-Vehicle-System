@@ -1,11 +1,11 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 
 #include "VehicleAxleAssemblyComponent.h"
 #include "VehicleWheelComponent.h"
 #include "VehicleDifferentialComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
-#include "VehicleUtil.h"
+#include "VehicleUtilities.h"
 
 // Sets default values for this component's properties
 UVehicleAxleAssemblyComponent::UVehicleAxleAssemblyComponent()
@@ -34,7 +34,7 @@ void UVehicleAxleAssemblyComponent::OnRegister()
 	Super::OnRegister();
 
 	//...
-	Carbody = UVehicleUtil::FindPhysicalParent(this);
+	Carbody = UVehicleUtilities::FindPhysicalParent(this);
 	//PreviewWheelMesh();
 	InitializeWheels();
 }
@@ -195,14 +195,21 @@ void UVehicleAxleAssemblyComponent::UpdateSingleWheelAxle(
 	State.AxleTotalInertia = ReflectedInertiaOfWheels + AxleConfig.DriveShaftInertia;
 }
 
-void UVehicleAxleAssemblyComponent::UpdateSteering(float InSteeringInput)
+void UVehicleAxleAssemblyComponent::UpdateSteering(
+	float InSteeringInput,
+	UVehicleWheelComponent* WheelL,
+	UVehicleWheelComponent* WheelR)
 {
 	InSteeringInput = FMath::Clamp(InSteeringInput, -1.f, 1.f);
 	float InsideWheelSteeringAngle = InSteeringInput * AxleSteeringConfig.MaxSteeringAngle;
+
 	if (AxleSteeringConfig.bAckermannSteering 
 		&& State.WheelBase > SMALL_NUMBER 
-		&& AxleConfig.TrackWidth > SMALL_NUMBER)
+		&& State.NumOfWheels == 2)
 	{
+		// approximate the track width
+		float DynTrackWidth = CalculateDynTrackWidth(WheelL, WheelR);
+
 		//clamp angle to avoid divided by 0
 		InsideWheelSteeringAngle = FMath::Clamp(InsideWheelSteeringAngle, -89, 89);
 		if (FMath::IsNearlyZero(InsideWheelSteeringAngle))	//if no steering
@@ -216,7 +223,7 @@ void UVehicleAxleAssemblyComponent::UpdateSteering(float InSteeringInput)
 
 			float InsideSteerRad = FMath::DegreesToRadians(UnsignedInsideWheelAngle);
 			float TanInside = FMath::Tan(InsideSteerRad);
-			float TanOutSide = State.WheelBase / (State.WheelBase / TanInside + AxleConfig.TrackWidth);
+			float TanOutSide = State.WheelBase / (State.WheelBase / TanInside + DynTrackWidth);
 			float OutsideSteerRad = FMath::Atan(TanOutSide);
 			UnsignedOutsideWheelAngle = FMath::RadiansToDegrees(OutsideSteerRad);
 			UnsignedOutsideWheelAngle = FMath::Lerp(UnsignedInsideWheelAngle, UnsignedOutsideWheelAngle, AxleSteeringConfig.AckermannRatio);
@@ -421,6 +428,34 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics(
 		AxleDirection);
 }
 
+float UVehicleAxleAssemblyComponent::CalculateDynTrackWidth(
+	UVehicleWheelComponent* WheelL, 
+	UVehicleWheelComponent* WheelR)
+{
+	if (!(WheelL && WheelR))return 0.f;
+
+	float DynTrackWidth = FMath::Abs(WheelL->GetRelativeLocation().Y - WheelR->GetRelativeLocation().Y);
+	float ArmLengthL = WheelL->SuspensionKinematicsConfig.ArmLength;
+	float ArmLengthR = WheelR->SuspensionKinematicsConfig.ArmLength;
+	float OffsetL = WheelL->SuspensionKinematicsConfig.AxialHubOffset;
+	float OffsetR = WheelR->SuspensionKinematicsConfig.AxialHubOffset;
+	float ProjL = -WheelL->GetRelativeTransform().GetRotation().GetRightVector().Y;
+	float ProjR = +WheelR->GetRelativeTransform().GetRotation().GetRightVector().Y;
+
+	switch (SuspensionType)
+	{
+	default:
+	case EVehicleAxleSuspensionType::Independent:
+		DynTrackWidth += ProjL * (ArmLengthL + OffsetL) + ProjR * (ArmLengthR + OffsetR);
+		break;
+	case EVehicleAxleSuspensionType::Solid:
+		DynTrackWidth += (ArmLengthL + OffsetL) + (ArmLengthR + OffsetR);
+		break;
+	}
+
+	return DynTrackWidth;
+}
+
 // Called every frame
 void UVehicleAxleAssemblyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
@@ -532,7 +567,7 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 	if (AxleSteeringConfig.bAffectedBySteering)
 	{
 		UpdateSteeringAssist(InSteeringInput);
-		UpdateSteering(State.RealSteeringValue);
+		UpdateSteering(State.RealSteeringValue, WheelL, WheelR);
 	}
 	
 	if (State.NumOfWheels == 2)
@@ -600,6 +635,20 @@ void UVehicleAxleAssemblyComponent::UpdateTrackWidth()
 	SetWheelPosition(AxleConfig.TrackWidth);
 }
 
+float UVehicleAxleAssemblyComponent::GetTrackWidth()
+{
+	UVehicleWheelComponent* WheelL = LeftWheel.Get();
+	UVehicleWheelComponent* WheelR = RightWheel.Get();
+	if (WheelL && WheelR)
+	{
+		return CalculateDynTrackWidth(WheelL, WheelR);
+	}
+	else
+	{
+		return AxleConfig.TrackWidth;
+	}
+}
+
 void UVehicleAxleAssemblyComponent::UpdateSolidAxleAnim(
 	USceneComponent* InSolidAxleMesh, 
 	EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint)
@@ -663,8 +712,7 @@ void UVehicleAxleAssemblyComponent::ApplySolidAxleStateDirect(float InExtensionR
 		FVector AxleWorldCenter = (RightWorldPos + LeftWorldPos) * 0.5f;
 
 		// the track width
-		float DynTrackWidth = FMath::Abs(LeftWheel->GetRelativeLocation().Y - RightWheel->GetRelativeLocation().Y);
-		DynTrackWidth += LeftWheel->SuspensionKinematicsConfig.ArmLength + RightWheel->SuspensionKinematicsConfig.ArmLength;
+		float DynTrackWidth = GetTrackWidth();
 
 		// get the position of the ball joint(connecting the wheel and the suspension) of each wheel
 		FVector LeftKnuckleWorldPos = AxleWorldCenter - AxleDirection * DynTrackWidth * 0.5f;
@@ -759,7 +807,7 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 	if (!LeftWheel.IsValid() && AxleLayout != EVehicleAxleLayout::SingleRight)
 	{
 		FName Name = FName(ThisName + "_Wheel_L");
-		LeftWheel = UVehicleUtil::CreateComponentByClass<UVehicleWheelComponent>(
+		LeftWheel = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
 			Outer,
 			nullptr,
 			Name
@@ -770,7 +818,7 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 	if (!RightWheel.IsValid() && AxleLayout != EVehicleAxleLayout::SingleLeft)
 	{
 		FName Name = FName(ThisName + "_Wheel_R");
-		RightWheel = UVehicleUtil::CreateComponentByClass<UVehicleWheelComponent>(
+		RightWheel = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
 			Outer,
 			nullptr,
 			Name
@@ -801,11 +849,11 @@ bool UVehicleAxleAssemblyComponent::SearchExistingWheels()
 	{
 		if (!LeftWheel.IsValid())
 		{
-			LeftWheel = UVehicleUtil::GetComponentByName<UVehicleWheelComponent>(Owner, LeftWheelComponentName);
+			LeftWheel = UVehicleUtilities::GetComponentByName<UVehicleWheelComponent>(Owner, LeftWheelComponentName);
 		}
 		if (!RightWheel.IsValid())
 		{
-			RightWheel = UVehicleUtil::GetComponentByName<UVehicleWheelComponent>(Owner, RightWheelComponentName);
+			RightWheel = UVehicleUtilities::GetComponentByName<UVehicleWheelComponent>(Owner, RightWheelComponentName);
 		}
 		bool bIsLeftValid = LeftWheel.IsValid();
 		if (bIsLeftValid)
@@ -834,7 +882,7 @@ bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 		bool bExistingDiffFound = false;
 		if (bUseExistingDifferentialComponent)
 		{
-			Differential = UVehicleUtil::GetComponentByName<UVehicleDifferentialComponent>(Owner, DifferentialComponentName);
+			Differential = UVehicleUtilities::GetComponentByName<UVehicleDifferentialComponent>(Owner, DifferentialComponentName);
 			bExistingDiffFound = Differential.IsValid();
 		}
 
@@ -860,10 +908,10 @@ bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 
 TArray<FName> UVehicleAxleAssemblyComponent::GetNamesOfWheelsOfOwner()
 {
-	return UVehicleUtil::GetNamesOfComponentsOfActor<UVehicleWheelComponent>(this);
+	return UVehicleUtilities::GetNamesOfComponentsOfActor<UVehicleWheelComponent>(this);
 }
 
 TArray<FName> UVehicleAxleAssemblyComponent::GetNamesOfDifferentialsOfOwner()
 {
-	return UVehicleUtil::GetNamesOfComponentsOfActor<UVehicleDifferentialComponent>(this);
+	return UVehicleUtilities::GetNamesOfComponentsOfActor<UVehicleDifferentialComponent>(this);
 }

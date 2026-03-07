@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 #pragma once
 
@@ -270,6 +270,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	bool GetRayCastResult(FVehicleSuspensionHitResult& Out) { Out = Suspension.RayCastResult; return Suspension.State.bHitGround; }
 	bool GetRayCastResult() { return Suspension.State.bHitGround; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	UPrimitiveComponent* GetRayCastHitComponent() { return Suspension.RayCastResult.Component.Get(); }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	FVector GetRayCastImpactPoint() { return Suspension.State.ImpactPoint; }

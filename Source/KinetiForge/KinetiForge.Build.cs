@@ -48,7 +48,8 @@ public class KinetiForge : ModuleRules
 				"ChaosSolverEngine", 
 				"PhysicsCore",
                 "AsyncTickPhysics",
-                "MovieScene"
+                "MovieScene",
+                "NavigationSystem"
             }
 			);
 		

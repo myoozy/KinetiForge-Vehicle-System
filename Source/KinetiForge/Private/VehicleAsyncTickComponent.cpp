@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 #include "VehicleAsyncTickComponent.h"
 #include "VehicleDriveAssemblyComponent.h"

@@ -1,9 +1,9 @@
-﻿// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+﻿// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 
 #include "VehicleWheelComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
-#include "VehicleUtil.h"
+#include "VehicleUtilities.h"
 #include "AsyncTickFunctions.h"
 
 // Sets default values for this component's properties
@@ -130,6 +130,7 @@ void UVehicleWheelComponent::OnRegister()
 	InitializeWheel();
 
 	TimeSinceLastConfigSync = FMath::FRandRange(0.f, ConfigSyncInterval);
+	TimeSinceLastConfigSync += ConfigSyncInterval;
 }
 
 void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
@@ -308,7 +309,7 @@ void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Sourc
 
 void UVehicleWheelComponent::InitializeWheel()
 {
-	Carbody = UVehicleUtil::FindPhysicalParent(this);
+	Carbody = UVehicleUtilities::FindPhysicalParent(this);
 	if (Carbody.IsValid() && Carbody != GetAttachParent())
 	{
 		AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepWorldTransform);
@@ -383,7 +384,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
 
 	// get rigid handle to get world com position
-	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = UVehicleUtil::GetInternalHandle(Carbody.Get());
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = UVehicleUtilities::GetInternalHandle(Carbody.Get());
 	if (!CarbodyHandle)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CarBody!!!"));
@@ -460,7 +461,7 @@ void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
 
-	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = UVehicleUtil::GetInternalHandle(Carbody.Get());
+	Chaos::FRigidBodyHandle_Internal* CarbodyHandle = UVehicleUtilities::GetInternalHandle(Carbody.Get());
 	if (!CarbodyHandle)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid CarBody!!!"));
@@ -830,7 +831,7 @@ FTransform3f UVehicleWheelComponent::UpdateSuspensionSpringAnim(
 	float InitialLength = (SpringMeshRelativePos - OffsetInitialJointPos).Length();
 	float CurrentLength = AnimStrut.Length();
 
-	float Scale = UVehicleUtil::SafeDivide(CurrentLength, InitialLength);
+	float Scale = UVehicleUtilities::SafeDivide(CurrentLength, InitialLength);
 	FVector3f Scale3D = FVector3f(1.f) + (FVector3f)InScaleAxis * (Scale - 1.f);
 	Scale3D *= (FVector3f)InInitialScale;
 

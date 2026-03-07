@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 #pragma once
 
@@ -153,43 +153,43 @@ protected:
     void UpdateHandbrake(float InDeltaTime);
     void UpdateAutomaticGearbox(float InDeltaTime);
 
-    UFUNCTION(Server, Reliable, Category = "Input")
+    UFUNCTION(Server, Reliable)
     void ServerInputThrottle(float InValue, bool bDirectInput);
-    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    UFUNCTION(NetMulticast, Reliable)
     void MultiCastInputThrottle(float InValue, bool bDirectInput);
-    UFUNCTION(Server, Reliable, Category = "Input")
+    UFUNCTION(Server, Reliable)
     void ServerInputBrake(float InValue, bool bDirectInput);
-    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    UFUNCTION(NetMulticast, Reliable)
     void MultiCastInputBrake(float InValue, bool bDirectInput);
-    UFUNCTION(Server, Reliable, Category = "Input")
+    UFUNCTION(Server, Reliable)
     void ServerInputClutch(float InValue, bool bDirectInput);
-    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    UFUNCTION(NetMulticast, Reliable)
     void MultiCastInputClutch(float InValue, bool bDirectInput);
-    UFUNCTION(Server, Reliable, Category = "Input")
+    UFUNCTION(Server, Reliable)
     void ServerInputSteering(float InValue, bool bDirectInput);
-    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    UFUNCTION(NetMulticast, Reliable)
     void MultiCastInputSteering(float InValue, bool bDirectInput);
-    UFUNCTION(Server, Reliable, Category = "Input")
+    UFUNCTION(Server, Reliable)
     void ServerInputHandbrake(float InValue, bool bDirectInput);
-    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    UFUNCTION(NetMulticast, Reliable)
     void MultiCastInputHandbrake(float InValue, bool bDirectInput);
 
-    UFUNCTION(Server, Reliable, Category = "Input")
+    UFUNCTION(Server, Reliable)
     void ServerShiftToTargetGear(int32 InTargetGear, bool bImmediate);
-    UFUNCTION(Server, Reliable, Category = "Input")
+    UFUNCTION(Server, Reliable)
     void ServerShiftFinishedCallback();
-    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    UFUNCTION(NetMulticast, Reliable)
     void MultiCastShiftToTargetGear(int32 InTargetGear, bool bImmediate);
     UFUNCTION()
     void OnRep_ServerCurrentGear();
 
-    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    UFUNCTION(NetMulticast, Reliable)
     void ServerStartVehicleEngine();
-    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    UFUNCTION(NetMulticast, Reliable)
     void MultiCastStartVehicleEngine();
-    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    UFUNCTION(NetMulticast, Reliable)
     void ServerShutVehicleEngine();
-    UFUNCTION(NetMulticast, Reliable, Category = "Input")
+    UFUNCTION(NetMulticast, Reliable)
     void MultiCastShutVehicleEngine();
     UFUNCTION()
     void OnRep_ServerVehicleEngineOperationMode();
@@ -255,6 +255,8 @@ public:
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void ShiftDown(float InAutoShiftCoolDown = 5.f, bool bImmediate = false);
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    void PauseAutoGearbox(float InCoolDownTime = 5.f);
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     EVehicleEngineOperationMode StartVehicleEngine();
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     EVehicleEngineOperationMode ShutVehicleEngine();
@@ -272,34 +274,78 @@ public:
         FVector2D InStartSpeed_meter_per_second = FVector2D(1.f, 5.f));
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void GetInputValues(FVehicleInputPipeline& Out) { Out = InputValues; }
-    UFUNCTION()
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator.Get(); }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
     void GetAxles(TArray<UVehicleAxleAssemblyComponent*>& OutAxles);
+    TArray<UVehicleAxleAssemblyComponent*> GetAxles();
+    TArray<TWeakObjectPtr<UVehicleAxleAssemblyComponent>>& GetAxlesRef();
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
     UVehicleEngineComponent* GetEngine() { return Engine.Get(); }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
     UVehicleClutchComponent* GetClutch() { return Clutch.Get(); }
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
     UVehicleGearboxComponent* GetGearbox() { return Gearbox.Get(); }
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
+    UVehicleGearboxComponent* GetTransmission() { return Gearbox.Get(); }
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDriveAssembly")
+    UVehicleDifferentialComponent* GetTransferCase() { return TransferCase.Get(); }
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void GetWheels(TArray<UVehicleWheelComponent*>& OutWheels);
+    TArray<UVehicleWheelComponent*> GetWheels();
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void DestroyTargetAxle(UVehicleAxleAssemblyComponent* InTargetAxle);
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void GetVehicleSpeed(
-        FVector3f& OutAbsoluteWorldLinearVelocity, 
-        FVector3f& OutWorldLinearVelocity,
-        FVector3f& OutLocalLinearVelocity,
+        FVector& OutAbsoluteWorldLinearVelocity, 
+        FVector& OutWorldLinearVelocity,
+        FVector& OutLocalLinearVelocity,
         float& OutKph, 
         float& OutMph)
     {
-        OutAbsoluteWorldLinearVelocity = AbsoluteWorldLinearVelocity; 
-        OutWorldLinearVelocity = WorldLinearVelocity;
-        OutLocalLinearVelocity = LocalLinearVelocity;
+        OutAbsoluteWorldLinearVelocity = FVector(AbsoluteWorldLinearVelocity);
+        OutWorldLinearVelocity = FVector(WorldLinearVelocity);
+        OutLocalLinearVelocity = FVector(LocalLinearVelocity);
         OutKph = LocalLinearVelocity.X * 3.6; 
         OutMph = LocalLinearVelocity.X * 2.237;
     }
+
+    /*
+    * Unit: m/s
+    */
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    FVector GetWorldLinearVelocity() { return FVector(WorldLinearVelocity); }
+
+    /*
+    * Unit: cm
+    */
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    float GetMaxTrackWidth();
+
+    /*
+    * Unit: cm
+    */
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    float GetMaxWheelBase();
+
+    /*
+    * Unit: cm
+    * Returns half size and origin of the collision of vehicle body.
+    * And the transform of the collision box. (world or relative)
+    */
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    void GetVehicleBound(
+        FVector& OutExtent, 
+        FVector& OutOrigin, 
+        FTransform& OutTransform,
+        bool bReturnWorldTransform = true
+    );
+
+    /*
+    * Unit: m/s
+    */
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    float GetVehicleForwardSpeed();
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void GetVehicleAcceleration(
         FVector3f& OutWorldAcceleration, 
@@ -322,6 +368,16 @@ public:
     int32 GetCurrentGear();
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     float GetSteeringValueFromAxles();
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    UPrimitiveComponent* GetCarbody() { return Carbody.Get(); }
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    float GetMinTurningRadius();
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    float GetMaxSteeringAngle();
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    TArray<AActor*> GetRayCastHitActors();
+    UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
+    TArray<UPrimitiveComponent*> GetRayCastHitComponents();
 
 private:
     bool GeneratePowerUnit();

@@ -1,11 +1,11 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 
 #include "VehicleWheelCoordinatorComponent.h"
 #include "VehicleWheelComponent.h"
 #include "VehicleAxleAssemblyComponent.h"
 #include "VehicleDriveAssemblyComponent.h"
-#include "VehicleUtil.h"
+#include "VehicleUtilities.h"
 
 DEFINE_LOG_CATEGORY(LogWheelCoordinator);
 
@@ -30,12 +30,13 @@ void UVehicleWheelCoordinatorComponent::BeginPlay()
 	//FindCarbody();
 
 	TimeSinceLastRefresh = FMath::FRandRange(0.f, RefreshInterval);
+	TimeSinceLastRefresh += RefreshInterval;
 }
 
 void UVehicleWheelCoordinatorComponent::OnRegister()
 {
 	Super::OnRegister();
-	Carbody = UVehicleUtil::FindPhysicalParent(this);
+	Carbody = UVehicleUtilities::FindPhysicalParent(this);
 }
 
 void UVehicleWheelCoordinatorComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
@@ -62,8 +63,10 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 		}
 	}
 
+	if (!Carbody.IsValid())return false;
+	const float CarMass = Carbody->GetMass();
 	TArray<float> SprungMasses;
-	if (Carbody.IsValid() && ComputeSprungMasses(Positions, CarbodyCOM, Carbody->GetMass(), SprungMasses))
+	if (ComputeSprungMasses(Positions, CarbodyCOM, CarMass, SprungMasses))
 	{
 		for (int32 i = 0; i < RegisteredWheels.Num(); i++)
 		{
@@ -80,7 +83,7 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 		{
 			if (UVehicleWheelComponent* p = Wheel.Get())
 			{
-				p->SetSprungMass(0);
+				p->SetSprungMass(CarMass / (float)RegisteredWheels.Num());
 			}
 		}
 		return false;
@@ -139,42 +142,44 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 		{
 			if (CarbodyRaw->IsPhysicsStateCreated())
 			{
-				//check if center of mass changed
-				FVector3f NewCarbodyLocalCOM = (FVector3f)CarbodyRaw->GetComponentTransform().InverseTransformPosition(CarbodyRaw->GetCenterOfMass());
-				if ((CarbodyCOM - NewCarbodyLocalCOM).SquaredLength() > 1.f)
+				if (FBodyInstance* BodyInst = Carbody->GetBodyInstance())
 				{
-					CarbodyCOM = NewCarbodyLocalCOM;
-					bMassMatrixDirty = true;
+					FVector3f NewCOM = (FVector3f)BodyInst->GetMassSpaceLocal().GetLocation();
+					if ((CarbodyCOM - NewCOM).SquaredLength() > SMALL_NUMBER)
+					{
+						CarbodyCOM = NewCOM;
+						bMassMatrixDirty = true;
+					}
 				}
 			}
 		}
-	}
 
-	// check if sprungmass changed
-	if (bMassMatrixDirty)
-	{
-		bMassMatrixDirty = false;
-		UpdateWheelSprungMass();
-	}
+		// check if sprungmass changed
+		if (bMassMatrixDirty)
+		{
+			bMassMatrixDirty = false;
+			UpdateWheelSprungMass();
+		}
 
-	// check if wheel base changed
-	if (bWheelBaseDataDirty)
-	{
-		bWheelBaseDataDirty = false;
-		UpdateWheelBase();
+		// check if wheel base changed
+		if (bWheelBaseDataDirty)
+		{
+			bWheelBaseDataDirty = false;
+			UpdateWheelBase();
+		}
 	}
 }
 
-UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelCoordinator(USceneComponent* Carbody)
+UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelCoordinator(USceneComponent* InCarbody)
 {
 	//ckeck valid carbody
-	if (!IsValid(Carbody))
+	if (!IsValid(InCarbody))
 	{
 		return nullptr;
 	}
 
 	TArray<USceneComponent*> Children;
-	Carbody->GetChildrenComponents(true, Children);
+	InCarbody->GetChildrenComponents(true, Children);
 	for (USceneComponent* Child : Children)
 	{
 		//if found
@@ -186,10 +191,20 @@ UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelC
 
 	//if not found
 	//create one
-	UVehicleWheelCoordinatorComponent* WheelCoord = Cast<UVehicleWheelCoordinatorComponent>
-		(Carbody->GetOwner()->AddComponentByClass(UVehicleWheelCoordinatorComponent::StaticClass(), false, FTransform(), false));
-		NewObject<UVehicleWheelCoordinatorComponent>(Carbody);
-	return WheelCoord;
+	AActor* Outer = InCarbody->GetOwner();
+	if (!Outer)return nullptr;
+
+	FName Name = FName(InCarbody->GetName() + "_WheelCoordinator");
+
+	if (UVehicleWheelCoordinatorComponent* WheelCoord =
+		UVehicleUtilities::CreateComponentByClass<UVehicleWheelCoordinatorComponent>(
+			Outer, nullptr, Name))
+	{
+		WheelCoord->AttachToComponent(InCarbody, FAttachmentTransformRules::KeepRelativeTransform);
+		if (WheelCoord->GetAttachParent() == InCarbody)return WheelCoord;
+	}
+
+	return nullptr;
 }
 
 void UVehicleWheelCoordinatorComponent::NotifyWheelMoved()
@@ -415,4 +430,62 @@ bool UVehicleWheelCoordinatorComponent::ComputeSprungMasses(const TArray<FVector
 	return ComputeSprungMasses(RelativePositions, TotalMass, OutSprungMasses);
 }
 
+float UVehicleWheelCoordinatorComponent::GetMinTurningRadius()
+{
+	const float cm2m = 0.01f;
 
+	// Calculate the vehicle's maximum curvature
+	float MaxCurvature = 0.f;
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxlePtr : RegisteredAxles)
+	{
+		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
+		{
+			if (Axle->AxleSteeringConfig.bAffectedBySteering)
+			{
+				float SteeringRad = FMath::DegreesToRadians(Axle->AxleSteeringConfig.MaxSteeringAngle);
+				float AxleWheelBase_m = Axle->GetWheelBase() * cm2m;
+				MaxCurvature += FMath::Abs(UVehicleUtilities::SafeDivide(FMath::Tan(SteeringRad), AxleWheelBase_m));
+			}
+		}
+	}
+	return UVehicleUtilities::SafeDivide(1.f, MaxCurvature);
+}
+
+float UVehicleWheelCoordinatorComponent::GetMaxTrackWidth()
+{
+	float Width = 0.f;
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxlePtr : RegisteredAxles)
+	{
+		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
+		{
+			Width = Axle->GetTrackWidth();
+		}
+	}
+	return Width;
+}
+
+float UVehicleWheelCoordinatorComponent::GetMaxWheelBase()
+{
+	float WheelBase = 0.f;
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxlePtr : RegisteredAxles)
+	{
+		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
+		{
+			WheelBase = Axle->GetWheelBase();
+		}
+	}
+	return WheelBase;
+}
+
+TArray<UVehicleAxleAssemblyComponent*> UVehicleWheelCoordinatorComponent::GetRegisteredAxles()
+{
+	TArray<UVehicleAxleAssemblyComponent*> Axles;
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxlePtr : RegisteredAxles)
+	{
+		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
+		{
+			Axles.AddUnique(Axle);
+		}
+	}
+	return Axles;
+}

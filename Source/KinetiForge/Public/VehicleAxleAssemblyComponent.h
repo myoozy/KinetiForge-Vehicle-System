@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 #pragma once
 
@@ -136,7 +136,11 @@ protected:
 		float InDriveTorque, 
 		float InReflectedInertia
 	);
-	void UpdateSteering(float InSteeringInput);
+	void UpdateSteering(
+		float InSteeringInput,
+		UVehicleWheelComponent* WheelL,
+		UVehicleWheelComponent* WheelR
+	);
 	void UpdateSteeringAssist(float InSteeringInput);
 	void UpdateLinearVelocity(
 		UVehicleWheelComponent* WheelL, 
@@ -157,6 +161,10 @@ protected:
 	);
 	void UpdateSolidAxlePhysics(
 		UVehicleWheelComponent* WheelL, 
+		UVehicleWheelComponent* WheelR
+	);
+	float CalculateDynTrackWidth(
+		UVehicleWheelComponent* WheelL,
 		UVehicleWheelComponent* WheelR
 	);
 
@@ -203,6 +211,9 @@ public:
 	void UpdateTrackWidth();
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	float GetTrackWidth();
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void UpdateSolidAxleAnim(
 		USceneComponent* InSolidAxleMesh,
 		EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint = EVehicleSolidAxleAnimPivot::Center
@@ -220,7 +231,10 @@ public:
 		float SteeringAngle = 0.f
 	);
 
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	float GetWheelBase() { return State.WheelBase; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void SetWheelBase(float NewWheelBase) { State.WheelBase = NewWheelBase; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
@@ -247,6 +261,12 @@ public:
 		OutLeft = State.LeftWheelSteeringAngle; 
 		OutRight = State.RightWheelSteeringAngle;
 	}
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator.Get(); }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	UPrimitiveComponent* GetCarbody() { return Carbody.Get(); }
 
 private:
 	bool GenerateWheels();
