@@ -88,19 +88,15 @@ void UVehicleDriveAssemblyComponent::OnRegister()
 	Super::OnRegister();
 	//...
 	Carbody = UVehicleUtilities::FindPhysicalParent(this);
-	GetOwner()->bRunConstructionScriptOnDrag = false;	//to improve performance
-	GetOwner()->SetReplicates(true);
+	if (AActor* Owner = GetOwner())
+	{
+#if WITH_EDITOR
+		Owner->bRunConstructionScriptOnDrag = false;
+#endif
+		Owner->SetReplicates(true);
+	}
 	GenerateAxles();
 }
-
-#if WITH_EDITOR
-void UVehicleDriveAssemblyComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-
-	//...
-}
-#endif
 
 void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {

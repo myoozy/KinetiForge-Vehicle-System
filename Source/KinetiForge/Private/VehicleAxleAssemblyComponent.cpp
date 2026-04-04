@@ -218,7 +218,9 @@ void UVehicleAxleAssemblyComponent::UpdateSteering(
 		}
 		else
 		{
-			float UnsignedOutsideWheelAngle;
+			float SteeringSign = FMath::Sign(InsideWheelSteeringAngle);
+
+			float UnsignedOutsideWheelAngle = 0.f;
 			float UnsignedInsideWheelAngle = FMath::Abs(InsideWheelSteeringAngle);
 
 			float InsideSteerRad = FMath::DegreesToRadians(UnsignedInsideWheelAngle);
@@ -231,13 +233,13 @@ void UVehicleAxleAssemblyComponent::UpdateSteering(
 
 			if (InSteeringInput > 0)
 			{
-				State.LeftWheelSteeringAngle = UnsignedOutsideWheelAngle;
-				State.RightWheelSteeringAngle = UnsignedInsideWheelAngle;
+				State.LeftWheelSteeringAngle = UnsignedOutsideWheelAngle * SteeringSign;
+				State.RightWheelSteeringAngle = UnsignedInsideWheelAngle * SteeringSign;
 			}
 			else
 			{
-				State.LeftWheelSteeringAngle = -UnsignedInsideWheelAngle;
-				State.RightWheelSteeringAngle = -UnsignedOutsideWheelAngle;
+				State.LeftWheelSteeringAngle = UnsignedInsideWheelAngle * SteeringSign;
+				State.RightWheelSteeringAngle = UnsignedOutsideWheelAngle * SteeringSign;
 			}
 		}
 	}
