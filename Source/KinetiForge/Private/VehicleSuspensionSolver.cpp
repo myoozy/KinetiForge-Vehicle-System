@@ -151,7 +151,7 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 	const FTransform& AsyncChassisWorldTransform,
 	const UWorld* CurrentWorld,
 	float InSteeringAngle,
-	FVector& OutApporximatedHubWorldPos,
+	FVector& OutHitWorldLocation,
 	FVehicleSuspensionSimContext& Ctx)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_UpdateSuspension);
@@ -173,8 +173,8 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 	float DistanceToRayCastStart = FMath::Max(0.f, Ctx.HitDistance - WheelRadius);
 	FVector RayDir = (Ctx.RayCastStartWorldLocation - Ctx.RayCastEndWorldLocation).GetSafeNormal();
 	FVector HubOffsetWorld = AsyncChassisWorldTransform.TransformVectorNoScale((FVector)Ctx.HubOffsetFromLowerJointChassis);
-	OutApporximatedHubWorldPos = Ctx.RayCastStartWorldLocation - RayDir * DistanceToRayCastStart - HubOffsetWorld;
-
+	OutHitWorldLocation = Ctx.RayCastStartWorldLocation - RayDir * DistanceToRayCastStart - HubOffsetWorld;
+	
 	return;
 }
 
@@ -187,8 +187,9 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	float InDeltaTime, 
 	float InSwaybarForce,
 	FVehicleSuspensionSimContext& Ctx,
-	const FVector& InSolidAxleEndWorldPos,
-	const FVector& InAxleWorldDirection,
+	const float InTrackWidth,
+	const FVector& InThisWheelHitWorldLocation,
+	const FVector& InOtherWheelHitWorldLocation,
 	const FVector3f& TireForce)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_UpdateSuspension);
@@ -200,8 +201,9 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 		Ctx,
 		WheelRadius,
 		KineConfig,
-		InSolidAxleEndWorldPos,
-		InAxleWorldDirection
+		InTrackWidth,
+		InThisWheelHitWorldLocation,
+		InOtherWheelHitWorldLocation
 	);
 
 	ComputeAntiPitchRollGeometry(
@@ -330,8 +332,8 @@ void FVehicleSuspensionSolver::StartSolveSolidAxleAtExtension(
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
 	const FTransform& ComponentRelativeTransform,
 	float InExtensionRatio, 
-	float InSteeringAngle, 
-	FVector& OutApporximatedHubWorldPos, 
+	float InSteeringAngle,
+	FVector& OutHitWorldLocation,
 	FVehicleSuspensionSimContext& Ctx)
 {
 	CopyStateToContext(PrevState, Ctx);
@@ -351,22 +353,24 @@ void FVehicleSuspensionSolver::StartSolveSolidAxleAtExtension(
 	Ctx.HitDistance = InExtensionRatio * Ctx.RayCastLength + WheelRadius;
 	float DistanceToRayCastStart = FMath::Max(0.f, Ctx.HitDistance - WheelRadius);
 	FVector RayDir = (Ctx.RayCastStartWorldLocation - Ctx.RayCastEndWorldLocation).GetSafeNormal();
-	OutApporximatedHubWorldPos = Ctx.RayCastStartWorldLocation - RayDir * DistanceToRayCastStart;
+	OutHitWorldLocation = Ctx.RayCastStartWorldLocation - RayDir * DistanceToRayCastStart;
 }
 
 FVehicleSuspensionSimState FVehicleSuspensionSolver::FinalizeSolveSolidAxleAtExtension(
 	const float WheelRadius,
 	const FVehicleSuspensionKinematicsConfig& KineConfig, 
-	FVehicleSuspensionSimContext& Ctx, 
-	const FVector& InSolidAxleEndWorldPos, 
-	const FVector& InAxleWorldDirection)
+	FVehicleSuspensionSimContext& Ctx,
+	const float InTrackWidth,
+	const FVector& InThisWheelHitWorldLocation,
+	const FVector& InOtherWheelHitWorldLocation)
 {
 	ComputeSolidAxle(
 		Ctx,
 		WheelRadius,
 		KineConfig,
-		InSolidAxleEndWorldPos,
-		InAxleWorldDirection
+		InTrackWidth,
+		InThisWheelHitWorldLocation,
+		InOtherWheelHitWorldLocation
 	);
 
 	FVehicleSuspensionSimState NewState;
@@ -395,10 +399,14 @@ void FVehicleSuspensionSolver::DrawSuspension(
 
 	if (bDrawSuspension)
 	{
+		FVector LowerPivotLocal = (FVector)KineConfig.LowerWishbone.RotationLocalAxis;
+		FVector UpperPivotLocal = (FVector)KineConfig.UpperWishbone.RotationLocalAxis;
+		FVector LowerPivotChassis = WheelComponent->GetRelativeTransform().TransformPositionNoScale(LowerPivotLocal);
+		FVector UpperPivotChassis = WheelComponent->GetRelativeTransform().TransformPositionNoScale(UpperPivotLocal);
+		FVector LowerPivotLocation = ChassisWorldTrans.TransformPositionNoScale(LowerPivotChassis);
+		FVector UpperPivotLocation = ChassisWorldTrans.TransformPositionNoScale(UpperPivotChassis);
 		FVector LowerBallJointLocation = ChassisWorldTrans.TransformPositionNoScale((FVector)State.LowerBallJointChassisLocation);
-		FVector LowerPivotLocation = ChassisWorldTrans.TransformPositionNoScale((FVector)State.LowerPivotChassisLocation);
 		FVector UpperBallJointLocation = ChassisWorldTrans.TransformPositionNoScale((FVector)State.UpperBallJointChassisLocation);
-		FVector UpperPivotLocation = ChassisWorldTrans.TransformPositionNoScale((FVector)State.UpperPivotChassisLocation);
 		FVector TopMountLocation = ChassisWorldTrans.TransformPositionNoScale((FVector)State.TopMountChassisLocation);
 
 		// draw arm
@@ -489,7 +497,7 @@ void FVehicleSuspensionSolver::DrawSuspensionForce(
 
 	const FTransform& ChassisTrans = WheelComponent->GetChassisAsyncWorldTransform();
 
-	FVector TempStart = ChassisTrans.TransformPositionNoScale(FVector(WheelComponent->GetTopMountRelativeLocation()));
+	FVector TempStart = ChassisTrans.TransformPositionNoScale(FVector(WheelComponent->GetTopMountChassisLocation()));
 	FVector TempEnd = TempStart + FVector(State.ImpactWorldNormal) * State.ForceAlongImpactNormal * Length * 0.01;
 	DrawDebugLine(TempWorld, TempStart, TempEnd, TempColor, false, Duration, 0, Thickness);
 }
@@ -651,8 +659,6 @@ void FVehicleSuspensionSolver::CopyContextToState(
 	NewState.TopMountChassisLocation = Context.TopMountChassisLocation;
 	NewState.LowerBallJointChassisLocation = Context.LowerBallJointChassisLocation;
 	NewState.UpperBallJointChassisLocation = Context.UpperBallJointChassisLocation;
-	NewState.LowerPivotChassisLocation = Context.LowerPivotChassisLocation;
-	NewState.UpperPivotChassisLocation = Context.UpperPivotChassisLocation;
 	NewState.SteerAxisChassisDirection = Context.SteerAxisChassisDirection;
 	
 	NewState.ImpactFriction = Context.ImpactFriction;
@@ -720,6 +726,49 @@ FQuat4f FVehicleSuspensionSolver::GetSpindleMountQuat(
 		InSpindleMountRotationConfig.Yaw * WheelPos,
 		InSpindleMountRotationConfig.Roll * WheelPos
 	));
+}
+
+FVector3f FVehicleSuspensionSolver::GetTopMountChassisLocation(
+	const FVehicleSuspensionKinematicsConfig& Config, 
+	const FTransform3f& WheelComponentRelativeTransform)
+{
+	FVector3f TopMountLocalPos = Config.TopMountLocalLocation;
+	TopMountLocalPos.Y *= FMath::Sign(WheelComponentRelativeTransform.GetLocation().Y);
+	return WheelComponentRelativeTransform.TransformPositionNoScale(TopMountLocalPos);
+}
+
+void FVehicleSuspensionSolver::GetLowerWishboneState(
+	const FVehicleSuspensionKinematicsConfig& Config, 
+	const FVehicleSuspensionSimState& SuspensionState, 
+	const FTransform3f& WheelComponentRelativeTransform, 
+	FVector3f& OutPivotChassisLocation, 
+	FVector3f& OutAxisChassisDirection,
+	FVector3f& OutBallJointChassisLocation)
+{
+	OutBallJointChassisLocation = SuspensionState.LowerBallJointChassisLocation;
+
+	FVector3f PivotLocal = Config.LowerWishbone.MountLocalLocation;
+	OutPivotChassisLocation = WheelComponentRelativeTransform.TransformPositionNoScale(PivotLocal);
+
+	FVector3f AxisLocal = Config.LowerWishbone.RotationLocalAxis;
+	OutAxisChassisDirection = WheelComponentRelativeTransform.TransformVectorNoScale(AxisLocal);
+}
+
+void FVehicleSuspensionSolver::GetUpperWishboneState(
+	const FVehicleSuspensionKinematicsConfig& Config, 
+	const FVehicleSuspensionSimState& SuspensionState, 
+	const FTransform3f& WheelComponentRelativeTransform, 
+	FVector3f& OutPivotChassisLocation, 
+	FVector3f& OutAxisChassisDirection,
+	FVector3f& OutBallJointChassisLocation)
+{
+	OutBallJointChassisLocation = SuspensionState.UpperBallJointChassisLocation;
+
+	FVector3f PivotLocal = Config.UpperWishbone.MountLocalLocation;
+	OutPivotChassisLocation = WheelComponentRelativeTransform.TransformPositionNoScale(PivotLocal);
+
+	FVector3f AxisLocal = Config.UpperWishbone.RotationLocalAxis;
+	OutAxisChassisDirection = WheelComponentRelativeTransform.TransformVectorNoScale(AxisLocal);
 }
 
 void FVehicleSuspensionSolver::PrepareSimulation(
@@ -1339,23 +1388,28 @@ void FVehicleSuspensionSolver::ComputeSolidAxle(
 	FVehicleSuspensionSimContext& Ctx,
 	const float WheelRadius,
 	const FVehicleSuspensionKinematicsConfig& Config,
-	const FVector& InAxleEndWorldLocation,
-	const FVector& InAxleWorldDirection)
+	const float TrackWidth,
+	const FVector ThisWheelHitWorldLocation,
+	const FVector OtherWheelHitWorldLocation)
 {
-	// 1. 获取下球头（车桥末端的主销点）的底盘局部坐标
-	Ctx.LowerBallJointChassisLocation = (FVector3f)Ctx.ChassisWorldTransform.InverseTransformPositionNoScale(InAxleEndWorldLocation);
+	FVector AxleCenterWorld = (ThisWheelHitWorldLocation + OtherWheelHitWorldLocation) * 0.5f;
+	FVector AxleDirectionWorld = (ThisWheelHitWorldLocation - OtherWheelHitWorldLocation).GetSafeNormal();
+	AxleDirectionWorld *= Ctx.WheelSideSign;
 
-	// 2. 获取车桥在底盘空间的方向（通常也是车轮的 Right Vector，因为整体桥没有动态 Camber）
-	FVector3f AxleChassisDirection = (FVector3f)Ctx.ChassisWorldTransform.InverseTransformVectorNoScale(InAxleWorldDirection);
+	FVector3f AxleCenterChassis = (FVector3f)Ctx.ChassisWorldTransform.InverseTransformPositionNoScale(AxleCenterWorld);
+	AxleCenterChassis.Y = 0.f;
+	FVector3f AxleDirectionChassis = (FVector3f)Ctx.ChassisWorldTransform.InverseTransformVectorNoScale(AxleDirectionWorld);
+
+	// 1. 获取下球头（车桥末端的主销点）的底盘局部坐标
+	Ctx.LowerBallJointChassisLocation = AxleCenterChassis + AxleDirectionChassis * TrackWidth * 0.5f * Ctx.WheelSideSign;
 
 	// 3. 计算车桥的侧倾旋转 (Roll)
 	FVector3f DefaultRight = FVector3f(0.f, 1.f, 0.f);
-	FQuat4f AxleRollRotation = FQuat4f::FindBetweenNormals(DefaultRight, AxleChassisDirection);
+	FQuat4f AxleRollRotation = FQuat4f::FindBetweenNormals(DefaultRight, AxleDirectionChassis);
 
 	// 4. 计算转向轴 (Steer Axis / Kingpin)
-	// 你使用 Forward 和 Axle 叉乘得到向上的垂直轴，这非常聪明！
 	FVector3f ForwardChassis = Ctx.WheelCompToChassisTransform.GetRotation().GetForwardVector();
-	Ctx.SteerAxisChassisDirection = FVector3f::CrossProduct(ForwardChassis, AxleChassisDirection).GetSafeNormal();
+	Ctx.SteerAxisChassisDirection = FVector3f::CrossProduct(ForwardChassis, AxleDirectionChassis).GetSafeNormal();
 
 	// 5. 应用转向角
 	FQuat4f SteeringBiasRotation = FQuat4f(Ctx.SteerAxisChassisDirection, FMath::DegreesToRadians(Ctx.SteeringAngle));

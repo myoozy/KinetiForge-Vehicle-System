@@ -426,16 +426,52 @@ void UVehicleWheelComponent::SetSprungMass(float NewSprungMass)
 	Suspension.SetSprungMass(SuspensionSpringConfig, NewSprungMass);
 }
 
-FVector3f UVehicleWheelComponent::GetTopMountRelativeLocation()
+FVector3f UVehicleWheelComponent::GetTopMountChassisLocation()
 {
-	FVector3f TopMountLocalPos = SuspensionKinematicsConfig.TopMountLocalLocation;
-	TopMountLocalPos.Y *= FMath::Sign(GetRelativeLocation().Y);
-	return (FVector3f)GetRelativeTransform().TransformPositionNoScale((FVector)TopMountLocalPos);
+	return Suspension.GetTopMountChassisLocation(
+		SuspensionKinematicsConfig,
+		FTransform3f(GetRelativeTransform())
+	);
 }
 
-FTransform3f UVehicleWheelComponent::GetWheelRelativeTransform()
+void UVehicleWheelComponent::GetLowerWishboneState(FVector& OutPivotChassisLocation, FVector& OutAxisChassisDirection, FVector& OutBallJointChassisLocation)
 {
+	FVector3f Pivot3f, Axis3f, BallJoint3f;
 
+	Suspension.GetLowerWishboneState(
+		SuspensionKinematicsConfig,
+		Suspension.State,
+		FTransform3f(GetRelativeTransform()),
+		Pivot3f,
+		Axis3f,
+		BallJoint3f
+	);
+
+	OutPivotChassisLocation = FVector(Pivot3f);
+	OutAxisChassisDirection = FVector(Axis3f);
+	OutBallJointChassisLocation = FVector(BallJoint3f);
+}
+
+void UVehicleWheelComponent::GetUpperWishboneState(FVector& OutPivotChassisLocation, FVector& OutAxisChassisDirection, FVector& OutBallJointChassisLocation)
+{
+	FVector3f Pivot3f, Axis3f, BallJoint3f;
+
+	Suspension.GetUpperWishboneState(
+		SuspensionKinematicsConfig,
+		Suspension.State,
+		FTransform3f(GetRelativeTransform()),
+		Pivot3f,
+		Axis3f,
+		BallJoint3f
+	);
+
+	OutPivotChassisLocation = FVector(Pivot3f);
+	OutAxisChassisDirection = FVector(Axis3f);
+	OutBallJointChassisLocation = FVector(BallJoint3f);
+}
+
+FTransform3f UVehicleWheelComponent::GetHubChassisTransform()
+{
 	return FTransform3f(
 		Suspension.State.HubChassisRotation,
 		Suspension.State.HubChassisLocation
@@ -491,6 +527,8 @@ void UVehicleWheelComponent::UpdatePhysics(
 	}
 
 	//Update anim cache
+	PrevLowerBallJointChassisLocation = Suspension.State.LowerBallJointChassisLocation;
+	PrevUpperBallJointChassisLocation = Suspension.State.UpperBallJointChassisLocation;
 	PrevHubChassisLocation = Suspension.State.HubChassisLocation;
 	PrevHubChassisRotation = Suspension.State.HubChassisRotation;
 	TimeSinceLastPhysicsTick = 0.f;
@@ -556,7 +594,7 @@ bool UVehicleWheelComponent::CheckHasBeenMoved()
 
 void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
 	float InSteeringAngle,
-	FVector& OutApporximatedWheelWorldPos,
+	FVector& OutHitWorldLocation,
 	FVehicleSuspensionSimContext& Ctx
 )
 {
@@ -579,7 +617,7 @@ void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
 		ChassisAsyncWorldTransform,
 		GetWorld(),
 		InSteeringAngle, 
-		OutApporximatedWheelWorldPos, 
+		OutHitWorldLocation,
 		Ctx);
 }
 
@@ -591,8 +629,9 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 	float InSwaybarForce,
 	float InReflectedInertia,
 	FVehicleSuspensionSimContext& Ctx,
-	const FVector& InSolidAxleEndWorldPos,
-	const FVector& InAxleWorldDirection
+	const float InTrackWidth,
+	const FVector& InThisWheelHitWorldLocation,
+	const FVector& InOtherWheelHitWorldLocation
 )
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
@@ -624,8 +663,9 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 		InPhysicsDeltaTime, 
 		InSwaybarForce,
 		Ctx,
-		InSolidAxleEndWorldPos,
-		InAxleWorldDirection,
+		InTrackWidth,
+		InThisWheelHitWorldLocation,
+		InOtherWheelHitWorldLocation,
 		Wheel.State.TireForce
 	);
 
@@ -660,8 +700,8 @@ void UVehicleWheelComponent::ApplySuspensionStateDirect(float InExtensionRatio, 
 
 void UVehicleWheelComponent::StartApplySolidAxleStateDirect(
 	float InExtensionRatio, 
-	float InSteeringAngle, 
-	FVector& OutApporximatedWheelWorldPos, 
+	float InSteeringAngle,
+	FVector& OutHitWorldLocation,
 	FVehicleSuspensionSimContext& Ctx)
 {
 	Suspension.StartSolveSolidAxleAtExtension(
@@ -671,22 +711,24 @@ void UVehicleWheelComponent::StartApplySolidAxleStateDirect(
 		GetRelativeTransform(),
 		InExtensionRatio, 
 		InSteeringAngle, 
-		OutApporximatedWheelWorldPos, 
+		OutHitWorldLocation,
 		Ctx
 	);
 }
 
 void UVehicleWheelComponent::FinalizeApplySolidAxleStateDirect(
-	FVehicleSuspensionSimContext& Ctx, 
-	const FVector& InSolidAxleEndWorldPos, 
-	const FVector& InAxleWorldDirection)
+	FVehicleSuspensionSimContext& Ctx,
+	const float InTrackWidth,
+	const FVector& InThisWheelHitWorldLocation,
+	const FVector& InOtherWheelHitWorldLocation)
 {
 	Suspension.State = Suspension.FinalizeSolveSolidAxleAtExtension(
 		WheelConfig.Radius,
 		SuspensionKinematicsConfig,
 		Ctx,
-		InSolidAxleEndWorldPos,
-		InAxleWorldDirection
+		InTrackWidth,
+		InThisWheelHitWorldLocation,
+		InOtherWheelHitWorldLocation
 	);
 
 	UpdateWheelAnim();
@@ -856,78 +898,107 @@ FTransform UVehicleWheelComponent::GetSkidMarkWorldTransform(float InSkidMarkBia
 	return FTransform(q, v, LocalLinVel);
 }
 
-FQuat4f UVehicleWheelComponent::UpdateSuspensionArmAnim(USceneComponent* InArmMesh, FRotator InRotationOffset)
+FTransform UVehicleWheelComponent::UpdateSuspensionArmAnim(
+	USceneComponent* InArmMesh,
+	const bool bFollowUpperWishbone,
+	const FTransform InOffset,
+	const FVector InMeshForwardVector,
+	const FVector InMeshRightVector,
+	const bool bScaleToMatchLength,
+	const float MeshDesignLength
+)
 {
-	//float PosSign = Suspension.State.bIsRightWheel ? 1.f : -1.f;
-	//InRotationOffset.Yaw *= PosSign;
-	//InRotationOffset.Roll *= PosSign;
-	//FQuat4f TempInitialRot = (FQuat4f)InRotationOffset.Quaternion();
-	//FQuat4f TempArmRot = Suspension.MakeQuatFrom2DVectors(
-	//	FVector2f(0.f, -PosSign),
-	//	FVector2f(AnimKnucklePos2D.X, AnimKnucklePos2D.Y * -PosSign),
-	//	(FVector3f)GetRelativeTransform().GetRotation().GetForwardVector());
-	//TempArmRot *= TempInitialRot;
-	//TempArmRot.Normalize();
-	//
-	//if (IsValid(InArmMesh))
-	//{
-	//	InArmMesh->SetRelativeRotation((FQuat)TempArmRot);
-	//}
-	//
-	//return TempArmRot;
-	return FQuat4f::Identity;
+	const FTransform3f& TransformRelative = FTransform3f(GetRelativeTransform());
+
+	FVector3f PivotChassis;
+	FVector3f WishboneAxisChassis;
+	FVector3f BallJointChassis;
+	FVector3f WishboneDirectionChassis;
+	float RealWishboneLength = 0.f;
+
+	if (bFollowUpperWishbone)
+	{
+		Suspension.GetUpperWishboneState(
+			SuspensionKinematicsConfig,
+			Suspension.State,
+			TransformRelative,
+			PivotChassis,
+			WishboneAxisChassis,
+			BallJointChassis
+		);
+
+		FVector3f PivotToBJ = BallJointChassis - PivotChassis;
+		RealWishboneLength = PivotToBJ.Size();
+		WishboneDirectionChassis = PivotToBJ.GetSafeNormal();
+	}
+	else
+	{
+		Suspension.GetLowerWishboneState(
+			SuspensionKinematicsConfig,
+			Suspension.State,
+			TransformRelative,
+			PivotChassis,
+			WishboneAxisChassis,
+			BallJointChassis
+		);
+
+		FVector3f PivotToBJ = BallJointChassis - PivotChassis;
+		RealWishboneLength = PivotToBJ.Size();
+		WishboneDirectionChassis = PivotToBJ.GetSafeNormal();
+	}
+
+	// 1. Determine the target coordinate system (Target Basis)
+	FVector3f TargetAxis = WishboneAxisChassis;
+	FVector3f TargetDir = WishboneDirectionChassis;
+
+	// Force orthogonality: Ensure that TargetDir and TargetAxis are strictly perpendicular 
+	// (to prevent unnatural, non-uniform distortion in the swing arm model)
+	TargetDir = TargetDir - FVector3f::DotProduct(TargetDir, TargetAxis) * TargetAxis;
+	TargetDir.Normalize();
+
+	// 2. Two-step quaternion rotation method
+	// Step 1: First, align the mesh's Forward axis with the swing arm's pivot
+	FQuat4f Q1 = FQuat4f::FindBetweenNormals(FVector3f(InMeshForwardVector), TargetAxis);
+
+	// Step 2: After rotating the mesh's Right vector by Q1, 
+	// it may not yet be aligned with the sphere's center.
+	// We extract its current actual direction 
+	// and then “twist” it around the rotation axis to align it with TargetDir.
+	FVector3f RotatedMeshRight = Q1.RotateVector(FVector3f(InMeshRightVector));
+	FQuat4f Q2 = FQuat4f::FindBetweenNormals(RotatedMeshRight, TargetDir);
+
+	// Quaternion multiplication is read from right to left: 
+	// Q1 is evaluated first, followed by Q2
+	FQuat4f FinalRotation = Q2 * Q1;
+
+	FVector3f FinalScale = FVector3f::OneVector;
+	if (bScaleToMatchLength && MeshDesignLength > KINDA_SMALL_NUMBER)
+	{
+		float ScaleRatio = RealWishboneLength / MeshDesignLength;
+
+		// Use GetAbs() to extract the specified direction.
+		// For example, if InMeshRightVector is (0, 1, 0), GetAbs() also returns (0, 1, 0)
+		// After adding (ScaleRatio - 1), Scale becomes (1, ScaleRatio, 1)
+		FinalScale += FVector3f(InMeshRightVector).GetAbs() * (ScaleRatio - 1.0f);
+	}
+
+	FTransform3f BaseTransform(FinalRotation, PivotChassis, FinalScale);
+	FTransform FinalTransform = InOffset * FTransform(BaseTransform);
+
+	if (InArmMesh)
+	{
+		// Prerequisite: InArmMesh must be attached to the Chassis, 
+		// because all the calculations above were performed in Chassis space coordinates
+		InArmMesh->SetRelativeTransform(FinalTransform,	false, nullptr, ETeleportType::TeleportPhysics);
+	}
+
+	return FinalTransform;
 }
 
-FTransform3f UVehicleWheelComponent::UpdateSuspensionSpringAnim(
-	USceneComponent* InSpringMesh, 
-	FVector InScaleAxis, 
-	float InOffsetAlongArm, 
-	FVector InKnuckleOffset,
-	FRotator InRotationOffset, 
-	float InLengthBias, 
-	FVector InInitialScale)
+FTransform UVehicleWheelComponent::UpdateSuspensionSpringAnim(USceneComponent* InSpringMesh, const float MeshDesignLength, const FVector InMeshUpVector, const FTransform InOffset)
 {
-	if (!IsValid(InSpringMesh))return FTransform3f();
-
-	//float PosSign = Suspension.State.bIsRightWheel ? 1.f : -1.f;
-	//InRotationOffset.Yaw *= PosSign;
-	//InRotationOffset.Roll *= PosSign;
-	//
-	//InKnuckleOffset.Y *= PosSign;
-	//
-	//FTransform3f RelativeTrans = (FTransform3f)GetRelativeTransform();
-	//FVector3f KnuckleRelativePos = FVector3f(Suspension.State.KnuckleRelativePos);
-	//FTransform3f WheelRelativeTransform = GetWheelRelativeTransform();
-	//FVector3f KnuckleOffset3D = WheelRelativeTransform.TransformPosition(FVector3f(0.f, InKnuckleOffset.Y, InKnuckleOffset.X));
-	//KnuckleOffset3D -= WheelRelativeTransform.GetLocation();
-	//
-	//FVector3f PivotPos = RelativeTrans.TransformPosition(Suspension.SuspensionPlaneToZYPlane(FVector2f(0.f), PosSign));
-	//FVector3f ArmDir = (PivotPos - KnuckleRelativePos).GetSafeNormal();
-	//
-	//FVector3f OffsetJointPos = KnuckleRelativePos + ArmDir * InOffsetAlongArm;
-	//FVector3f OffsetInitialJointPos = RelativeTrans.TransformPosition(FVector3f(0.f, InOffsetAlongArm * -PosSign, 0.f));
-	//
-	//OffsetJointPos += KnuckleOffset3D;
-	//OffsetInitialJointPos += KnuckleOffset3D;
-	//
-	//FVector3f SpringMeshRelativePos = (FVector3f)InSpringMesh->GetRelativeLocation();
-	//FVector3f AnimStrut = SpringMeshRelativePos - OffsetJointPos;
-	//FVector3f AnimStrutDir = AnimStrut.GetSafeNormal();
-	//
-	//FQuat4f AnimStrutRot = FRotationMatrix44f::MakeFromXZ(RelativeTrans.GetRotation().GetForwardVector(), AnimStrutDir).ToQuat();
-	//
-	//float InitialLength = (SpringMeshRelativePos - OffsetInitialJointPos).Length();
-	//float CurrentLength = AnimStrut.Length();
-	//
-	//float Scale = UVehicleUtilities::SafeDivide(CurrentLength, InitialLength);
-	//FVector3f Scale3D = FVector3f(1.f) + (FVector3f)InScaleAxis * (Scale - 1.f);
-	//Scale3D *= (FVector3f)InInitialScale;
-	//
-	//InSpringMesh->SetRelativeRotation((FQuat)AnimStrutRot);
-	//InSpringMesh->SetRelativeScale3D((FVector)Scale3D);
-	//
-	//return FTransform3f(AnimStrutRot, SpringMeshRelativePos, Scale3D);
-	return FTransform3f::Identity;
+	FVector3f TopMountChassisLocation = GetTopMountChassisLocation();
+	return FTransform();
 }
 
 void UVehicleWheelComponent::AttachComponentToKnuckle(USceneComponent* InComponent, FTransform InTransform)

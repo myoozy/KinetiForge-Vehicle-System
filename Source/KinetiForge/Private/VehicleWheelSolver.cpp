@@ -134,8 +134,8 @@ void FVehicleWheelSolver::DrawWheelForce(
 	//draw final force
 	DrawDebugLine(CurrentWorld, TempImpactPoint, (FVector)State.TireForce * Length + TempImpactPoint, GripCircleColor, false, Duration, 0, Thickness);
 
-	FTransform WheelRelativeTrans = FTransform(WheelComponent->GetWheelRelativeTransform());
-	FTransform WheelTrans = WheelRelativeTrans * WheelComponent->GetChassisAsyncWorldTransform();
+	FTransform HubChassisTransform = FTransform(WheelComponent->GetHubChassisTransform());
+	FTransform WheelTrans = HubChassisTransform * WheelComponent->GetChassisAsyncWorldTransform();
 
 	if (bDrawVelocity)
 	{

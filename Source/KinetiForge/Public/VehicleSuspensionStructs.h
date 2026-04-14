@@ -267,10 +267,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f LowerBallJointChassisLocation = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector3f UpperPivotChassisLocation = FVector3f(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
-	FVector3f LowerPivotChassisLocation = FVector3f(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f SteerAxisChassisDirection = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector3f ImpactWorldVelocity = FVector3f(0.f);

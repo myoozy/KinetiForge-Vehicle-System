@@ -118,6 +118,8 @@ protected:
 	FTransform3f DesignedHubLocalTransform;
 
 	//anim
+	FVector3f PrevLowerBallJointChassisLocation;
+	FVector3f PrevUpperBallJointChassisLocation;
 	FVector3f PrevHubChassisLocation;
 	FQuat4f PrevHubChassisRotation;
 	FVector3f AnimHubChassisLocation;
@@ -201,10 +203,22 @@ public:
 	void SetSprungMass(float NewSprungMass);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	FVector3f GetTopMountRelativeLocation();
+	FVector3f GetTopMountChassisLocation();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
-	FTransform3f GetWheelRelativeTransform();
+	void GetLowerWishboneState(
+		FVector& OutPivotChassisLocation,
+		FVector& OutAxisChassisDirection,
+		FVector& OutBallJointChassisLocation);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	void GetUpperWishboneState(
+		FVector& OutPivotChassisLocation,
+		FVector& OutAxisChassisDirection,
+		FVector& OutBallJointChassisLocation);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	FTransform3f GetHubChassisTransform();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetSuspensionLength() { return Suspension.State.SuspensionCurrentLength; }
@@ -284,7 +298,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void StartUpdateSolidAxlePhysics(
 		float InSteeringAngle,
-		FVector& OutApporximatedWheelWorldPos,
+		FVector& OutHitWorldLocation,
 		FVehicleSuspensionSimContext& Ctx
 	);
 
@@ -303,8 +317,9 @@ public:
 		float InSwaybarForce,
 		float InReflectedInertia,
 		FVehicleSuspensionSimContext& Ctx,
-		const FVector& InKnuckleWorldPos,
-		const FVector& InAxleWorldDirection);
+		const float InTrackWidth,
+		const FVector& InThisWheelHitWorldLocation,
+		const FVector& InOtherWheelHitWorldLocation);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void ApplySuspensionStateDirect(float InExtensionRatio = 1.f, float InSteeringAngle = 0.f);
@@ -312,14 +327,15 @@ public:
 	void StartApplySolidAxleStateDirect(
 		float InExtensionRatio,
 		float InSteeringAngle,
-		FVector& OutApporximatedWheelWorldPos,
+		FVector& OutHitWorldLocation,
 		FVehicleSuspensionSimContext& Ctx
 	);
 
 	void FinalizeApplySolidAxleStateDirect(
 		FVehicleSuspensionSimContext& Ctx,
-		const FVector& InKnuckleWorldPos,
-		const FVector& InAxleWorldDirection
+		const float InTrackWidth,
+		const FVector& InThisWheelHitWorldLocation,
+		const FVector& InOtherWheelHitWorldLocation
 	);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
@@ -428,23 +444,32 @@ public:
 	FTransform GetSkidMarkWorldTransform(float InSkidMarkBias, float InSkidMarkScale);
 
 	/**
-	* Rotate the arm mesh around its own origin
+	* Rotate the arm around the pivot of an wishbone.
+	* Returns the transform of the mesh relative to the chassis.
+	* 
+	* NOTE: The mesh MUST BE attached to CHASSIS (or any scene component with identical transform with chassis) directly.
+	* 
+	* @param bFollowUpperWishbone: If true, follow upper wishbone. If false, follow lower wishbone.
 	*/
-	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	FQuat4f UpdateSuspensionArmAnim(USceneComponent* InArmMesh,
-		FRotator InRotationOffset = FRotator(0.f, 0.f, 0.f));
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel", meta = (AutoCreateRefTerm = "InOffset"))
+	FTransform UpdateSuspensionArmAnim(
+		USceneComponent* InArmMesh,
+		const bool bFollowUpperWishbone = false,
+		const FTransform InOffset = FTransform(),
+		const FVector InMeshForwardVector = FVector::ForwardVector,
+		const FVector InMeshRightVector = FVector::RightVector, 
+		const bool bScaleToMatchLength = false,
+		const float MeshDesignLength = 100.f);
 
 	/**
 	* Rotate and scale the spring mesh around its own origin
 	*/
-	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	FTransform3f UpdateSuspensionSpringAnim(USceneComponent* InSpringMesh,
-		FVector InScaleAxis = FVector(0.f, 0.f, 1.f),
-		float InOffsetAlongArm = 0.f,
-		FVector InKnuckleOffset = FVector(0.f, 0.f, 0.f),
-		FRotator InRotationOffset = FRotator(0.f, 0.f, 0.f),
-		float InLengthBias = 0.f,
-		FVector InInitialScale = FVector(1.f, 1.f, 1.f));
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel", meta = (AutoCreateRefTerm = "InOffset"))
+	FTransform UpdateSuspensionSpringAnim(
+		USceneComponent* InSpringMesh,
+		const float MeshDesignLength = 100.f,
+		const FVector InMeshUpVector = FVector::UpVector,
+		const FTransform InOffset = FTransform());
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void AttachComponentToKnuckle(USceneComponent* InComponent, FTransform InTransform);

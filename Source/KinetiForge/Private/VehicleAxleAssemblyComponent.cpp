@@ -385,27 +385,15 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics(
 	UVehicleWheelComponent* WheelL, 
 	UVehicleWheelComponent* WheelR)
 {
-	FVector LeftWorldPos = FVector(0.f);
-	FVector RightWorldPos = FVector(0.f);
+	FVector LeftHitLocation, RightHitLocation;
 
 	FVehicleSuspensionSimContext LeftCtx;
-	WheelL->StartUpdateSolidAxlePhysics(State.LeftWheelSteeringAngle, LeftWorldPos, LeftCtx);
+	WheelL->StartUpdateSolidAxlePhysics(State.LeftWheelSteeringAngle, LeftHitLocation, LeftCtx);
 
 	FVehicleSuspensionSimContext RightCtx;
-	WheelR->StartUpdateSolidAxlePhysics(State.RightWheelSteeringAngle, RightWorldPos, RightCtx);
+	WheelR->StartUpdateSolidAxlePhysics(State.RightWheelSteeringAngle, RightHitLocation, RightCtx);
 
-	// get the world direction of the axle
-	FVector AxleDirection = (RightWorldPos - LeftWorldPos).GetSafeNormal();
-
-	// the center of axle under world coordinate
-	FVector AxleWorldCenter = (RightWorldPos + LeftWorldPos) * 0.5f;
-
-	// the track width
-	float TrackWidth = GetTrackWidth(WheelL, WheelR);
-
-	// get the position of the ball joint(connecting the wheel and the suspension) of each wheel
-	FVector LeftKnuckleWorldPos = AxleWorldCenter - AxleDirection * TrackWidth * 0.5f;
-	FVector RightKnuckleWorldPos = AxleWorldCenter + AxleDirection * TrackWidth * 0.5f;
+	float TrackWidth = GetTrackWidth();
 
 	WheelL->FinalizeUpdateSolidAxlePhysics(
 		State.PhysicsDeltaTime,
@@ -415,8 +403,10 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics(
 		State.SwaybarForce,
 		State.ReflectedInertiaOnWheel,
 		LeftCtx,
-		LeftKnuckleWorldPos,
-		AxleDirection);
+		TrackWidth,
+		LeftHitLocation,
+		RightHitLocation
+	);
 	WheelR->FinalizeUpdateSolidAxlePhysics(
 		State.PhysicsDeltaTime,
 		State.RightDriveTorque,
@@ -425,8 +415,10 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics(
 		-State.SwaybarForce,
 		State.ReflectedInertiaOnWheel,
 		RightCtx,
-		RightKnuckleWorldPos,
-		AxleDirection);
+		TrackWidth,
+		RightHitLocation,
+		LeftHitLocation
+	);
 }
 
 float UVehicleAxleAssemblyComponent::GetTrackWidth(
@@ -704,36 +696,29 @@ void UVehicleAxleAssemblyComponent::ApplySolidAxleStateDirect(float InExtensionR
 	const int32 Iteration = 2;
 	for (int32 i = 0; i < Iteration; i++)
 	{
-		FVector LeftWorldPos = FVector(0.f);
-		FVector RightWorldPos = FVector(0.f);
+		FVector LeftHitLocation, RightHitLocation;
 
 		FVehicleSuspensionSimContext LeftCtx;
-		LeftWheel->StartApplySolidAxleStateDirect(InExtensionRatio, SteeringAngle, LeftWorldPos, LeftCtx);
+		LeftWheel->StartApplySolidAxleStateDirect(InExtensionRatio, SteeringAngle, LeftHitLocation, LeftCtx);
 
 		FVehicleSuspensionSimContext RightCtx;
-		RightWheel->StartApplySolidAxleStateDirect(InExtensionRatio, SteeringAngle, RightWorldPos, RightCtx);
-
-		// get the world direction of the axle
-		FVector AxleDirection = (RightWorldPos - LeftWorldPos).GetSafeNormal();
-
-		// the center of axle under world coordinate
-		FVector AxleWorldCenter = (RightWorldPos + LeftWorldPos) * 0.5f;
+		RightWheel->StartApplySolidAxleStateDirect(InExtensionRatio, SteeringAngle, RightHitLocation, RightCtx);
 
 		// the track width
-		float DynTrackWidth = GetTrackWidth();
-
-		// get the position of the ball joint(connecting the wheel and the suspension) of each wheel
-		FVector LeftKnuckleWorldPos = AxleWorldCenter - AxleDirection * DynTrackWidth * 0.5f;
-		FVector RightKnuckleWorldPos = AxleWorldCenter + AxleDirection * DynTrackWidth * 0.5f;
+		float TrackWidth = GetTrackWidth();
 
 		LeftWheel->FinalizeApplySolidAxleStateDirect(
 			LeftCtx,
-			LeftKnuckleWorldPos,
-			AxleDirection);
+			TrackWidth,
+			LeftHitLocation,
+			RightHitLocation
+		);
 		RightWheel->FinalizeApplySolidAxleStateDirect(
 			RightCtx,
-			RightKnuckleWorldPos,
-			AxleDirection);
+			TrackWidth,
+			RightHitLocation,
+			LeftHitLocation
+		);
 	}
 }
 
