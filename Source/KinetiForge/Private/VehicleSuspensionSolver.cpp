@@ -105,10 +105,10 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	{
 	default:
 	case ESuspensionType::StraightLine:
-		ComputeStraightSuspension(Ctx, WheelRadius, KineConfig);
+		ComputeStraightSuspension(Ctx, WheelRadius, KineConfig, CachedLUTs);
 		break;
 	case ESuspensionType::Macpherson:
-		ComputeMacpherson(Ctx, WheelRadius, KineConfig);
+		ComputeMacpherson(Ctx, WheelRadius, KineConfig, CachedLUTs);
 		break;
 	case ESuspensionType::DoubleWishbone:
 		ComputeDoubleWishbone(Ctx, WheelRadius, KineConfig, CachedLUTs);
@@ -234,6 +234,34 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	CopyContextToHitResult(Ctx, RayCastResult);
 }
 
+void FVehicleSuspensionSolver::RoughlyInitializeState(const FTransform& ComponentRelativeTransform, const FVehicleSuspensionKinematicsConfig& KineConfig, FVehicleSuspensionSimState& InState)
+{
+	float SideSign = ComponentRelativeTransform.GetLocation().Y >= 0.f ? 1.f : -1.f;
+
+	// 1. 粗略算一下塔顶当前的真实底盘坐标
+	FVector3f TopMountLocalPos = KineConfig.TopMountLocalLocation;
+	TopMountLocalPos.Y *= SideSign;
+	FVector3f TopMountChassis = (FVector3f)ComponentRelativeTransform.TransformPositionNoScale((FVector)TopMountLocalPos);
+
+	// 2. 假设下球头就在塔顶的"正下方" (减震器的当前估算长度)
+	float GuessStrutLen = KineConfig.MinStrutLength + KineConfig.Stroke;
+	InState.LowerBallJointChassisLocation = TopMountChassis - FVector3f(0.f, 0.f, GuessStrutLen);
+
+	FQuat4f SpindleMountRotation = GetSpindleMountQuat(
+		KineConfig.StaticSpindleRotation,
+		SideSign
+	);
+
+	FQuat4f HubChassisRot = (SpindleMountRotation).GetNormalized();
+	InState.HubChassisRotation = HubChassisRot;
+
+	// 3. 把 HubOffset 也跟着旋转过去，作为 Hub 的粗略位置
+	FVector3f HubOffset = KineConfig.HubOffsetFromLowerJoint;
+	HubOffset.Y *= SideSign;
+	FVector3f HubOffsetFromLowerJointChassis = HubChassisRot.RotateVector(HubOffset);
+	InState.HubChassisLocation = InState.LowerBallJointChassisLocation + HubOffsetFromLowerJointChassis;
+}
+
 FVehicleSuspensionSimState FVehicleSuspensionSolver::SolveKinematicsAtExtension(
 	const float WheelRadius,
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
@@ -245,7 +273,15 @@ FVehicleSuspensionSimState FVehicleSuspensionSolver::SolveKinematicsAtExtension(
 	const FVehicleSuspensionSimState* PrevState)
 {
 	FVehicleSuspensionSimState NewState;
-	if (PrevState != nullptr)NewState = *PrevState;
+	
+	if (PrevState != nullptr)
+	{
+		NewState = *PrevState;
+	}
+	else
+	{
+		RoughlyInitializeState(ComponentRelativeTransform, KineConfig, NewState);
+	}
 
 	FVehicleSuspensionSimContext Ctx;
 	CopyStateToContext(NewState, Ctx);
@@ -271,17 +307,15 @@ FVehicleSuspensionSimState FVehicleSuspensionSolver::SolveKinematicsAtExtension(
 
 		switch (KineConfig.SuspensionType)
 		{
+		default:
 		case ESuspensionType::StraightLine:
-			ComputeStraightSuspension(Ctx, WheelRadius, KineConfig);
+			ComputeStraightSuspension(Ctx, WheelRadius, KineConfig, RealLUTs);
 			break;
 		case ESuspensionType::Macpherson:
-			ComputeMacpherson(Ctx, WheelRadius, KineConfig);
+			ComputeMacpherson(Ctx, WheelRadius, KineConfig, RealLUTs);
 			break;
 		case ESuspensionType::DoubleWishbone:
 			ComputeDoubleWishbone(Ctx, WheelRadius, KineConfig, RealLUTs);
-			break;
-		default:
-			ComputeStraightSuspension(Ctx, WheelRadius, KineConfig);
 			break;
 		}
 	}
@@ -711,6 +745,21 @@ void FVehicleSuspensionSolver::ComputeStraightRayCastLocation(FVehicleSuspension
 	* 这里还没完工
 	* 
 	*/
+	FVector3f RayDirChassis = Ctx.WheelCompToChassisTransform.GetRotation().GetUpVector();
+	Ctx.StrutChassisDirection = Ctx.WheelCompToChassisTransform.GetRotation().GetUpVector();
+	Ctx.RayCastLength = Config.Stroke;
+
+	Ctx.HubOffsetFromLowerJointChassis = Ctx.HubChassisTransform.GetLocation() - Ctx.LowerBallJointChassisLocation;
+	Ctx.RayCastStartChassisLocation = Ctx.TopMountChassisLocation - RayDirChassis * Config.MinStrutLength + Ctx.HubOffsetFromLowerJointChassis;
+	Ctx.RayCastStartWorldLocation = Ctx.ChassisWorldTransform.TransformPositionNoScale((FVector)Ctx.RayCastStartChassisLocation);
+
+	FVector3f RayCastEndChassis = Ctx.RayCastStartChassisLocation - Ctx.RayCastLength * RayDirChassis;
+	Ctx.RayCastEndWorldLocation = Ctx.ChassisWorldTransform.TransformPositionNoScale((FVector)RayCastEndChassis);
+
+	FQuat SteeringRot = FQuat((FVector)RayDirChassis, FMath::DegreesToRadians(Ctx.SteeringAngle));
+	FQuat RayCastRot = Ctx.ChassisWorldTransform.GetRotation() * SteeringRot * (FQuat)Ctx.WheelCompToChassisTransform.GetRotation() * (FQuat)Ctx.LowerWishboneLocalRotation;
+
+	Ctx.RayCastWorldTransform = FTransform(RayCastRot, Ctx.RayCastEndWorldLocation, FVector(1.f));
 }
 
 void FVehicleSuspensionSolver::ComputeWishboneRayCastLocation(
@@ -1091,40 +1140,49 @@ void FVehicleSuspensionSolver::SolveLowerWishbone(
 void FVehicleSuspensionSolver::ComputeStraightSuspension(
 	FVehicleSuspensionSimContext& Ctx,
 	const float WheelRadius,
-	const FVehicleSuspensionKinematicsConfig& Config)
+	const FVehicleSuspensionKinematicsConfig& Config,
+	const FVehicleSuspensionCachedLUTs& LUTs)
 {
-	////Compute the position of the Knuckle on the suspension plane
-	//Ctx.KnucklePos2D.X = Ctx.RayCastStart2D.X - FMath::Max(0.f, Ctx.HitDistance - WheelRadius);
-	//Ctx.KnucklePos2D.Y = Config.ArmLength;
-	//
-	//Ctx.KnuckleRelativePos = Ctx.RelativeTransform.TransformPositionNoScale(
-	//	SuspensionPlaneToZYPlane(Ctx.KnucklePos2D, Ctx.WheelPos));
-	//
-	//Ctx.StrutRelativeDirection = Ctx.RelativeTransform.GetRotation().GetUpVector();
-	//
-	//// the kingpin(steering axis) is the up vector
-	//FQuat4f SteeringBiasRotation = FQuat4f(Ctx.StrutRelativeDirection, FMath::DegreesToRadians(Ctx.SteeringAngle));
-	//
-	//FQuat4f SpindleMountRotation = GetSpindleMountQuat(
-	//	Config.SpindleMountRotation,
-	//	Ctx.WheelPos
-	//);
-	//Ctx.HubRelativeTransform.SetRotation(SteeringBiasRotation * SpindleMountRotation);
-	//FVector3f WheelRelativeRightVec = Ctx.HubRelativeTransform.GetRotation().GetRightVector();
-	//
-	//Ctx.WheelCenterToKnuckle = Config.AxialHubOffset * Ctx.WheelPos * WheelRelativeRightVec;
-	//Ctx.HubRelativeTransform.SetLocation(Ctx.KnuckleRelativePos + Ctx.WheelCenterToKnuckle);
-	//
-	//Ctx.WheelRightVector = Ctx.ChassisWorldTransform.TransformVectorNoScale(FVector(WheelRelativeRightVec));
-	//
-	//Ctx.HubWorldPos = Ctx.ChassisWorldTransform.TransformPositionNoScale(FVector(Ctx.HubRelativeTransform.GetLocation()));
+	/* Kinematics From Look Up Tables */
+	float CompressionRatio = 1.f - Ctx.SuspensionExtensionRatio;
+	FQuat4f RotLUT = FQuat4f(GetCamberToeCasterFromLUTs(LUTs, CompressionRatio, Ctx.WheelSideSign));
+
+	/* Kinematics From Geometry */
+	FQuat4f SpindleMountRotation = GetSpindleMountQuat(
+		Config.StaticSpindleRotation,
+		Ctx.WheelSideSign
+	);
+
+	Ctx.SteerAxisChassisDirection = Ctx.StrutChassisDirection;
+	FQuat4f SteeringBiasRotation = FQuat4f(Ctx.SteerAxisChassisDirection, FMath::DegreesToRadians(Ctx.SteeringAngle));
+
+	FQuat4f HubChassisRot = (SteeringBiasRotation * RotLUT * SpindleMountRotation).GetNormalized();
+	Ctx.HubChassisTransform.SetRotation(HubChassisRot);
+
+	FVector3f HubOffset = Config.HubOffsetFromLowerJoint;
+	HubOffset.Y *= Ctx.WheelSideSign;
+	Ctx.HubOffsetFromLowerJointChassis = HubChassisRot.RotateVector(HubOffset);
+
+	Ctx.LowerBallJointChassisLocation = Ctx.TopMountChassisLocation - Ctx.StrutChassisDirection * (Config.MinStrutLength + Ctx.HitDistance - WheelRadius);
+	Ctx.HubChassisTransform.SetLocation(Ctx.LowerBallJointChassisLocation + Ctx.HubOffsetFromLowerJointChassis);
+
+	FVector3f WheelChassisRightVec = Ctx.HubChassisTransform.GetRotation().GetRightVector();
+	Ctx.WheelWorldRightVector = Ctx.ChassisWorldTransform.TransformVectorNoScale(FVector(WheelChassisRightVec));
+
+	Ctx.HubWorldLocation = Ctx.ChassisWorldTransform.TransformPositionNoScale(FVector(Ctx.HubChassisTransform.GetLocation()));
 }
 
 void FVehicleSuspensionSolver::ComputeMacpherson(
 	FVehicleSuspensionSimContext& Ctx,
 	const float WheelRadius,
-	const FVehicleSuspensionKinematicsConfig& Config)
+	const FVehicleSuspensionKinematicsConfig& Config,
+	const FVehicleSuspensionCachedLUTs& LUTs)
 {
+	/* Kinematics From Look Up Tables */
+	float CompressionRatio = 1.f - Ctx.SuspensionExtensionRatio;
+	FQuat4f RotLUT = FQuat4f(GetCamberToeCasterFromLUTs(LUTs, CompressionRatio, Ctx.WheelSideSign));
+
+	/* Kinematics From Geometry */
 	SolveLowerWishbone(Ctx, WheelRadius, Config);
 
 	// The steer axis (kingpin) is the strut for MacPherson, for simplification
@@ -1139,7 +1197,7 @@ void FVehicleSuspensionSolver::ComputeMacpherson(
 		Ctx.WheelSideSign
 	);
 
-	FQuat4f HubChassisRot = (SteeringBiasRotation * SteerAxisBiasRotation * SpindleMountRotation).GetNormalized();
+	FQuat4f HubChassisRot = (SteeringBiasRotation * SteerAxisBiasRotation * RotLUT * SpindleMountRotation).GetNormalized();
 	Ctx.HubChassisTransform.SetRotation(HubChassisRot);
 
 	FVector3f HubOffset = Config.HubOffsetFromLowerJoint;
@@ -1222,6 +1280,11 @@ void FVehicleSuspensionSolver::ComputeDoubleWishbone(
 	const FVehicleSuspensionKinematicsConfig& Config,
 	const FVehicleSuspensionCachedLUTs& LUTs)
 {
+	/* Kinematics From Look Up Tables */
+	float CompressionRatio = 1.f - Ctx.SuspensionExtensionRatio;
+	FQuat4f RotLUT = FQuat4f(GetCamberToeCasterFromLUTs(LUTs, CompressionRatio, Ctx.WheelSideSign));
+
+	/* Kinematics From Geometry */
 	SolveLowerWishbone(Ctx, WheelRadius, Config);
 
 	FVector3f UpperPivotLocationLocal = Config.UpperWishbone.MountLocalLocation;
@@ -1257,7 +1320,7 @@ void FVehicleSuspensionSolver::ComputeDoubleWishbone(
 		Ctx.WheelSideSign
 	);
 
-	FQuat4f HubChassisRot = (SteeringBiasRotation * SteerAxisBiasRotation * SpindleMountRotation).GetNormalized();
+	FQuat4f HubChassisRot = (SteeringBiasRotation * SteerAxisBiasRotation * RotLUT * SpindleMountRotation).GetNormalized();
 	Ctx.HubChassisTransform.SetRotation(HubChassisRot);
 
 	FVector3f HubOffset = Config.HubOffsetFromLowerJoint;

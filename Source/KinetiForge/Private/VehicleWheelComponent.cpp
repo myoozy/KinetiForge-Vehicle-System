@@ -25,6 +25,18 @@ UVehicleWheelComponent::UVehicleWheelComponent()
 	WheelMeshComponent = Cast<UStaticMeshComponent>(CreateDefaultSubobject<UStaticMeshComponent>(NameWheelMesh));
 	BrakeMeshComponent = Cast<UStaticMeshComponent>(CreateDefaultSubobject<UStaticMeshComponent>(NameBrakeMesh));
 
+	//load default wheel mesh
+	if (!WheelMesh)
+	{
+		static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultWheelMeshObj(
+			TEXT("/Script/Engine.StaticMesh'/KinetiForge/DefaultConfigs/Meshes/DefaultWheel_235R33.DefaultWheel_235R33'")
+		);
+		if (DefaultWheelMeshObj.Succeeded())
+		{
+			WheelMesh = DefaultWheelMeshObj.Object;
+		}
+	}
+
 	//load default curves
 	if (!TireConfig.Fx)
 	{
@@ -48,6 +60,7 @@ UVehicleWheelComponent::UVehicleWheelComponent()
 		}
 	}
 
+#if 0
 	if (!SuspensionKinematicsConfig.CamberCurve)
 	{
 		static ConstructorHelpers::FObjectFinder<UCurveFloat> CurveObj(
@@ -91,18 +104,7 @@ UVehicleWheelComponent::UVehicleWheelComponent()
 			SuspensionKinematicsConfig.AntiRollCurve = CurveObj.Object;
 		}
 	}
-
-	//load default wheel mesh
-	if (!WheelMesh)
-	{
-		static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultWheelMeshObj(
-			TEXT("/Script/Engine.StaticMesh'/KinetiForge/DefaultConfigs/Meshes/DefaultWheel_235R33.DefaultWheel_235R33'")
-		);
-		if (DefaultWheelMeshObj.Succeeded())
-		{
-			WheelMesh = DefaultWheelMeshObj.Object;
-		}
-	}
+#endif
 }
 
 // Called when the game starts

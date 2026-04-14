@@ -36,7 +36,6 @@ public:
 	// Sets default values for this component's properties
 	UVehicleWheelComponent();
 
-protected:
 # if WITH_EDITORONLY_DATA
 	/**
 	* Determines how often the look up tables will be synced.
@@ -48,44 +47,45 @@ protected:
 	float ConfigSyncInterval = -1.f;
 #endif
 
+protected:
 	// Physics Setup
 
 	/*
 	* For wheel
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleWheelConfig WheelConfig;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleTireConfig TireConfig;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleABSConfig ABSConfig;
 
 	/*
 	* For Suspension
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleSuspensionKinematicsConfig SuspensionKinematicsConfig;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleSuspensionSpringConfig SuspensionSpringConfig;
 
 	// Anim Setup
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	bool bUpdateAnimAutomatically = true;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup", meta = (ClampMin = "0.0"))
 	float AnimInterpSpeed = 50.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	float AnimWheelMaxRotationSpeed = 0.f;
 
 	// Mesh Setup
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	UStaticMesh* WheelMesh;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FTransform WheelMeshTransform;	//relative to VehicleWheelComponent
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	UStaticMesh* BrakeMesh;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FTransform BrakeMeshTransform;	//relative to VehicleWheelComponent
 
 protected:

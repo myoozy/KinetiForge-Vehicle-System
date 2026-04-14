@@ -58,6 +58,11 @@ public:
 		const FVector& InAxleWorldDirection,
 		const FVector3f& TireForce
 	);
+	static void RoughlyInitializeState(
+		const FTransform& ComponentRelativeTransform,
+		const FVehicleSuspensionKinematicsConfig& KineConfig,
+		FVehicleSuspensionSimState& InState
+	);
 	static FVehicleSuspensionSimState SolveKinematicsAtExtension(
 		const float WheelRadius,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
@@ -235,12 +240,14 @@ private:
 	static void ComputeStraightSuspension(
 		FVehicleSuspensionSimContext& Ctx,
 		const float WheelRadius,
-		const FVehicleSuspensionKinematicsConfig& Config
+		const FVehicleSuspensionKinematicsConfig& Config,
+		const FVehicleSuspensionCachedLUTs& LUTs
 	);
 	static void ComputeMacpherson(
 		FVehicleSuspensionSimContext& Ctx,
 		const float WheelRadius,
-		const FVehicleSuspensionKinematicsConfig& Config
+		const FVehicleSuspensionKinematicsConfig& Config,
+		const FVehicleSuspensionCachedLUTs& LUTs
 	);
 	static bool SolveUpperWishbone(
 		const FVector3f& LowerBallPos,
