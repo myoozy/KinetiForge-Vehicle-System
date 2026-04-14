@@ -27,7 +27,7 @@ void UVehicleWheelCoordinatorComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	//FindCarbody();
+	//FindChassis();
 
 	TimeSinceLastRefresh = FMath::FRandRange(0.f, RefreshInterval);
 	TimeSinceLastRefresh += RefreshInterval;
@@ -36,13 +36,13 @@ void UVehicleWheelCoordinatorComponent::BeginPlay()
 void UVehicleWheelCoordinatorComponent::OnRegister()
 {
 	Super::OnRegister();
-	Carbody = UVehicleUtilities::FindPhysicalParent(this);
+	Chassis = UVehicleUtilities::FindPhysicalParent(this);
 }
 
 void UVehicleWheelCoordinatorComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
 	//...
-	Carbody = nullptr;
+	Chassis = nullptr;
 
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
@@ -58,15 +58,17 @@ bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
 	{
 		if (UVehicleWheelComponent* p = Wheel.Get())
 		{
-			FVector3f RelativePos = p->GetTopMountRelativeLocation();
+			const FVector3f& LocalPos = p->GetDesignedHubLocalTransform().GetLocation();
+			const FTransform& RelativeTrans = p->GetRelativeTransform();
+			const FVector3f RelativePos = FTransform3f(RelativeTrans).TransformPositionNoScale(LocalPos);
 			Positions.Add(RelativePos);
 		}
 	}
 
-	if (!Carbody.IsValid())return false;
-	const float CarMass = Carbody->GetMass();
+	if (!Chassis.IsValid())return false;
+	const float CarMass = Chassis->GetMass();
 	TArray<float> SprungMasses;
-	if (ComputeSprungMasses(Positions, CarbodyCOM, CarMass, SprungMasses))
+	if (ComputeSprungMasses(Positions, ChassisCOM, CarMass, SprungMasses))
 	{
 		for (int32 i = 0; i < RegisteredWheels.Num(); i++)
 		{
@@ -137,17 +139,17 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 			}
 		}
 
-		// check carbody com and mass
-		if (UPrimitiveComponent* CarbodyRaw = Carbody.Get())
+		// check Chassis com and mass
+		if (UPrimitiveComponent* ChassisRaw = Chassis.Get())
 		{
-			if (CarbodyRaw->IsPhysicsStateCreated())
+			if (ChassisRaw->IsPhysicsStateCreated())
 			{
-				if (FBodyInstance* BodyInst = Carbody->GetBodyInstance())
+				if (FBodyInstance* BodyInst = Chassis->GetBodyInstance())
 				{
 					FVector3f NewCOM = (FVector3f)BodyInst->GetMassSpaceLocal().GetLocation();
-					if ((CarbodyCOM - NewCOM).SquaredLength() > SMALL_NUMBER)
+					if ((ChassisCOM - NewCOM).SquaredLength() > SMALL_NUMBER)
 					{
-						CarbodyCOM = NewCOM;
+						ChassisCOM = NewCOM;
 						bMassMatrixDirty = true;
 					}
 				}
@@ -170,16 +172,16 @@ void UVehicleWheelCoordinatorComponent::TickComponent(float DeltaTime, ELevelTic
 	}
 }
 
-UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelCoordinator(USceneComponent* InCarbody)
+UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelCoordinator(USceneComponent* InChassis)
 {
-	//ckeck valid carbody
-	if (!IsValid(InCarbody))
+	//ckeck valid Chassis
+	if (!IsValid(InChassis))
 	{
 		return nullptr;
 	}
 
 	TArray<USceneComponent*> Children;
-	InCarbody->GetChildrenComponents(true, Children);
+	InChassis->GetChildrenComponents(true, Children);
 	for (USceneComponent* Child : Children)
 	{
 		//if found
@@ -191,17 +193,17 @@ UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelC
 
 	//if not found
 	//create one
-	AActor* Outer = InCarbody->GetOwner();
+	AActor* Outer = InChassis->GetOwner();
 	if (!Outer)return nullptr;
 
-	FName Name = FName(InCarbody->GetName() + "_WheelCoordinator");
+	FName Name = FName(InChassis->GetName() + "_WheelCoordinator");
 
 	if (UVehicleWheelCoordinatorComponent* WheelCoord =
 		UVehicleUtilities::CreateComponentByClass<UVehicleWheelCoordinatorComponent>(
 			Outer, nullptr, Name))
 	{
-		WheelCoord->AttachToComponent(InCarbody, FAttachmentTransformRules::KeepRelativeTransform);
-		if (WheelCoord->GetAttachParent() == InCarbody)return WheelCoord;
+		WheelCoord->AttachToComponent(InChassis, FAttachmentTransformRules::KeepRelativeTransform);
+		if (WheelCoord->GetAttachParent() == InChassis)return WheelCoord;
 	}
 
 	return nullptr;

@@ -14,14 +14,9 @@ FVehicleWheelSolver::~FVehicleWheelSolver()
 {
 }
 
-bool FVehicleWheelSolver::Initialize(UVehicleWheelComponent* WheelComponent)
+void FVehicleWheelSolver::Initialize(const FVehicleTireConfig& TireConfig)
 {
-	if (WheelComponent != nullptr)
-	{
-		UpdateCachedLUTs(WheelComponent->TireConfig);
-		return true;
-	}
-	return false;
+	UpdateCachedLUTs(TireConfig);
 }
 
 void FVehicleWheelSolver::UpdateWheel(
@@ -49,14 +44,14 @@ void FVehicleWheelSolver::UpdateWheel(
 
 	// get the direction of longitudinal and lateral force in world space
 	// if the vectors are not normalized, the force can be affected by camber
-	const FVector3f WheelRightVec = SuspensionState.WheelRightVector;
-	const FVector3f ImpactNormal = SuspensionState.ImpactNormal;
+	const FVector3f WheelRightVec = SuspensionState.WheelWorldRightVector;
+	const FVector3f ImpactNormal = SuspensionState.ImpactWorldNormal;
 	FVector3f LongForceDirUnNorm = FVector3f::CrossProduct(WheelRightVec, ImpactNormal);
 	FVector3f LatForceDirUnNorm = FVector3f::VectorPlaneProject(WheelRightVec, ImpactNormal);
 	FVector3f LongForceDir = LongForceDirUnNorm.GetSafeNormal();
 	FVector3f LatForceDir = LatForceDirUnNorm.GetSafeNormal();
 
-	UpdateLinearVelocity(LongForceDir, LatForceDir, SuspensionState.ImpactPointWorldVelocity);
+	UpdateLinearVelocity(LongForceDir, LatForceDir, SuspensionState.ImpactWorldVelocity);
 
 	// get target brake torque
 	// brake torque from esp can be negative (which means to reduce brake torque)
@@ -108,14 +103,14 @@ void FVehicleWheelSolver::DrawWheelForce(
 
 	UWorld* CurrentWorld = WheelComponent->GetWorld();
 
-	FVehicleTireConfig& TireConfig = WheelComponent->TireConfig;
-	FVector WheelRightVec = FVector(SuspensionState.WheelRightVector);
-	FVector ImpactNormal = FVector(SuspensionState.ImpactNormal);
+	const FVehicleTireConfig& TireConfig = WheelComponent->GetTireConfig();
+	FVector WheelRightVec = FVector(SuspensionState.WheelWorldRightVector);
+	FVector ImpactNormal = FVector(SuspensionState.ImpactWorldNormal);
 
 	FVector TempForward = FVector::CrossProduct(WheelRightVec, ImpactNormal);
 	FVector TempRight = FVector::VectorPlaneProject(WheelRightVec, ImpactNormal);
 	FVector TempUp = ImpactNormal;
-	FVector TempImpactPoint = SuspensionState.ImpactPoint;
+	FVector TempImpactPoint = SuspensionState.ImpactWorldLocation;
 	FRotator TempRot = FRotationMatrix::MakeFromYZ(TempRight, TempForward).Rotator();
 	FVector TempScale = FVector(TireConfig.MaxFx, TireConfig.MaxFy, 1.f);
 	FTransform TempTrans = FTransform(TempRot, TempImpactPoint, TempScale);
@@ -140,7 +135,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 	DrawDebugLine(CurrentWorld, TempImpactPoint, (FVector)State.TireForce * Length + TempImpactPoint, GripCircleColor, false, Duration, 0, Thickness);
 
 	FTransform WheelRelativeTrans = FTransform(WheelComponent->GetWheelRelativeTransform());
-	FTransform WheelTrans = WheelRelativeTrans * WheelComponent->GetCarbodyAsyncWorldTransform();
+	FTransform WheelTrans = WheelRelativeTrans * WheelComponent->GetChassisAsyncWorldTransform();
 
 	if (bDrawVelocity)
 	{
@@ -159,7 +154,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 	{
 		FColor SlipColor = FColor(127, 63, 255);
 		FVector TempWheelLocation = WheelTrans.GetLocation();
-		FVector TempDrawOffset = WheelComponent->WheelConfig.Radius * WheelTrans.GetRotation().GetUpVector();
+		FVector TempDrawOffset = WheelComponent->GetWheelConfig().Radius * WheelTrans.GetRotation().GetUpVector();
 		FString TextSlipRatio = FString(TEXT("SlipRatio = ")) + FString::SanitizeFloat(State.SlipRatio);
 		FString TextSlipAngle = FString(TEXT("SlipAngle = ")) + FString::SanitizeFloat(State.SlipAngle);
 		DrawDebugString(CurrentWorld, TempWheelLocation + TempDrawOffset, TextSlipRatio, 0, SlipColor, Duration, true, Length * 100);

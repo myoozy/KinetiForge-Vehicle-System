@@ -111,7 +111,7 @@ protected:
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 
 	UPROPERTY()
-	TWeakObjectPtr<UPrimitiveComponent> Carbody;
+	TWeakObjectPtr<UPrimitiveComponent> Chassis;
 	UPROPERTY()
 	TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
 	
@@ -163,7 +163,7 @@ protected:
 		UVehicleWheelComponent* WheelL, 
 		UVehicleWheelComponent* WheelR
 	);
-	float CalculateDynTrackWidth(
+	float GetTrackWidth(
 		UVehicleWheelComponent* WheelL,
 		UVehicleWheelComponent* WheelR
 	);
@@ -266,7 +266,7 @@ public:
 	UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator.Get(); }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	UPrimitiveComponent* GetCarbody() { return Carbody.Get(); }
+	UPrimitiveComponent* GetChassis() { return Chassis.Get(); }
 
 private:
 	bool GenerateWheels();

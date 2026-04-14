@@ -128,10 +128,10 @@ void UVehicleADASComponent::UpdateCruiseControl(
 	FVector2D ShiftInterval)
 {
 	if (!IsValid(DriveAssembly))return;
-	UPrimitiveComponent* Carbody = DriveAssembly->GetCarbody();
-	if (!IsValid(Carbody))return;
+	UPrimitiveComponent* Chassis = DriveAssembly->GetChassis();
+	if (!IsValid(Chassis))return;
 
-	const float CarMass = Carbody->GetMass();
+	const float CarMass = Chassis->GetMass();
 	const float MaxDriveForce = GetVehicleMaxDriveForce(DriveAssembly);
 	const float MaxBrakeForce = GetVehicleMaxBrakeForce(DriveAssembly);
 
@@ -199,7 +199,7 @@ float UVehicleADASComponent::GetVehicleMaxBrakeForce(UVehicleDriveAssemblyCompon
 				UVehicleWheelComponent* WheelR;
 				Axle->GetWheels(WheelL, WheelR);
 				const float cm2m = 0.01f;
-				const float AvgRadius = 0.5f * cm2m * (WheelL->WheelConfig.Radius + WheelR->WheelConfig.Radius);
+				const float AvgRadius = 0.5f * cm2m * (WheelL->GetWheelConfig().Radius + WheelR->GetWheelConfig().Radius);
 
 				const float MaxBrakeTorque = Axle->AxleConfig.MaxBrakeTorque * 2.f;
 
@@ -1496,8 +1496,8 @@ void UVehicleADASComponent::UpdateAutoPilotHumanLike(
 
 	if (!IsValid(DriveAssembly))return;
 
-	UPrimitiveComponent* Carbody = DriveAssembly->GetCarbody();
-	if (!IsValid(Carbody))return;
+	UPrimitiveComponent* Chassis = DriveAssembly->GetChassis();
+	if (!IsValid(Chassis))return;
 
 	// АќЮЇКа
 	FVector BoundExtent = FVector(0.f);

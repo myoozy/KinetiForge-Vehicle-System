@@ -170,12 +170,12 @@ float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(
 			int32 n = 0;
 			if (IsValid(LeftWheel))
 			{
-				SumR += LeftWheel->WheelConfig.Radius;
+				SumR += LeftWheel->GetWheelConfig().Radius;
 				n++;
 			}
 			if (IsValid(RightWheel))
 			{
-				SumR += RightWheel->WheelConfig.Radius;
+				SumR += RightWheel->GetWheelConfig().Radius;
 				n++;
 			}
 			float avgR = UVehicleUtilities::SafeDivide(SumR, (float)n);

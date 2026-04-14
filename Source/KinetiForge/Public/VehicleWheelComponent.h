@@ -36,22 +36,33 @@ public:
 	// Sets default values for this component's properties
 	UVehicleWheelComponent();
 
+protected:
+# if WITH_EDITORONLY_DATA
 	/**
 	* Determines how often the look up tables will be synced.
 	* Set to 0 to sync in every frame.
 	* Set to <0 to disable sync (for performance).
+	* Only works with editor
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	float ConfigSyncInterval = -1.f;
+#endif
 
 	// Physics Setup
 
+	/*
+	* For wheel
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleWheelConfig WheelConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleTireConfig TireConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleABSConfig ABSConfig;
+
+	/*
+	* For Suspension
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	FVehicleSuspensionKinematicsConfig SuspensionKinematicsConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -83,10 +94,10 @@ protected:
 	virtual void OnRegister() override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 	bool InitializeMeshComponents();
-	void ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* CarbodyHandle);
+	void ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* ChassisHandle);
 
 	UPROPERTY()
-	TObjectPtr<USceneComponent> WheelKnuckleComponent;
+	TObjectPtr<USceneComponent> WheelHubComponent;
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> WheelMeshComponent;
 	UPROPERTY()
@@ -94,7 +105,7 @@ protected:
 	
 	//
 	UPROPERTY()
-	TWeakObjectPtr<UPrimitiveComponent> Carbody;
+	TWeakObjectPtr<UPrimitiveComponent> Chassis;
 	UPROPERTY()
 	TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
 
@@ -103,19 +114,24 @@ protected:
 	//wheel movement
 	FVehicleWheelSolver Wheel;
 
-	FTransform CarbodyAsyncWorldTransform;
+	FTransform ChassisAsyncWorldTransform;
+	FTransform3f DesignedHubLocalTransform;
 
 	//anim
-	FVector2f PrevKnucklePos2D;
-	FQuat4f PrevWheelRelativeRot;
-	FVector2f AnimKnucklePos2D;
-	FQuat4f AnimWheelRelativeRot;
+	FVector3f PrevHubChassisLocation;
+	FQuat4f PrevHubChassisRotation;
+	FVector3f AnimHubChassisLocation;
+	FQuat4f AnimHubChassisRotation;
 	float AnimWheelRotationAngle = 0.f;
 	float TimeSinceLastPhysicsTick = 0.0f;
 
 	//cache
-	FVector CachedComponentRelativeLocation;
+	FVector3f CachedRelativeLocation;
+	FQuat4f CachedRelativeRotation;
+
+#if WITH_EDITOR
 	float TimeSinceLastConfigSync = 0.f;
+#endif
 
 public:	
 	// Called every frame
@@ -128,10 +144,64 @@ public:
 	void InitializeWheel();
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void CacheDesignedHubTransform(const float DesignedExtensionRatio = 0.5f);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleWheelConfig& GetWheelConfig() { return WheelConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetWheelConfig(const FVehicleWheelConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleTireConfig& GetTireConfig() { return TireConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetTireConfig(const FVehicleTireConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleABSConfig& GetABSConfig() { return ABSConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetABSConfig(const FVehicleABSConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleSuspensionKinematicsConfig& GetSuspensionKinematicsConfig() { return SuspensionKinematicsConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetSuspensionKinematicsConfig(FVehicleSuspensionKinematicsConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleSuspensionSpringConfig& GetSuspensionSpringConfig() { return SuspensionSpringConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetSuspensionSpringConfig(FVehicleSuspensionSpringConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FTransform3f& GetDesignedHubLocalTransform() { return DesignedHubLocalTransform; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	UStaticMeshComponent* GetWheelMeshComponent() { return WheelMeshComponent.Get(); }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	UStaticMesh* GetWheelMesh() { return WheelMeshComponent->GetStaticMesh(); }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetWheelMesh(UStaticMesh* NewMesh, const FTransform NewTransform = FTransform(), const bool bUseNewTransform = false);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	UStaticMeshComponent* GetBrakeMeshComponent() { return BrakeMeshComponent.Get(); }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	UStaticMesh* GetBrakeMesh() { return BrakeMeshComponent->GetStaticMesh(); }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetBrakeMesh(UStaticMesh* NewMesh, const FTransform NewTransform = FTransform(), const bool bUseNewTransform = false);
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void SetSprungMass(float NewSprungMass);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	FVector3f GetTopMountRelativeLocation() { return Suspension.State.TopMountRelativePos; }
+	FVector3f GetTopMountRelativeLocation();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	FTransform3f GetWheelRelativeTransform();
@@ -141,6 +211,15 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetSteeringAngle() { return Suspension.State.SteeringAngle; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	float GetWheelRadius() { return WheelConfig.Radius; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	float GetWheelWidth() { return WheelConfig.Width; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	float GetWheelInertia() { return WheelConfig.Inertia; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetSlipRatio() { return Wheel.State.SlipRatio; }
@@ -161,11 +240,14 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetAngularVelocity() { return Wheel.State.AngularVelocity; }
 
+	/*
+	* Including all the inertia from the drivetrain which is reflected on the wheel
+	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetTotalInertia() { return Wheel.State.TotalInertia; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
-	FVector3f GetWorldLinearVelocity() { return Suspension.State.ImpactPointWorldVelocity; }
+	FVector3f GetWorldLinearVelocity() { return Suspension.State.ImpactWorldVelocity; }
 
 	/**
 	* Update the independent suspension and wheel physics.
@@ -265,7 +347,7 @@ public:
 	FVehicleSuspensionSimState GetSuspensionMovement() { return Suspension.State; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
-	UPrimitiveComponent* GetCarbody() { return Carbody.Get(); }
+	UPrimitiveComponent* GetChassis() { return Chassis.Get(); }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	bool GetRayCastResult(FVehicleSuspensionHitResult& Out) { Out = Suspension.RayCastResult; return Suspension.State.bHitGround; }
@@ -275,15 +357,15 @@ public:
 	UPrimitiveComponent* GetRayCastHitComponent() { return Suspension.RayCastResult.Component.Get(); }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	FVector GetRayCastImpactPoint() { return Suspension.State.ImpactPoint; }
+	FVector GetRayCastImpactPoint() { return Suspension.State.ImpactWorldLocation; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	FTransform GetCarbodyAsyncWorldTransform() { return CarbodyAsyncWorldTransform; }
+	FTransform GetChassisAsyncWorldTransform() { return ChassisAsyncWorldTransform; }
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	FTransform GetCarbodyWorldTransform();
+	FTransform GetChassisWorldTransform();
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	FVector GetKnuckleRelativePosition() { return FVector(Suspension.State.KnuckleRelativePos); }
+	FVector GetHubRelativeLocation() { return FVector(Suspension.State.HubChassisLocation); }
 
 	//debug draw
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
@@ -312,7 +394,6 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	bool SetMesh(
-		float AxialHubOffset,
 		UStaticMesh* NewWheelMesh,
 		FTransform WheelMeshRelatvieTransform,
 		UStaticMesh* NewBrakeMesh, 
@@ -337,7 +418,7 @@ public:
 	void UpdateWheelAnim(float DeltaTime = 0.f, float MaxAnimAngularVelocity = 60.f);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	void GetWheelKnuckleComponent(USceneComponent*& OutHub) { OutHub = WheelKnuckleComponent; }
+	void GetWheelHubComponent(USceneComponent*& OutHub) { OutHub = WheelHubComponent; }
 
 	/**
 	* Compute and return the world location and world rotation of skid mark.

@@ -213,7 +213,7 @@ protected:
     UPROPERTY()
     TWeakObjectPtr<UVehicleAsyncTickComponent> VehicleAsyncTickComponent;
     UPROPERTY()
-    TWeakObjectPtr<UPrimitiveComponent> Carbody;
+    TWeakObjectPtr<UPrimitiveComponent> Chassis;
 
     //physics
     float PhysicsDeltaTime;
@@ -368,7 +368,7 @@ public:
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     float GetSteeringValueFromAxles();
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
-    UPrimitiveComponent* GetCarbody() { return Carbody.Get(); }
+    UPrimitiveComponent* GetChassis() { return Chassis.Get(); }
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     float GetMinTurningRadius();
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
@@ -380,7 +380,7 @@ public:
 
 private:
     bool GeneratePowerUnit();
-    int GenerateAxles();    //-1: no owner actor; -2: no valid Carbody; -3: there're already axles
+    int GenerateAxles();    //-1: no owner actor; -2: no valid Chassis; -3: there're already axles
     int SearchExistingAxles();
 
     UFUNCTION()

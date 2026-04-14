@@ -69,7 +69,7 @@ void UVehicleDriveAssemblyComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Chassis.Get());
 	if (WheelCoordinator.IsValid())WheelCoordinator->RegisterDriveAssembly(this);
 
 	VehicleAsyncTickComponent = UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(GetOwner());
@@ -87,7 +87,7 @@ void UVehicleDriveAssemblyComponent::OnRegister()
 {
 	Super::OnRegister();
 	//...
-	Carbody = UVehicleUtilities::FindPhysicalParent(this);
+	Chassis = UVehicleUtilities::FindPhysicalParent(this);
 	if (AActor* Owner = GetOwner())
 	{
 #if WITH_EDITOR
@@ -120,7 +120,7 @@ void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierar
 
 	if (VehicleAsyncTickComponent.IsValid())VehicleAsyncTickComponent->UnRegister(this);
 
-	Carbody = nullptr;
+	Chassis = nullptr;
 
 	InputConfig.Throttle.ResponseCurve = nullptr;
 	InputConfig.Brake.ResponseCurve = nullptr;
@@ -699,7 +699,7 @@ void UVehicleDriveAssemblyComponent::TickComponent(float DeltaTime, ELevelTick T
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	// ...
-	if (Engine.IsValid() && Gearbox.IsValid() && Carbody.IsValid())
+	if (Engine.IsValid() && Gearbox.IsValid() && Chassis.IsValid())
 	{
 		//update automatic gearbox
 		if (AutoGearboxConfig.bAutomaticGearbox)
@@ -814,10 +814,10 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 
 	// get acceleration
 	FVector3f LastAbsVelocity = AbsoluteWorldLinearVelocity;
-	AbsoluteWorldLinearVelocity = 0.01f * (FVector3f)UAsyncTickFunctions::ATP_GetLinearVelocity(Carbody.Get());
+	AbsoluteWorldLinearVelocity = 0.01f * (FVector3f)UAsyncTickFunctions::ATP_GetLinearVelocity(Chassis.Get());
 	WorldAcceleration = UVehicleUtilities::SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, PhysicsDeltaTime);
-	FQuat4f CarbodyRot = (FQuat4f)UAsyncTickFunctions::ATP_GetTransform(Carbody.Get()).GetRotation();
-	LocalAcceleration = CarbodyRot.UnrotateVector(WorldAcceleration);
+	FQuat4f ChassisRot = (FQuat4f)UAsyncTickFunctions::ATP_GetTransform(Chassis.Get()).GetRotation();
+	LocalAcceleration = ChassisRot.UnrotateVector(WorldAcceleration);
 }
 
 void UVehicleDriveAssemblyComponent::InputThrottle(float InValue, bool bDirectInput)
@@ -1107,7 +1107,7 @@ void UVehicleDriveAssemblyComponent:: GetVehicleBound(
 	bool bReturnWorldTransform
 )
 {
-	if (UPrimitiveComponent* Prim = Carbody.Get())
+	if (UPrimitiveComponent* Prim = Chassis.Get())
 	{
 		FBoxSphereBounds CollisionBounds = Prim->CalcBounds(FTransform::Identity);
 		OutExtent = CollisionBounds.BoxExtent; // HalfSize
@@ -1364,10 +1364,10 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 int UVehicleDriveAssemblyComponent::GenerateAxles()
 {
-	if (!Carbody.IsValid())
+	if (!Chassis.IsValid())
 	{
-		Carbody = UVehicleUtilities::FindPhysicalParent(this);
-		if (!Carbody.IsValid())
+		Chassis = UVehicleUtilities::FindPhysicalParent(this);
+		if (!Chassis.IsValid())
 		{
 			return -1;
 		}
@@ -1403,7 +1403,7 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 				);
 			if (IsValid(Axle))
 			{
-				Axle->AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepRelativeTransform);
+				Axle->AttachToComponent(Chassis.Get(), FAttachmentTransformRules::KeepRelativeTransform);
 				Axle->SetRelativeLocation(AxleConfig.AxlePosition);
 			}
 
