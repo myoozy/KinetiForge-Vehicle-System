@@ -442,9 +442,9 @@ float UVehicleWheelCoordinatorComponent::GetMinTurningRadius()
 	{
 		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
 		{
-			if (Axle->AxleSteeringConfig.bAffectedBySteering)
+			if (Axle->GetAxleSteeringConfig().bAffectedBySteering)
 			{
-				float SteeringRad = FMath::DegreesToRadians(Axle->AxleSteeringConfig.MaxSteeringAngle);
+				float SteeringRad = FMath::DegreesToRadians(Axle->GetAxleSteeringConfig().MaxSteeringAngle);
 				float AxleWheelBase_m = Axle->GetWheelBase() * cm2m;
 				MaxCurvature += FMath::Abs(UVehicleUtilities::SafeDivide(FMath::Tan(SteeringRad), AxleWheelBase_m));
 			}

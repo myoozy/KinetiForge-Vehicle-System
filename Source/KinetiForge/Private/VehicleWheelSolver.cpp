@@ -112,7 +112,8 @@ void FVehicleWheelSolver::DrawWheelForce(
 	FVector TempUp = ImpactNormal;
 	FVector TempImpactPoint = SuspensionState.ImpactWorldLocation;
 	FRotator TempRot = FRotationMatrix::MakeFromYZ(TempRight, TempForward).Rotator();
-	FVector TempScale = FVector(TireConfig.MaxFx, TireConfig.MaxFy, 1.f);
+	const float CamberCos = FMath::Abs(TempRight.Size());
+	FVector TempScale = FVector(TireConfig.MaxFx, TireConfig.MaxFy, 1.f) * CamberCos;
 	FTransform TempTrans = FTransform(TempRot, TempImpactPoint, TempScale);
 
 	Length *= 0.01;

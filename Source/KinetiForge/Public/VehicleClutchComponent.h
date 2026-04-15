@@ -55,8 +55,8 @@ public:
 		const float InCurrentGearRatio, 
 		const float GearboxReflectedInertia_HighestGear,
 		const float InEngineAngularVelocity,
-		const FVehicleNaturallyAspiratedEngineConfig& NAConfig,
-		const FVehicleEngineTurboConfig& TurboConfig);
+		const float InEngineInertia,
+		const float InEngineMaxTorque);
 	UFUNCTION(BlueprintCallable, Category = "VehicleClutch")
 	float GetCluchTorque();
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleClutch")

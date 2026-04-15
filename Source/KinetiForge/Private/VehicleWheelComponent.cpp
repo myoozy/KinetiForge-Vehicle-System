@@ -202,10 +202,10 @@ void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* C
 
 	switch (SuspensionKinematicsConfig.LocationToApplyForce)
 	{
-	case EPositionToApplyForce::ImpactPoint:
+	case EVehicleForceApplicationPoint::ImpactPoint:
 		PosToApplyImpulse = Suspension.State.ImpactWorldLocation;
 		break;
-	case EPositionToApplyForce::WheelCenter:
+	case EVehicleForceApplicationPoint::WheelCenter:
 		PosToApplyImpulse = ChassisAsyncWorldTransform.TransformPositionNoScale(
 			(FVector)Suspension.State.HubChassisLocation);
 		break;
@@ -265,12 +265,20 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	// ...
 
 #if WITH_EDITOR
-	TimeSinceLastConfigSync += DeltaTime;
-	if (TimeSinceLastConfigSync > ConfigSyncInterval)
+	if (ConfigSyncInterval >= 0.f)
 	{
-		TimeSinceLastConfigSync -= FMath::Abs(ConfigSyncInterval);
+		TimeSinceLastConfigSync += DeltaTime;
+		if (TimeSinceLastConfigSync > ConfigSyncInterval)
+		{
+			TimeSinceLastConfigSync -= ConfigSyncInterval;
 
-		// update cached curves
+			// update cached curves
+			Suspension.UpdateCachedLUTs(SuspensionKinematicsConfig);
+			Wheel.UpdateCachedLUTs(TireConfig);
+		}
+	}
+	else
+	{
 		Suspension.UpdateCachedLUTs(SuspensionKinematicsConfig);
 		Wheel.UpdateCachedLUTs(TireConfig);
 	}
@@ -381,14 +389,14 @@ void UVehicleWheelComponent::SetABSConfig(const FVehicleABSConfig& NewConfig)
 	ABSConfig = NewConfig;
 }
 
-void UVehicleWheelComponent::SetSuspensionKinematicsConfig(FVehicleSuspensionKinematicsConfig& NewConfig)
+void UVehicleWheelComponent::SetSuspensionKinematicsConfig(const FVehicleSuspensionKinematicsConfig& NewConfig)
 {
 	SuspensionKinematicsConfig = NewConfig;
 	Suspension.UpdateCachedLUTs(NewConfig);
 	CacheDesignedHubTransform();
 }
 
-void UVehicleWheelComponent::SetSuspensionSpringConfig(FVehicleSuspensionSpringConfig& NewConfig)
+void UVehicleWheelComponent::SetSuspensionSpringConfig(const FVehicleSuspensionSpringConfig& NewConfig)
 {
 	SuspensionSpringConfig = NewConfig;
 }
@@ -883,7 +891,7 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 
 FTransform UVehicleWheelComponent::GetSkidMarkWorldTransform(float InSkidMarkBias, float InSkidMarkScale)
 {
-	if (SuspensionKinematicsConfig.RayCastMode == ESuspensionRayCastMode::LineTrace)
+	if (SuspensionKinematicsConfig.RayCastMode == EVehicleSuspensionRayCastMode::LineTrace)
 	{
 		// the impact point of line trace is always on the outer side of the wheel
 		InSkidMarkBias -= WheelConfig.Width * 0.5f;
@@ -898,7 +906,7 @@ FTransform UVehicleWheelComponent::GetSkidMarkWorldTransform(float InSkidMarkBia
 	return FTransform(q, v, LocalLinVel);
 }
 
-FTransform UVehicleWheelComponent::UpdateSuspensionArmAnim(
+FTransform UVehicleWheelComponent::UpdateWishboneAnim(
 	USceneComponent* InArmMesh,
 	const bool bFollowUpperWishbone,
 	const FTransform InOffset,
@@ -985,25 +993,139 @@ FTransform UVehicleWheelComponent::UpdateSuspensionArmAnim(
 	FTransform3f BaseTransform(FinalRotation, PivotChassis, FinalScale);
 	FTransform FinalTransform = InOffset * FTransform(BaseTransform);
 
+	const FTransform& ChassisWorldTransform = Chassis.IsValid() ? Chassis->GetComponentTransform() : ChassisAsyncWorldTransform;
 	if (InArmMesh)
 	{
-		// Prerequisite: InArmMesh must be attached to the Chassis, 
-		// because all the calculations above were performed in Chassis space coordinates
-		InArmMesh->SetRelativeTransform(FinalTransform,	false, nullptr, ETeleportType::TeleportPhysics);
+		InArmMesh->SetWorldTransform(FinalTransform * ChassisWorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
 	}
 
 	return FinalTransform;
 }
 
-FTransform UVehicleWheelComponent::UpdateSuspensionSpringAnim(USceneComponent* InSpringMesh, const float MeshDesignLength, const FVector InMeshUpVector, const FTransform InOffset)
+FTransform UVehicleWheelComponent::UpdateSuspensionArmAnim(USceneComponent* InArmMesh, const bool bFollowUpperWishbone, const FTransform InOffset, const FVector InMeshForwardVector, const FVector InMeshRightVector, const bool bScaleToMatchLength, const float MeshDesignLength)
 {
-	FVector3f TopMountChassisLocation = GetTopMountChassisLocation();
-	return FTransform();
+	return UpdateWishboneAnim(
+		InArmMesh,
+		bFollowUpperWishbone,
+		InOffset,
+		InMeshForwardVector,
+		InMeshRightVector,
+		bScaleToMatchLength,
+		MeshDesignLength
+	);
 }
 
-void UVehicleWheelComponent::AttachComponentToKnuckle(USceneComponent* InComponent, FTransform InTransform)
+void UVehicleWheelComponent::UpdateShockAbsorberAnim(USceneComponent* InUpperStrutMesh, USceneComponent* InLowerStrutMesh, USceneComponent* InSpringMesh, const float SpringDesignLength, const FVector InMeshUpVector)
 {
-	//if (!IsValid(InComponent))return;
-	//InComponent->AttachToComponent(WheelKnuckleComponent, FAttachmentTransformRules::KeepRelativeTransform);
-	//InComponent->SetRelativeTransform(InTransform);
+	// 1. 获取物理塔顶和底座在 Chassis 空间下的坐标
+	// (注意：对于双叉臂，底座可能在下摆臂上；对于麦弗逊，可能是转向节。这里统一用你 state 里存好的)
+	FVector TopMountChassis = (FVector)Suspension.State.TopMountChassisLocation;
+	FVector LowerMountChassis = (FVector)Suspension.State.LowerBallJointChassisLocation;
+
+	// 2. 算出这条共享的“减震器绝对直线”
+	FVector StrutVector = TopMountChassis - LowerMountChassis;
+	float CurrentStrutLength = StrutVector.Size();
+	FVector StrutDirectionUp = StrutVector.GetSafeNormal();   // 指向塔顶
+	FVector StrutDirectionDown = -StrutDirectionUp;           // 指向地面
+
+	// 3. 算出共同的旋转基准 (将模型默认的 UpVector 对齐到减震器轴线上)
+	FQuat RotationLookingUp = FQuat::FindBetweenNormals(InMeshUpVector, StrutDirectionUp);
+	FQuat RotationLookingDown = FQuat::FindBetweenNormals(InMeshUpVector, StrutDirectionDown);
+
+	const FTransform& ChassisWorldTransform = Chassis.IsValid() ? Chassis->GetComponentTransform() : ChassisAsyncWorldTransform;
+
+	// ==========================================
+	// 组装 1：上半筒 (Upper Strut)
+	// 原点在塔顶，不可压缩，方向朝下 (插入下半筒)
+	// ==========================================
+	if (InUpperStrutMesh)
+	{
+		FTransform UpperTransform(RotationLookingDown, TopMountChassis, FVector::OneVector);
+		InUpperStrutMesh->SetWorldTransform(UpperTransform * ChassisWorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
+	}
+
+	// ==========================================
+	// 组装 2：下半筒 (Lower Strut)
+	// 原点在底座，不可压缩，方向朝上 (套住上半筒)
+	// ==========================================
+	if (InLowerStrutMesh)
+	{
+		FTransform LowerTransform(RotationLookingUp, LowerMountChassis, FVector::OneVector);
+		InLowerStrutMesh->SetWorldTransform(LowerTransform * ChassisWorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
+	}
+
+	// ==========================================
+	// 组装 3：弹簧 (Spring)
+	// 原点在底座，方向朝上，并且 Z 轴需要根据行程动态缩放！
+	// ==========================================
+	if (InSpringMesh)
+	{
+		// 弹簧的当前长度，可能需要减去一些两端底座的厚度常数，这里简化为总长度
+		// 如果你的弹簧只是减震器的一部分，你可以传入一个 SpringOffset 扣除掉不可压缩长度
+		float ScaleZ = Suspension.State.SuspensionCurrentLength / FMath::Max(0.1f, SpringDesignLength);
+
+		FVector SpringScale = FVector::OneVector;
+		// 同样的魔法：根据传入的轴向，只缩放那个轴
+		SpringScale += InMeshUpVector.GetAbs() * (ScaleZ - 1.0f);
+
+		FTransform SpringTransform(RotationLookingUp, LowerMountChassis, SpringScale);
+		InSpringMesh->SetWorldTransform(SpringTransform * ChassisWorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
+	}
+}
+
+void UVehicleWheelComponent::UpdateSuspensionSpringAnim(USceneComponent* InUpperStrutMesh, USceneComponent* InLowerStrutMesh, USceneComponent* InSpringMesh, const float SpringDesignLength, const FVector InMeshUpVector)
+{
+	UpdateShockAbsorberAnim(
+		InUpperStrutMesh,
+		InLowerStrutMesh,
+		InSpringMesh,
+		SpringDesignLength,
+		InMeshUpVector
+	);
+}
+
+void UVehicleWheelComponent::OrientAndScaleToLocation(USceneComponent* InComponent, const FVector& TargetWorldLocation, const float UnscaledLength, const FVector& TrackingAxisLocal)
+{
+	if (!InComponent) return;
+
+	// 1. 获取当前世界坐标，计算目标方向和距离
+	FVector StartLoc = InComponent->GetComponentLocation();
+	FVector Dir = TargetWorldLocation - StartLoc;
+	float Dist = Dir.Size();
+
+	// 防呆：如果距离极短（比如重合了），直接跳过计算，防止除零崩溃
+	if (Dist < KINDA_SMALL_NUMBER) return;
+
+	FVector DirNormal = Dir / Dist;
+
+	// 2. 【解决旋转】：计算需要补充的旋转量
+	// 先把模型局部的 TrackingAxis 转换到当前的世界方向
+	FVector CurrentTrackingWorld = InComponent->GetComponentQuat().RotateVector(TrackingAxisLocal).GetSafeNormal();
+
+	// 计算从当前轴向旋转到目标方向的差值 Quat
+	FQuat DeltaRot = FQuat::FindBetweenNormals(CurrentTrackingWorld, DirNormal);
+
+	// 叠加到现有的旋转上
+	InComponent->SetWorldRotation(DeltaRot * InComponent->GetComponentQuat(), false, nullptr, ETeleportType::TeleportPhysics);
+
+	// 3. 【解决缩放】：沿指定轴向单向拉伸
+	float ScaleFactor = Dist / FMath::Max(0.1f, UnscaledLength);
+
+	// 假设模型基础缩放为 1，利用 GetAbs() 自动锁定到策划填写的那个轴上
+	FVector NewScale = FVector::OneVector + TrackingAxisLocal.GetAbs() * (ScaleFactor - 1.0f);
+
+	InComponent->SetWorldScale3D(NewScale);
+}
+
+void UVehicleWheelComponent::AttachComponentToWheelHub(
+	USceneComponent* InComponent,
+	bool bKeepWorldTransform)
+{
+	if (InComponent)
+	{
+		InComponent->AttachToComponent(
+			WheelHubComponent, 
+			bKeepWorldTransform ? FAttachmentTransformRules::KeepWorldTransform : FAttachmentTransformRules::KeepRelativeTransform
+		);
+	}
 }

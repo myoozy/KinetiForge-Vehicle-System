@@ -131,7 +131,7 @@ protected:
 	FVector3f CachedRelativeLocation;
 	FQuat4f CachedRelativeRotation;
 
-#if WITH_EDITOR
+#if WITH_EDITORONLY_DATA
 	float TimeSinceLastConfigSync = 0.f;
 #endif
 
@@ -170,13 +170,13 @@ public:
 	const FVehicleSuspensionKinematicsConfig& GetSuspensionKinematicsConfig() { return SuspensionKinematicsConfig; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	void SetSuspensionKinematicsConfig(FVehicleSuspensionKinematicsConfig& NewConfig);
+	void SetSuspensionKinematicsConfig(const FVehicleSuspensionKinematicsConfig& NewConfig);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	const FVehicleSuspensionSpringConfig& GetSuspensionSpringConfig() { return SuspensionSpringConfig; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	void SetSuspensionSpringConfig(FVehicleSuspensionSpringConfig& NewConfig);
+	void SetSuspensionSpringConfig(const FVehicleSuspensionSpringConfig& NewConfig);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	const FTransform3f& GetDesignedHubLocalTransform() { return DesignedHubLocalTransform; }
@@ -381,7 +381,13 @@ public:
 	FTransform GetChassisWorldTransform();
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	FVector GetHubRelativeLocation() { return FVector(Suspension.State.HubChassisLocation); }
+	FVector GetHubChassisLocation() { return FVector(Suspension.State.HubChassisLocation); }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	FVector GetAnimHubChassisLocation() { return FVector(AnimHubChassisLocation); }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel", meta = (DeprecatedFunction, DeprecationMessage = "Please use GetHubChassisTransform instead!"))
+	FTransform GetWheelRelativeTransform() { return FTransform(GetHubChassisTransform()); }
 
 	//debug draw
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
@@ -446,32 +452,66 @@ public:
 	/**
 	* Rotate the arm around the pivot of an wishbone.
 	* Returns the transform of the mesh relative to the chassis.
-	* 
-	* NOTE: The mesh MUST BE attached to CHASSIS (or any scene component with identical transform with chassis) directly.
-	* 
 	* @param bFollowUpperWishbone: If true, follow upper wishbone. If false, follow lower wishbone.
 	*/
-	UFUNCTION(BlueprintCallable, Category = "VehicleWheel", meta = (AutoCreateRefTerm = "InOffset"))
-	FTransform UpdateSuspensionArmAnim(
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	FTransform UpdateWishboneAnim(
 		USceneComponent* InArmMesh,
 		const bool bFollowUpperWishbone = false,
 		const FTransform InOffset = FTransform(),
 		const FVector InMeshForwardVector = FVector::ForwardVector,
 		const FVector InMeshRightVector = FVector::RightVector, 
 		const bool bScaleToMatchLength = false,
-		const float MeshDesignLength = 100.f);
+		const float MeshDesignLength = 100.f
+	);
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel", meta = (DeprecatedFunction, DeprecationMessage = "Please use UpdateWishboneAnim instead!"))
+	FTransform UpdateSuspensionArmAnim(
+		USceneComponent* InArmMesh,
+		const bool bFollowUpperWishbone = false,
+		const FTransform InOffset = FTransform(),
+		const FVector InMeshForwardVector = FVector::ForwardVector,
+		const FVector InMeshRightVector = FVector::RightVector,
+		const bool bScaleToMatchLength = false,
+		const float MeshDesignLength = 100.f
+	);
 
 	/**
-	* Rotate and scale the spring mesh around its own origin
+	* Rotate and scale the spring mesh around the top mmount.
+	* Returns the Transform of the strut relative to chassis.
 	*/
-	UFUNCTION(BlueprintCallable, Category = "VehicleWheel", meta = (AutoCreateRefTerm = "InOffset"))
-	FTransform UpdateSuspensionSpringAnim(
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void UpdateShockAbsorberAnim(
+		USceneComponent* InUpperStrutMesh,
+		USceneComponent* InLowerStrutMesh,
 		USceneComponent* InSpringMesh,
-		const float MeshDesignLength = 100.f,
-		const FVector InMeshUpVector = FVector::UpVector,
-		const FTransform InOffset = FTransform());
+		const float SpringDesignLength = 100.f,
+		const FVector InMeshUpVector = FVector(0.f, 0.f, 1.f)
+	);
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel", meta = (DeprecatedFunction, DeprecationMessage = "Please use UpdateShockAbsorberAnim instead!"))
+	void UpdateSuspensionSpringAnim(
+		USceneComponent* InUpperStrutMesh,
+		USceneComponent* InLowerStrutMesh,
+		USceneComponent* InSpringMesh,
+		const float SpringDesignLength = 100.f,
+		const FVector InMeshUpVector = FVector(0.f, 0.f, 1.f)
+	);
+	/**
+	* Orients a component towards a target location and scales it along the tracking axis to bridge the distance.
+	*/
+	UFUNCTION(BlueprintCallable, Category = "Math|ProceduralTransform")
+	void OrientAndScaleToLocation(
+		USceneComponent* InComponent,
+		const FVector& TargetWorldLocation,
+		const float UnscaledLength = 100.f,
+		const FVector& TrackingAxisLocal = FVector::UpVector
+	);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	void AttachComponentToKnuckle(USceneComponent* InComponent, FTransform InTransform);
+	void AttachComponentToWheelHub(
+		USceneComponent* InComponent, 
+		bool bKeepWorldTransform = false
+	);
 
 };

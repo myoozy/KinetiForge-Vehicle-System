@@ -104,13 +104,13 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	switch (KineConfig.SuspensionType)
 	{
 	default:
-	case ESuspensionType::StraightLine:
+	case EVehicleIndependentSuspensionType::StraightLine:
 		ComputeStraightSuspension(Ctx, WheelRadius, KineConfig, CachedLUTs);
 		break;
-	case ESuspensionType::Macpherson:
+	case EVehicleIndependentSuspensionType::Macpherson:
 		ComputeMacpherson(Ctx, WheelRadius, KineConfig, CachedLUTs);
 		break;
-	case ESuspensionType::DoubleWishbone:
+	case EVehicleIndependentSuspensionType::DoubleWishbone:
 		ComputeDoubleWishbone(Ctx, WheelRadius, KineConfig, CachedLUTs);
 		break;
 	}
@@ -310,13 +310,13 @@ FVehicleSuspensionSimState FVehicleSuspensionSolver::SolveKinematicsAtExtension(
 		switch (KineConfig.SuspensionType)
 		{
 		default:
-		case ESuspensionType::StraightLine:
+		case EVehicleIndependentSuspensionType::StraightLine:
 			ComputeStraightSuspension(Ctx, WheelRadius, KineConfig, RealLUTs);
 			break;
-		case ESuspensionType::Macpherson:
+		case EVehicleIndependentSuspensionType::Macpherson:
 			ComputeMacpherson(Ctx, WheelRadius, KineConfig, RealLUTs);
 			break;
-		case ESuspensionType::DoubleWishbone:
+		case EVehicleIndependentSuspensionType::DoubleWishbone:
 			ComputeDoubleWishbone(Ctx, WheelRadius, KineConfig, RealLUTs);
 			break;
 		}
@@ -399,23 +399,40 @@ void FVehicleSuspensionSolver::DrawSuspension(
 
 	if (bDrawSuspension)
 	{
-		FVector LowerPivotLocal = (FVector)KineConfig.LowerWishbone.RotationLocalAxis;
-		FVector UpperPivotLocal = (FVector)KineConfig.UpperWishbone.RotationLocalAxis;
-		FVector LowerPivotChassis = WheelComponent->GetRelativeTransform().TransformPositionNoScale(LowerPivotLocal);
-		FVector UpperPivotChassis = WheelComponent->GetRelativeTransform().TransformPositionNoScale(UpperPivotLocal);
+		FVector LowerPivotChassis, LowerAxisChassis, LowerBallJointChassis, 
+			UpperPivotChassis, UpperAxisChassis, UpperBallJointChassis;
+		WheelComponent->GetLowerWishboneState(LowerPivotChassis, LowerAxisChassis, LowerBallJointChassis);
+		WheelComponent->GetUpperWishboneState(UpperPivotChassis, UpperAxisChassis, UpperBallJointChassis);
+
 		FVector LowerPivotLocation = ChassisWorldTrans.TransformPositionNoScale(LowerPivotChassis);
 		FVector UpperPivotLocation = ChassisWorldTrans.TransformPositionNoScale(UpperPivotChassis);
-		FVector LowerBallJointLocation = ChassisWorldTrans.TransformPositionNoScale((FVector)State.LowerBallJointChassisLocation);
-		FVector UpperBallJointLocation = ChassisWorldTrans.TransformPositionNoScale((FVector)State.UpperBallJointChassisLocation);
+		FVector LowerAxisDirection = ChassisWorldTrans.TransformVectorNoScale(LowerAxisChassis);
+		FVector UpperAxisDirection = ChassisWorldTrans.TransformVectorNoScale(UpperAxisChassis);
+		FVector LowerBallJointLocation = ChassisWorldTrans.TransformPositionNoScale(LowerBallJointChassis);
+		FVector UpperBallJointLocation = ChassisWorldTrans.TransformPositionNoScale(UpperBallJointChassis);
 		FVector TopMountLocation = ChassisWorldTrans.TransformPositionNoScale((FVector)State.TopMountChassisLocation);
 
 		// draw arm
-		if (KineConfig.SuspensionType != ESuspensionType::StraightLine)
+		if (KineConfig.SuspensionType != EVehicleIndependentSuspensionType::StraightLine)
 		{
 			DrawDebugLine(TempWorld, LowerPivotLocation, LowerBallJointLocation, FColor(0, 0, 255), false, Duration, 0, Thickness);
-			if (KineConfig.SuspensionType == ESuspensionType::DoubleWishbone)
+			
+			// draw axis
+			float AxisLength = WheelComponent->GetSuspensionKinematicsConfig().LowerWishbone.Length * 0.5f;
+			DrawDebugLine(TempWorld,
+				LowerPivotLocation + LowerAxisDirection * AxisLength,
+				LowerPivotLocation - LowerAxisDirection * AxisLength,
+				FColor(0, 0, 255), false, Duration, 0, Thickness);
+			
+			if (KineConfig.SuspensionType == EVehicleIndependentSuspensionType::DoubleWishbone)
 			{
 				DrawDebugLine(TempWorld, UpperPivotLocation, UpperBallJointLocation, FColor(0, 0, 255), false, Duration, 0, Thickness);
+
+				AxisLength = WheelComponent->GetSuspensionKinematicsConfig().UpperWishbone.Length * 0.5f;
+				DrawDebugLine(TempWorld,
+					UpperPivotLocation + UpperAxisDirection * AxisLength,
+					UpperPivotLocation - UpperAxisDirection * AxisLength,
+					FColor(0, 0, 255), false, Duration, 0, Thickness);
 			}
 		}
 		
@@ -423,7 +440,7 @@ void FVehicleSuspensionSolver::DrawSuspension(
 		DrawDebugLine(TempWorld, TopMountLocation, LowerBallJointLocation, FColor(255, 255, 0), false, Duration, 0, Thickness);
 
 		// draw knuckle
-		if (KineConfig.SuspensionType == ESuspensionType::DoubleWishbone)
+		if (KineConfig.SuspensionType == EVehicleIndependentSuspensionType::DoubleWishbone)
 		{
 			DrawDebugLine(TempWorld, LowerBallJointLocation, UpperBallJointLocation, FColor(0, 255, 255), false, Duration, 0, Thickness);
 		}
@@ -451,26 +468,26 @@ void FVehicleSuspensionSolver::DrawSuspension(
 		float RayCastLength = (RayCastResult.TraceStart - RayCastResult.TraceEnd).Length();
 		switch (KineConfig.RayCastMode)
 		{
-		case ESuspensionRayCastMode::LineTrace:
+		case EVehicleSuspensionRayCastMode::LineTrace:
 			DrawDebugLine(TempWorld, RayCastResult.TraceStart, RayCastResult.TraceEnd, FColor(0, 255, 0), false, Duration, 0, Thickness);
 			if (RayCastResult.bBlockingHit)DrawDebugPoint(TempWorld, RayCastResult.Location, Thickness, FColor(255, 0, 0), false, Duration, Thickness);
 			break;
-		case ESuspensionRayCastMode::SphereTrace:
+		case EVehicleSuspensionRayCastMode::SphereTrace:
 			//draw capsule
 			DrawDebugCapsule(TempWorld, (RayCastResult.TraceStart + RayCastResult.TraceEnd) * 0.5,
 				RayCastLength * 0.5 + SphereTraceR, SphereTraceR, (FQuat)RayCastResult.TraceRot.GetNormalized(), FColor(0, 255, 0), false, Duration, 0, Thickness);
 			if (RayCastResult.bBlockingHit)DrawDebugSphere(TempWorld, RayCastResult.Location, SphereTraceR, 8, FColor(255, 0, 0), false, Duration, 0, Thickness);
 			break;
-		case ESuspensionRayCastMode::BoxTrace:
+		case EVehicleSuspensionRayCastMode::BoxTrace:
 			if (RayCastResult.bBlockingHit)DrawDebugBox(TempWorld, RayCastResult.Location, HalfSize, Orientation, FColor(0, 255, 0), false, Duration, 0, Thickness);
 			break;
-		case ESuspensionRayCastMode::SphereTraceNoRefinement:
+		case EVehicleSuspensionRayCastMode::SphereTraceNoRefinement:
 			DrawDebugCapsule(TempWorld, (RayCastResult.TraceStart + RayCastResult.TraceEnd) * 0.5,
 				RayCastLength * 0.5 + ValidR,
 				ValidR, (FQuat)RayCastResult.TraceRot.GetNormalized(), FColor(0, 255, 0), false, Duration, 0, Thickness);
 			if (RayCastResult.bBlockingHit)DrawDebugSphere(TempWorld, RayCastResult.Location, ValidR, 8, FColor(255, 0, 0), false, Duration, 0, Thickness);
 			break;
-		case ESuspensionRayCastMode::MultiSphereTrace:
+		case EVehicleSuspensionRayCastMode::MultiSphereTrace:
 			DrawDebugCapsule(TempWorld, (RayCastResult.TraceStart + RayCastResult.TraceEnd) * 0.5,
 				RayCastLength * 0.5 + TempR, TempR, (FQuat)RayCastResult.TraceRot.GetNormalized(), FColor(0, 255, 0), false, Duration, 0, Thickness);
 			if (RayCastResult.bBlockingHit)DrawDebugSphere(TempWorld, RayCastResult.Location, TempR, 8, FColor(255, 0, 0), false, Duration, 0, Thickness);
@@ -860,11 +877,11 @@ void FVehicleSuspensionSolver::ComputeRayCastLocation(FVehicleSuspensionSimConte
 	switch (Config.SuspensionType)
 	{
 	default:
-	case ESuspensionType::StraightLine:
+	case EVehicleIndependentSuspensionType::StraightLine:
 		ComputeStraightRayCastLocation(Ctx, Config);
 		break;
-	case ESuspensionType::Macpherson:
-	case ESuspensionType::DoubleWishbone:
+	case EVehicleIndependentSuspensionType::Macpherson:
+	case EVehicleIndependentSuspensionType::DoubleWishbone:
 		ComputeWishboneRayCastLocation(Ctx, Config);
 		break;
 	}
@@ -1127,23 +1144,23 @@ void FVehicleSuspensionSolver::SuspensionRayCast(
 	float EquivalentSphereTraceRadius = WheelRadius;
 	switch (Config.RayCastMode)
 	{
-	case ESuspensionRayCastMode::LineTrace:
+	case EVehicleSuspensionRayCastMode::LineTrace:
 		EquivalentSphereTraceRadius =
 			SuspensionLineTrace(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
 		break;
-	case ESuspensionRayCastMode::SphereTrace:
+	case EVehicleSuspensionRayCastMode::SphereTrace:
 		EquivalentSphereTraceRadius =
 			SuspensionSphereTrace(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
 		break;
-	case ESuspensionRayCastMode::BoxTrace:
+	case EVehicleSuspensionRayCastMode::BoxTrace:
 		EquivalentSphereTraceRadius =
 			SuspensionBoxTrace(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
 		break;
-	case ESuspensionRayCastMode::SphereTraceNoRefinement:
+	case EVehicleSuspensionRayCastMode::SphereTraceNoRefinement:
 		EquivalentSphereTraceRadius =
 			SuspensionSphereTraceNoRefinement(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
 		break;
-	case ESuspensionRayCastMode::MultiSphereTrace:
+	case EVehicleSuspensionRayCastMode::MultiSphereTrace:
 		EquivalentSphereTraceRadius =
 			SuspensionMultiSphereTrace(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
 		break;
@@ -1167,7 +1184,7 @@ void FVehicleSuspensionSolver::SolveLowerWishbone(
 	FVector3f LowerPivotLocationLocal = Config.LowerWishbone.MountLocalLocation;
 	LowerPivotLocationLocal.Y *= Ctx.WheelSideSign;
 	FTransform3f LowerWishboneLocalTransform = FTransform3f(Ctx.LowerWishboneLocalRotation, LowerPivotLocationLocal, FVector3f(1.f));
-	FTransform3f LowerWishboneToChassis = Ctx.WheelCompToChassisTransform * LowerWishboneLocalTransform;
+	FTransform3f LowerWishboneToChassis = LowerWishboneLocalTransform * Ctx.WheelCompToChassisTransform;
 
 	// get rid of hub offset
 	FVector3f RayCastStartLocal = LowerWishboneToChassis.InverseTransformPositionNoScale(Ctx.RayCastStartChassisLocation - Ctx.HubOffsetFromLowerJointChassis);
@@ -1569,7 +1586,7 @@ void FVehicleSuspensionSolver::ComputeAntiPitchRollGeometry(
 	FVehicleSuspensionSimContext& Ctx,
 	Chaos::FRigidBodyHandle_Internal* ChassisHandle,
 	const bool bOnlyFromLUTs,
-	const ESuspensionType SuspensionType,
+	const EVehicleIndependentSuspensionType SuspensionType,
 	const float WheelRadius,
 	const FVehicleSuspensionCachedLUTs& LUTs,
 	const FTransform& AsyncChassisWorldTransform,
@@ -1616,9 +1633,9 @@ void FVehicleSuspensionSolver::ComputeAntiPitchRollGeometry(
 		float TrueRCHeight = 0.f;
 		switch (SuspensionType)
 		{
-		case ESuspensionType::StraightLine:
+		case EVehicleIndependentSuspensionType::StraightLine:
 			break;
-		case ESuspensionType::Macpherson:
+		case EVehicleIndependentSuspensionType::Macpherson:
 			GeomSlope = CalculateMacPhersonAntiPitchScale(
 				Ctx.TopMountChassisLocation,
 				Ctx.StrutChassisDirection,
@@ -1641,7 +1658,7 @@ void FVehicleSuspensionSolver::ComputeAntiPitchRollGeometry(
 			TrueRCHeight = RollCenterHeight - GroundZ;
 			GeomAntiRoll = UVehicleUtilities::SafeDivide(TrueRCHeight, TrueCOMHeight);
 			break;
-		case ESuspensionType::DoubleWishbone:
+		case EVehicleIndependentSuspensionType::DoubleWishbone:
 			GeomSlope = CalculateDoubleWishboneAntiPitchScale(
 				Ctx.UpperPivotChassisLocation,
 				Ctx.UpperBallJointChassisLocation,

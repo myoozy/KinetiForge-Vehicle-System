@@ -306,6 +306,7 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 	// ...
 
+#if WITH_EDITOR
 	if (ConfigSyncInterval >= 0.f)
 	{
 		TimeSinceLastConfigSync += DeltaTime;
@@ -315,6 +316,11 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			UpdateCachedLUT();
 		}
 	}
+	else
+	{
+		UpdateCachedLUT();
+	}
+#endif
 	
 	if (bShouldTriggerTurboBlowOffCallback)
 	{
@@ -462,6 +468,28 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 
 	EngineAcceleration();
 	UpdateExhaust();
+}
+
+void UVehicleEngineComponent::SetNaturallyAspiratedEngineConfig(const FVehicleNaturallyAspiratedEngineConfig& NewConfig)
+{
+	NAConfig = NewConfig;
+	UpdateCachedLUT();
+}
+
+void UVehicleEngineComponent::SetTurboConfig(const FVehicleEngineTurboConfig& NewConfig)
+{
+	TurboConfig = NewConfig;
+}
+
+void UVehicleEngineComponent::SetExhaustConfig(const FVehicleEngineExhaustConfig& NewConfig)
+{
+	ExhaustConfig = NewConfig;
+}
+
+float UVehicleEngineComponent::GetMaxEngineTorque()
+{
+	const float TurboBoost = FMath::Max(0.f, TurboConfig.MaxBoostPressure * TurboConfig.BoostEfficiency);
+	return NAConfig.MaxEngineTorque * (1.f + TurboBoost);
 }
 
 void UVehicleEngineComponent::UpdateCachedLUT()

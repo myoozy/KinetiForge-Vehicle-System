@@ -331,7 +331,7 @@ private:
 		FVehicleSuspensionSimContext& Ctx,
 		Chaos::FRigidBodyHandle_Internal* ChassisHandle,
 		const bool bOnlyFromLUTs, // for solid axles
-		const ESuspensionType SuspensionType,
+		const EVehicleIndependentSuspensionType SuspensionType,
 		const float WheelRadius,
 		const FVehicleSuspensionCachedLUTs& LUTs,
 		const FTransform& AsyncChassisWorldTransform,
