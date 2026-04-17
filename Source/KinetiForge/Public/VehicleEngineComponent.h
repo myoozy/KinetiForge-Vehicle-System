@@ -95,7 +95,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	float GetEngineInertia() { return NAConfig.EngineInertia; }
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
+	const FVehicleEngineSimState& GetEngineState() { return State; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine", meta = (DeprecatedFunction, DeprecationMessage = "Please use GetEngineState instead!"))
 	void GetEngineMovement(FVehicleEngineSimState& Out) { Out = State; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")

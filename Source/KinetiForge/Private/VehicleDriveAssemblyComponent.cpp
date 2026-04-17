@@ -173,13 +173,13 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 			InputAssistConfig.bRevMatching)
 		{
 			const float Rate = 5.f;
-			InputValues.Smoothened.Throttle += UVehicleUtilities::SafeDivide(InDeltaTime * Rate, GearboxRaw->Config.ShiftDelay);
+			InputValues.Smoothened.Throttle += UVehicleUtilities::SafeDivide(InDeltaTime * Rate, GearboxRaw->GetConfig().ShiftDelay);
 			InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
 		}
 		//if not in gear and no rev-matching and not sequential
 		else if (!GearboxRaw->GetIsInGear() &&
 			InputAssistConfig.bAutomaticClutch && 
-			!GearboxRaw->Config.bSequentialGearbox)
+			!GearboxRaw->GetConfig().bSequentialGearbox)
 		{
 			InputValues.Smoothened.Throttle = 0.f;
 		}
@@ -241,7 +241,7 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 	else if (InputAssistConfig.bAutomaticClutch && GearboxRaw && EngineRaw)
 	{
 		//check if clutch has to be engaged
-		bool bNotInGearAndNotSequential = !(GearboxRaw->GetIsInGear() || GearboxRaw->Config.bSequentialGearbox);
+		bool bNotInGearAndNotSequential = !(GearboxRaw->GetIsInGear() || GearboxRaw->GetConfig().bSequentialGearbox);
 		float TargetClutchValue = (InputValues.Raw.Handbrake > 0.9 || bNotInGearAndNotSequential) ? 1.f : InputValues.Raw.Clutch;
 
 		//take engine rpm into account
@@ -253,7 +253,7 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 		FVector2f FinalInterpSpeed;
 		float Rate = 10.f;
 		FinalInterpSpeed.Y = InputConfig.Clutch.InterpSpeed.Y;
-		FinalInterpSpeed.X = bNotInGearAndNotSequential ? UVehicleUtilities::SafeDivide(Rate, GearboxRaw->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
+		FinalInterpSpeed.X = bNotInGearAndNotSequential ? UVehicleUtilities::SafeDivide(Rate, GearboxRaw->GetConfig().ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
 
 		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, TargetClutchValue, InDeltaTime, FinalInterpSpeed);
 	}
@@ -343,7 +343,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 		!EngineRaw ||
 		!GearboxRaw->GetIsInGear() ||
 		!AutoGearboxTimerOverFlowed ||
-		(!GearboxRaw->Config.NumberOfGears && !GearboxRaw->Config.NumOfReverseGears)
+		(!GearboxRaw->GetConfig().NumberOfGears && !GearboxRaw->GetConfig().NumOfReverseGears)
 		)return;
 
 	float LinearVelocityX = FMath::Abs(LocalLinearVelocity.X);
@@ -426,7 +426,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	int32 UnsignedCurrentGear = FMath::Abs(GearboxRaw->GetCurrentGear());
 	int32 StartGear = FMath::Max(UnsignedCurrentGear - AutoGearboxConfig.MaxDownShiftSteps, 1);
 	int32 EndGear = FMath::Min(UnsignedCurrentGear + AutoGearboxConfig.MaxUpShiftSteps,
-		FMath::Max(GearboxRaw->Config.NumberOfGears, GearboxRaw->Config.NumOfReverseGears));
+		FMath::Max(GearboxRaw->GetConfig().NumberOfGears, GearboxRaw->GetConfig().NumOfReverseGears));
 	
 	int32 TargetGear = StartGear;
 	float UnsignedSpeed = FMath::Abs(LocalLinearVelocity.X);
@@ -668,10 +668,7 @@ void UVehicleDriveAssemblyComponent::MultiCastShutVehicleEngine_Implementation()
 
 void UVehicleDriveAssemblyComponent::OnRep_ServerVehicleEngineOperationMode()
 {
-	FVehicleEngineSimState e;
-	Engine->GetEngineMovement(e);
-
-	if (e.OperationMode != ServerVehicleEngineOperationMode)
+	if (Engine->GetEngineState().OperationMode != ServerVehicleEngineOperationMode)
 	{
 		switch (ServerVehicleEngineOperationMode)
 		{
@@ -1271,11 +1268,11 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 		if (!Engine.IsValid())
 		{
-			if (EngineConfig)
+			if (EngineClass)
 			{
 				Engine = Cast<UVehicleEngineComponent>
 					(Owner->AddComponentByClass(
-						EngineConfig, false, FTransform(), false));
+						EngineClass, false, FTransform(), false));
 			}
 			else
 			{
@@ -1295,11 +1292,11 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 		if (!Clutch.IsValid())
 		{
-			if (ClutchConfig)
+			if (ClutchClass)
 			{
 				Clutch = Cast<UVehicleClutchComponent>
 					(Owner->AddComponentByClass(
-						ClutchConfig, false, FTransform(), false));
+						ClutchClass, false, FTransform(), false));
 			}
 			else
 			{
@@ -1319,11 +1316,11 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 		if (!Gearbox.IsValid())
 		{
-			if (GearboxConfig)
+			if (GearboxClass)
 			{
 				Gearbox = Cast<UVehicleGearboxComponent>
 					(Owner->AddComponentByClass(
-						GearboxConfig, false, FTransform(), false));
+						GearboxClass, false, FTransform(), false));
 			}
 			else
 			{
@@ -1343,18 +1340,20 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 		if (!TransferCase.IsValid())
 		{
-			if (TransferCaseConfig)
+			if (TransferCaseClass)
 			{
 				TransferCase = Cast<UVehicleDifferentialComponent>
 					(Owner->AddComponentByClass(
-						TransferCaseConfig, false, FTransform(), false));
+						TransferCaseClass, false, FTransform(), false));
 			}
 			else
 			{
 				TransferCase = Cast<UVehicleDifferentialComponent>
 					(Owner->AddComponentByClass(
 						UVehicleDifferentialComponent::StaticClass(), false, FTransform(), false));
-				TransferCase->Config.GearRatio = 1.f;
+				FVehicleLimitedSlipDifferentialConfig DefaultTransferCaseConfig
+					= FVehicleLimitedSlipDifferentialConfig(1.f, 0.f);
+				TransferCase->SetConfig(DefaultTransferCaseConfig);
 			}
 		}
 	}

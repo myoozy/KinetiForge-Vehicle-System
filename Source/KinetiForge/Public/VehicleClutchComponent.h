@@ -18,7 +18,8 @@ public:
 	// Sets default values for this component's properties
 	UVehicleClutchComponent();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleClutchConfig Config;
 
 protected:
@@ -45,6 +46,12 @@ public:
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleClutch")
+	const FVehicleClutchConfig& GetConfig() { return Config; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleClutch")
+	void SetConfig(const FVehicleClutchConfig& NewConfig) { Config = NewConfig; }
+
 	UFUNCTION(BlueprintCallable, Category = "VehicleClutch")
 	void UpdatePhysics(
 		const float InDeltaTime, 
@@ -60,6 +67,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleClutch")
 	float GetCluchTorque();
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleClutch")
+	const FVehicleClutchSimState& GetClutchState() { return State; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleClutch", meta = (DeprecatedFunction, DeprecationMessage = "Please use GetClutchState instead!"))
 	void GetClutchMovement(FVehicleClutchSimState& Out) { Out = State; }
 
 private:

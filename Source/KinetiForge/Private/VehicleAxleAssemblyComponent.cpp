@@ -134,7 +134,7 @@ void UVehicleAxleAssemblyComponent::UpdateSingleWheelAxle(
 {
 	UVehicleDifferentialComponent* Diff = Differential.Get();
 
-	float DiffGearRatio = Diff ? Diff->Config.GearRatio : 1.f;
+	float DiffGearRatio = Diff ? Diff->GetConfig().GearRatio : 1.f;
 
 	if (AxleConfig.TorqueWeight <= 0 && FMath::IsNearlyZero(State.P3MotorTorque))
 	{

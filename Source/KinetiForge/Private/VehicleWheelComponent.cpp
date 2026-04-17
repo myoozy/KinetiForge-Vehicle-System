@@ -1084,7 +1084,7 @@ void UVehicleWheelComponent::UpdateSuspensionSpringAnim(USceneComponent* InUpper
 	);
 }
 
-void UVehicleWheelComponent::OrientAndScaleToLocation(USceneComponent* InComponent, const FVector& TargetWorldLocation, const float UnscaledLength, const FVector& TrackingAxisLocal)
+void UVehicleWheelComponent::OrientAndScaleToLocation(USceneComponent* InComponent, const FVector& TargetWorldLocation, const float UnscaledLength, const FVector TrackingAxisLocal)
 {
 	if (!InComponent) return;
 

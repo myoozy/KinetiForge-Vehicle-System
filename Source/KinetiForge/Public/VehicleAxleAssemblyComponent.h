@@ -229,8 +229,11 @@ public:
 	void GetDifferential(UVehicleDifferentialComponent*& OutDifferential)
 	{ OutDifferential = Differential.Get(); }
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly", meta = (DeprecatedFunction, DeprecationMessage = "Please use GetAxleState instead!"))
 	void GetAxleMovement(FVehicleAxleSimState& Out) { Out = State; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
+	const FVehicleAxleSimState& GetAxleState() { return State; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void SetP3MotorTorque(float NewTorque) { State.P3MotorTorque = NewTorque; }

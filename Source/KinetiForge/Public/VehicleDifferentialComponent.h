@@ -21,7 +21,8 @@ public:
 	// Sets default values for this component's properties
 	UVehicleDifferentialComponent();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleLimitedSlipDifferentialConfig Config;
 
 protected:
@@ -31,6 +32,12 @@ protected:
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleDifferential")
+	const FVehicleLimitedSlipDifferentialConfig& GetConfig() { return Config; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
+	void SetConfig(const FVehicleLimitedSlipDifferentialConfig& NewConfig) { Config = NewConfig; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	void UpdateOutputShaft(

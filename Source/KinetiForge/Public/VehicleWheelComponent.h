@@ -356,11 +356,20 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetP4MotorTorque() { return Wheel.State.P4MotorTorque; }
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel", meta = (DeprecatedFunction, DeprecationMessage = "Please use GetWheelState instead!"))
 	void GetWheelMovement(FVehicleWheelSimState& Out) { Out = Wheel.State; }
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	FVehicleSuspensionSimState GetSuspensionMovement() { return Suspension.State; }
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleWheelSimState& GetWheelState() { return Wheel.State; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel", meta = (DeprecatedFunction, DeprecationMessage = "Please use GetSuspensionState instead!"))
+	const FVehicleSuspensionSimState& GetSuspensionMovement() { return Suspension.State; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleSuspensionSimState& GetSuspensionState() { return Suspension.State; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleSuspensionHitResult& GetSuspensionHitResult() { return Suspension.RayCastResult; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	UPrimitiveComponent* GetChassis() { return Chassis.Get(); }
@@ -440,7 +449,7 @@ public:
 	void UpdateWheelAnim(float DeltaTime = 0.f, float MaxAnimAngularVelocity = 60.f);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
-	void GetWheelHubComponent(USceneComponent*& OutHub) { OutHub = WheelHubComponent; }
+	USceneComponent* GetWheelHubComponent() { return WheelHubComponent; }
 
 	/**
 	* Compute and return the world location and world rotation of skid mark.
@@ -501,11 +510,11 @@ public:
 	* Orients a component towards a target location and scales it along the tracking axis to bridge the distance.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "Math|ProceduralTransform")
-	void OrientAndScaleToLocation(
+	static void OrientAndScaleToLocation(
 		USceneComponent* InComponent,
 		const FVector& TargetWorldLocation,
 		const float UnscaledLength = 100.f,
-		const FVector& TrackingAxisLocal = FVector::UpVector
+		const FVector TrackingAxisLocal = FVector::UpVector
 	);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")

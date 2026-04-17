@@ -49,28 +49,28 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfEnginesOfOwner", EditCondition = "bUseExistingEngineComponent", EditConditionHides))
     FName EngineComponentName = FName();
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingEngineComponent", EditConditionHides))
-    TSubclassOf<UVehicleEngineComponent> EngineConfig;
+    TSubclassOf<UVehicleEngineComponent> EngineClass;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bUseExistingClutchComponent = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfClutchesOfOwner", EditCondition = "bUseExistingClutchComponent", EditConditionHides))
     FName ClutchComponentName = FName();
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingClutchComponent", EditConditionHides))
-    TSubclassOf<UVehicleClutchComponent> ClutchConfig;
+    TSubclassOf<UVehicleClutchComponent> ClutchClass;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bUseExistingGearboxComponent = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfGearboxesOfOwner", EditCondition = "bUseExistingGearboxComponent", EditConditionHides))
     FName GearboxComponentName = FName();
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingGearboxComponent", EditConditionHides))
-    TSubclassOf<UVehicleGearboxComponent> GearboxConfig;
+    TSubclassOf<UVehicleGearboxComponent> GearboxClass;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bUseExistingTransferCaseComponent = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfTransferCasesOfOwner", EditCondition = "bUseExistingTransferCaseComponent", EditConditionHides))
     FName TransferCaseComponentName = FName();
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingTransferCaseComponent", EditConditionHides))
-    TSubclassOf<UVehicleDifferentialComponent> TransferCaseConfig;
+    TSubclassOf<UVehicleDifferentialComponent> TransferCaseClass;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     TArray<FVehicleAxleSpawnTemplate> AxleTemplates;
