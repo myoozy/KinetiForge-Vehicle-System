@@ -42,6 +42,8 @@ High-performance, modular vehicle physics system for Unreal Engine 5, fully impl
 
   * double click the .sln file to open IDE, then rebuild the project
 
+  * Copy [CoreRedirects] in (Name of this plugin folder)/Config/DefaultEngine.ini to (Name of your project)/Config/DefaultEngine.ini
+
   * open the unreal project
 
   * Enable Async Physics in Project Settings

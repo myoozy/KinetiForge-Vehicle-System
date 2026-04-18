@@ -102,18 +102,18 @@ struct KINETIFORGE_API FVehicleSuspensionKinematicsConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
 	float MinStrutLength = 40.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType != ESuspensionType::StraightLine"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType != ESuspensionType::StraightLine", EditConditionHides))
 	FVehicleSuspensionWishboneConfig LowerWishbone =
 		FVehicleSuspensionWishboneConfig(FVector3f(0.f, 0.f, -10.f), FVector3f(1.f, 0.f, 0.f), 50.f);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone", EditConditionHides))
 	FVehicleSuspensionWishboneConfig UpperWishbone =
 		FVehicleSuspensionWishboneConfig(FVector3f(0.f, 0.f, 10.f), FVector3f(1.f, 0.f, 0.f), 47.f);
 
 	/**
 	* Unit: cm
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone", EditConditionHides))
 	float KnuckleLength = 30.f;
 
 	/**
@@ -401,6 +401,9 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 	// [ԭ RayCastEndWorld]
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector RayCastEndWorldLocation = FVector(0.f);
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	FVector RayCastDirectionWorld = FVector(0.f);
 
 	// [ԭ StrutDirection]
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")

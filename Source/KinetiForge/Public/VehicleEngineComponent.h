@@ -86,13 +86,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	void SetExhaustConfig(const FVehicleEngineExhaustConfig& NewConfig);
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetMaxNaturallyAspiratedTorque() { return NAConfig.MaxEngineTorque; }
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetMaxEngineTorque();
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
 	float GetEngineInertia() { return NAConfig.EngineInertia; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
