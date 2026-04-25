@@ -287,14 +287,14 @@ struct FVehicleLUT_EvalResult
     GENERATED_BODY()
 
     UPROPERTY()
-    float Value;
+    float Value = 0.f;
 
     /*
     * This may not be the actual tangent, 
     * since the time axis of look up table is normalized
     */
     UPROPERTY()
-    float RightTangent;
+    float RightTangent = 0.f;
 };
 
 /*

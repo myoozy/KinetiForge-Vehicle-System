@@ -18,7 +18,7 @@ public:
 	FVehicleWheelSolver();
 	~FVehicleWheelSolver();
 
-	bool Initialize(UVehicleWheelComponent* WheelComponent);
+	void Initialize(const FVehicleTireConfig& TireConfig);
 	void UpdateWheel(
 		float InPhysicsDeltaTime,
 		float InDriveTorque,

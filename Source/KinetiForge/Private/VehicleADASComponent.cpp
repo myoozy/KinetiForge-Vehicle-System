@@ -128,10 +128,10 @@ void UVehicleADASComponent::UpdateCruiseControl(
 	FVector2D ShiftInterval)
 {
 	if (!IsValid(DriveAssembly))return;
-	UPrimitiveComponent* Carbody = DriveAssembly->GetCarbody();
-	if (!IsValid(Carbody))return;
+	UPrimitiveComponent* Chassis = DriveAssembly->GetChassis();
+	if (!IsValid(Chassis))return;
 
-	const float CarMass = Carbody->GetMass();
+	const float CarMass = Chassis->GetMass();
 	const float MaxDriveForce = GetVehicleMaxDriveForce(DriveAssembly);
 	const float MaxBrakeForce = GetVehicleMaxBrakeForce(DriveAssembly);
 
@@ -174,8 +174,7 @@ float UVehicleADASComponent::GetVehicleMaxDriveForce(UVehicleDriveAssemblyCompon
 	UVehicleDifferentialComponent* TransferCase = DriveAssembly->GetTransferCase();
 	if (!(IsValid(Engine) && IsValid(Gearbox) && IsValid(TransferCase)))return 0.f;
 
-	const float TurboBoost = FMath::Max(0.f, Engine->TurboConfig.MaxBoostPressure * Engine->TurboConfig.BoostEfficiency);
-	const float MaxEngineTorque = Engine->NAConfig.MaxEngineTorque * (1.f + TurboBoost);
+	const float MaxEngineTorque = Engine->GetMaxEngineTorque();
 	const float MaxDriveTorque = MaxEngineTorque * Gearbox->GetCurrentGearRatio();
 
 	const float cm2m = 0.01f;
@@ -199,9 +198,9 @@ float UVehicleADASComponent::GetVehicleMaxBrakeForce(UVehicleDriveAssemblyCompon
 				UVehicleWheelComponent* WheelR;
 				Axle->GetWheels(WheelL, WheelR);
 				const float cm2m = 0.01f;
-				const float AvgRadius = 0.5f * cm2m * (WheelL->WheelConfig.Radius + WheelR->WheelConfig.Radius);
+				const float AvgRadius = 0.5f * cm2m * (WheelL->GetWheelConfig().Radius + WheelR->GetWheelConfig().Radius);
 
-				const float MaxBrakeTorque = Axle->AxleConfig.MaxBrakeTorque * 2.f;
+				const float MaxBrakeTorque = Axle->GetAxleConfig().MaxBrakeTorque * 2.f;
 
 				BrakeForce += UVehicleUtilities::SafeDivide(MaxBrakeTorque, AvgRadius);
 			}
@@ -1496,8 +1495,8 @@ void UVehicleADASComponent::UpdateAutoPilotHumanLike(
 
 	if (!IsValid(DriveAssembly))return;
 
-	UPrimitiveComponent* Carbody = DriveAssembly->GetCarbody();
-	if (!IsValid(Carbody))return;
+	UPrimitiveComponent* Chassis = DriveAssembly->GetChassis();
+	if (!IsValid(Chassis))return;
 
 	// АќЮЇКа
 	FVector BoundExtent = FVector(0.f);

@@ -117,28 +117,23 @@ void UVehicleClutchComponent::UpdatePhysics(
 	const float InCurrentGearRatio,
 	const float GearboxReflectedInertia_HighestGear,
 	const float InEngineAngularVelocity,
-	const FVehicleNaturallyAspiratedEngineConfig& NAConfig,
-	const FVehicleEngineTurboConfig& TurboConfig)
+	const float InEngineInertia,
+	const float InEngineMaxTorque)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Clutch_UpdatePhysics);
 
 	float ClutchValue = FMath::Clamp(InClutchValue, 0.f, 1.f);
 
 	// get some data from engine
-	const float EngineAngularVelocity = InEngineAngularVelocity;
-	const float EngineInertia = NAConfig.EngineInertia;
+	const float& EngineAngularVelocity = InEngineAngularVelocity;
+	const float& EngineInertia = InEngineInertia;
+	const float& EngineMaxTorque = InEngineMaxTorque;
 
-	float EngineMaxTorque = NAConfig.MaxEngineTorque;
-	if (TurboConfig.MaxBoostPressure > SMALL_NUMBER)
-	{
-		// if turbo charged
-		EngineMaxTorque *= (1.f + TurboConfig.MaxBoostPressure * TurboConfig.BoostEfficiency);
-	}
 	State.MaxClutchTorque = EngineMaxTorque * Config.Capacity;
 
 	State.ClutchLock = FMath::Clamp((float)(InCurrentGearRatio != 0) - ClutchValue, 0.f, 1.f);
 	const float& GearboxAngularVelocity = InGearboxInputShaftVelocity;
-	const float& ClutchSlip = EngineAngularVelocity - GearboxAngularVelocity;
+	const float ClutchSlip = EngineAngularVelocity - GearboxAngularVelocity;
 
 	switch (Config.SimMode)
 	{

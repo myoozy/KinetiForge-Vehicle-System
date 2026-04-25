@@ -69,7 +69,7 @@ void UVehicleDriveAssemblyComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Chassis.Get());
 	if (WheelCoordinator.IsValid())WheelCoordinator->RegisterDriveAssembly(this);
 
 	VehicleAsyncTickComponent = UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(GetOwner());
@@ -87,7 +87,7 @@ void UVehicleDriveAssemblyComponent::OnRegister()
 {
 	Super::OnRegister();
 	//...
-	Carbody = UVehicleUtilities::FindPhysicalParent(this);
+	Chassis = UVehicleUtilities::FindPhysicalParent(this);
 	if (AActor* Owner = GetOwner())
 	{
 #if WITH_EDITOR
@@ -120,7 +120,7 @@ void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierar
 
 	if (VehicleAsyncTickComponent.IsValid())VehicleAsyncTickComponent->UnRegister(this);
 
-	Carbody = nullptr;
+	Chassis = nullptr;
 
 	InputConfig.Throttle.ResponseCurve = nullptr;
 	InputConfig.Brake.ResponseCurve = nullptr;
@@ -173,13 +173,13 @@ void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 			InputAssistConfig.bRevMatching)
 		{
 			const float Rate = 5.f;
-			InputValues.Smoothened.Throttle += UVehicleUtilities::SafeDivide(InDeltaTime * Rate, GearboxRaw->Config.ShiftDelay);
+			InputValues.Smoothened.Throttle += UVehicleUtilities::SafeDivide(InDeltaTime * Rate, GearboxRaw->GetConfig().ShiftDelay);
 			InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
 		}
 		//if not in gear and no rev-matching and not sequential
 		else if (!GearboxRaw->GetIsInGear() &&
 			InputAssistConfig.bAutomaticClutch && 
-			!GearboxRaw->Config.bSequentialGearbox)
+			!GearboxRaw->GetConfig().bSequentialGearbox)
 		{
 			InputValues.Smoothened.Throttle = 0.f;
 		}
@@ -241,7 +241,7 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 	else if (InputAssistConfig.bAutomaticClutch && GearboxRaw && EngineRaw)
 	{
 		//check if clutch has to be engaged
-		bool bNotInGearAndNotSequential = !(GearboxRaw->GetIsInGear() || GearboxRaw->Config.bSequentialGearbox);
+		bool bNotInGearAndNotSequential = !(GearboxRaw->GetIsInGear() || GearboxRaw->GetConfig().bSequentialGearbox);
 		float TargetClutchValue = (InputValues.Raw.Handbrake > 0.9 || bNotInGearAndNotSequential) ? 1.f : InputValues.Raw.Clutch;
 
 		//take engine rpm into account
@@ -253,7 +253,7 @@ void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 		FVector2f FinalInterpSpeed;
 		float Rate = 10.f;
 		FinalInterpSpeed.Y = InputConfig.Clutch.InterpSpeed.Y;
-		FinalInterpSpeed.X = bNotInGearAndNotSequential ? UVehicleUtilities::SafeDivide(Rate, GearboxRaw->Config.ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
+		FinalInterpSpeed.X = bNotInGearAndNotSequential ? UVehicleUtilities::SafeDivide(Rate, GearboxRaw->GetConfig().ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
 
 		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, TargetClutchValue, InDeltaTime, FinalInterpSpeed);
 	}
@@ -343,7 +343,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 		!EngineRaw ||
 		!GearboxRaw->GetIsInGear() ||
 		!AutoGearboxTimerOverFlowed ||
-		(!GearboxRaw->Config.NumberOfGears && !GearboxRaw->Config.NumOfReverseGears)
+		(!GearboxRaw->GetConfig().NumberOfGears && !GearboxRaw->GetConfig().NumOfReverseGears)
 		)return;
 
 	float LinearVelocityX = FMath::Abs(LocalLinearVelocity.X);
@@ -398,8 +398,8 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	GetAxles(AxlesRaw);
 	GearboxRaw->CalculateSpeedRangeOfEachGear(
 		TransferCase->CalculateEffectiveWheelRadius(AxlesRaw),
-		EngineRaw->NAConfig.EngineIdleRPM,
-		EngineRaw->NAConfig.EngineMaxRPM,
+		EngineRaw->GetIdleRPM(),
+		EngineRaw->GetMaxRPM(),
 		SpeedRangeOfEachGear);
 
 	//如果急刹车时，也希望尽早降档，发动机协助制动
@@ -420,13 +420,13 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	}
 
 	// should shift down if rpm is too low
-	float MinShiftUpFactor = UVehicleUtilities::SafeDivide(EngineRaw->NAConfig.EngineIdleRPM, EngineRaw->NAConfig.EngineMaxRPM);
+	float MinShiftUpFactor = UVehicleUtilities::SafeDivide(EngineRaw->GetIdleRPM(), EngineRaw->GetMaxRPM());
 	ShiftFactor = FMath::Max(MinShiftUpFactor, ShiftFactor);
 
 	int32 UnsignedCurrentGear = FMath::Abs(GearboxRaw->GetCurrentGear());
 	int32 StartGear = FMath::Max(UnsignedCurrentGear - AutoGearboxConfig.MaxDownShiftSteps, 1);
 	int32 EndGear = FMath::Min(UnsignedCurrentGear + AutoGearboxConfig.MaxUpShiftSteps,
-		FMath::Max(GearboxRaw->Config.NumberOfGears, GearboxRaw->Config.NumOfReverseGears));
+		FMath::Max(GearboxRaw->GetConfig().NumberOfGears, GearboxRaw->GetConfig().NumOfReverseGears));
 	
 	int32 TargetGear = StartGear;
 	float UnsignedSpeed = FMath::Abs(LocalLinearVelocity.X);
@@ -668,10 +668,7 @@ void UVehicleDriveAssemblyComponent::MultiCastShutVehicleEngine_Implementation()
 
 void UVehicleDriveAssemblyComponent::OnRep_ServerVehicleEngineOperationMode()
 {
-	FVehicleEngineSimState e;
-	Engine->GetEngineMovement(e);
-
-	if (e.OperationMode != ServerVehicleEngineOperationMode)
+	if (Engine->GetEngineState().OperationMode != ServerVehicleEngineOperationMode)
 	{
 		switch (ServerVehicleEngineOperationMode)
 		{
@@ -699,7 +696,7 @@ void UVehicleDriveAssemblyComponent::TickComponent(float DeltaTime, ELevelTick T
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	// ...
-	if (Engine.IsValid() && Gearbox.IsValid() && Carbody.IsValid())
+	if (Engine.IsValid() && Gearbox.IsValid() && Chassis.IsValid())
 	{
 		//update automatic gearbox
 		if (AutoGearboxConfig.bAutomaticGearbox)
@@ -786,8 +783,8 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		CurrentGearboxRatio, 
 		HighestGearReflectedInertia,
 		EngineRaw->GetAngularVelocity(),
-		EngineRaw->NAConfig,
-		EngineRaw->TurboConfig
+		EngineRaw->GetEngineInertia(),
+		EngineRaw->GetMaxEngineTorque()
 	);
 
 	// get velocity
@@ -814,10 +811,10 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 
 	// get acceleration
 	FVector3f LastAbsVelocity = AbsoluteWorldLinearVelocity;
-	AbsoluteWorldLinearVelocity = 0.01f * (FVector3f)UAsyncTickFunctions::ATP_GetLinearVelocity(Carbody.Get());
+	AbsoluteWorldLinearVelocity = 0.01f * (FVector3f)UAsyncTickFunctions::ATP_GetLinearVelocity(Chassis.Get());
 	WorldAcceleration = UVehicleUtilities::SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, PhysicsDeltaTime);
-	FQuat4f CarbodyRot = (FQuat4f)UAsyncTickFunctions::ATP_GetTransform(Carbody.Get()).GetRotation();
-	LocalAcceleration = CarbodyRot.UnrotateVector(WorldAcceleration);
+	FQuat4f ChassisRot = (FQuat4f)UAsyncTickFunctions::ATP_GetTransform(Chassis.Get()).GetRotation();
+	LocalAcceleration = ChassisRot.UnrotateVector(WorldAcceleration);
 }
 
 void UVehicleDriveAssemblyComponent::InputThrottle(float InValue, bool bDirectInput)
@@ -1107,7 +1104,7 @@ void UVehicleDriveAssemblyComponent:: GetVehicleBound(
 	bool bReturnWorldTransform
 )
 {
-	if (UPrimitiveComponent* Prim = Carbody.Get())
+	if (UPrimitiveComponent* Prim = Chassis.Get())
 	{
 		FBoxSphereBounds CollisionBounds = Prim->CalcBounds(FTransform::Identity);
 		OutExtent = CollisionBounds.BoxExtent; // HalfSize
@@ -1143,7 +1140,7 @@ float UVehicleDriveAssemblyComponent::GetSteeringValueFromAxles()
 	{
 		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
 		{
-			if (Axle->AxleSteeringConfig.bAffectedBySteering)
+			if (Axle->GetAxleSteeringConfig().bAffectedBySteering)
 			{
 				Num += 1.f;
 				Sum += Axle->GetSteeringValue();
@@ -1164,9 +1161,9 @@ float UVehicleDriveAssemblyComponent::GetMinTurningRadius()
 	{
 		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
 		{
-			if (Axle->AxleSteeringConfig.bAffectedBySteering)
+			if (Axle->GetAxleSteeringConfig().bAffectedBySteering)
 			{
-				float SteeringRad = FMath::DegreesToRadians(Axle->AxleSteeringConfig.MaxSteeringAngle);
+				float SteeringRad = FMath::DegreesToRadians(Axle->GetAxleSteeringConfig().MaxSteeringAngle);
 				float AxleWheelBase_m = Axle->GetWheelBase() * cm2m;
 				MaxCurvature += FMath::Abs(UVehicleUtilities::SafeDivide(FMath::Tan(SteeringRad), AxleWheelBase_m));
 			}
@@ -1183,9 +1180,9 @@ float UVehicleDriveAssemblyComponent::GetMaxSteeringAngle()
 	{
 		if (UVehicleAxleAssemblyComponent* Axle = AxlePtr.Get())
 		{
-			if (Axle->AxleSteeringConfig.bAffectedBySteering)
+			if (Axle->GetAxleSteeringConfig().bAffectedBySteering)
 			{
-				MaxSteeringAngle = FMath::Max(FMath::Abs(Axle->AxleSteeringConfig.MaxSteeringAngle), MaxSteeringAngle);
+				MaxSteeringAngle = FMath::Max(FMath::Abs(Axle->GetAxleSteeringConfig().MaxSteeringAngle), MaxSteeringAngle);
 			}
 		}
 	}
@@ -1271,11 +1268,11 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 		if (!Engine.IsValid())
 		{
-			if (EngineConfig)
+			if (EngineClass)
 			{
 				Engine = Cast<UVehicleEngineComponent>
 					(Owner->AddComponentByClass(
-						EngineConfig, false, FTransform(), false));
+						EngineClass, false, FTransform(), false));
 			}
 			else
 			{
@@ -1295,11 +1292,11 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 		if (!Clutch.IsValid())
 		{
-			if (ClutchConfig)
+			if (ClutchClass)
 			{
 				Clutch = Cast<UVehicleClutchComponent>
 					(Owner->AddComponentByClass(
-						ClutchConfig, false, FTransform(), false));
+						ClutchClass, false, FTransform(), false));
 			}
 			else
 			{
@@ -1319,11 +1316,11 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 		if (!Gearbox.IsValid())
 		{
-			if (GearboxConfig)
+			if (GearboxClass)
 			{
 				Gearbox = Cast<UVehicleGearboxComponent>
 					(Owner->AddComponentByClass(
-						GearboxConfig, false, FTransform(), false));
+						GearboxClass, false, FTransform(), false));
 			}
 			else
 			{
@@ -1343,18 +1340,20 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 		if (!TransferCase.IsValid())
 		{
-			if (TransferCaseConfig)
+			if (TransferCaseClass)
 			{
 				TransferCase = Cast<UVehicleDifferentialComponent>
 					(Owner->AddComponentByClass(
-						TransferCaseConfig, false, FTransform(), false));
+						TransferCaseClass, false, FTransform(), false));
 			}
 			else
 			{
 				TransferCase = Cast<UVehicleDifferentialComponent>
 					(Owner->AddComponentByClass(
 						UVehicleDifferentialComponent::StaticClass(), false, FTransform(), false));
-				TransferCase->Config.GearRatio = 1.f;
+				FVehicleLimitedSlipDifferentialConfig DefaultTransferCaseConfig
+					= FVehicleLimitedSlipDifferentialConfig(1.f, 0.f);
+				TransferCase->SetConfig(DefaultTransferCaseConfig);
 			}
 		}
 	}
@@ -1364,10 +1363,10 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 
 int UVehicleDriveAssemblyComponent::GenerateAxles()
 {
-	if (!Carbody.IsValid())
+	if (!Chassis.IsValid())
 	{
-		Carbody = UVehicleUtilities::FindPhysicalParent(this);
-		if (!Carbody.IsValid())
+		Chassis = UVehicleUtilities::FindPhysicalParent(this);
+		if (!Chassis.IsValid())
 		{
 			return -1;
 		}
@@ -1390,9 +1389,9 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 	GetName(ThisName);
 
 	int32 n = 0;
-	for (FAxleAssemblyConfig AxleConfig : AxleConfigs)
+	for (FVehicleAxleSpawnTemplate AxleTemplate : AxleTemplates)
 	{
-		if (!AxleConfig.bUseExistingComponent)
+		if (!AxleTemplate.bUseExistingComponent)
 		{
 			// generate new axle
 			FName Name = FName(ThisName + "_Axle_"+ FString::FromInt(n));
@@ -1403,13 +1402,13 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 				);
 			if (IsValid(Axle))
 			{
-				Axle->AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepRelativeTransform);
-				Axle->SetRelativeLocation(AxleConfig.AxlePosition);
+				Axle->AttachToComponent(Chassis.Get(), FAttachmentTransformRules::KeepRelativeTransform);
+				Axle->SetRelativeLocation(AxleTemplate.AxlePosition);
 			}
 
-			if (IsValid(AxleConfig.AxleConfig))
+			if (IsValid(AxleTemplate.AxleClass))
 			{
-				const UVehicleAxleAssemblyComponent* TemplateAxle = Cast<UVehicleAxleAssemblyComponent>(AxleConfig.AxleConfig->GetDefaultObject());
+				const UVehicleAxleAssemblyComponent* TemplateAxle = Cast<UVehicleAxleAssemblyComponent>(AxleTemplate.AxleClass->GetDefaultObject());
 				if (IsValid(Axle))
 				{
 					UVehicleAxleAssemblyComponent::CopyAxleConfig(TemplateAxle, Axle);
@@ -1418,14 +1417,7 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 			
 			if (IsValid(Axle))
 			{
-				//override these
-				if (AxleConfig.WheelOverride)Axle->WheelConfig = AxleConfig.WheelOverride;
-				if (AxleConfig.DifferentialOverride)Axle->DifferentialConfig = AxleConfig.DifferentialOverride;
-				if (AxleConfig.TrackWidthOverride >= 0)Axle->AxleConfig.TrackWidth = AxleConfig.TrackWidthOverride;
-				if (AxleConfig.bDiasbleSteering)Axle->AxleSteeringConfig.bAffectedBySteering = false;
-				if (AxleConfig.bDisableHandbrake)Axle->AxleConfig.bAffectedByHandbrake = false;
-				if (AxleConfig.bDisableTractionControl)Axle->TCSConfig.bTractionControlSystemEnabled = false;
-				if (AxleConfig.TorqueWeightOverride >= 0)Axle->AxleConfig.TorqueWeight = AxleConfig.TorqueWeightOverride;
+				Axle->ApplyInitialOverrides(AxleTemplate);
 
 				// initialize
 				Axle->InitializeWheels();
@@ -1441,13 +1433,13 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 int UVehicleDriveAssemblyComponent::SearchExistingAxles()
 {
 	int32 n = 0;
-	for (FAxleAssemblyConfig AxleConfig : AxleConfigs)
+	for (FVehicleAxleSpawnTemplate Template : AxleTemplates)
 	{
 		AActor* Owner = GetOwner();
-		if (AxleConfig.bUseExistingComponent && IsValid(Owner))
+		if (Template.bUseExistingComponent && IsValid(Owner))
 		{
 			UVehicleAxleAssemblyComponent* Axle =
-				UVehicleUtilities::GetComponentByName<UVehicleAxleAssemblyComponent>(Owner, AxleConfig.AxleComponentName);
+				UVehicleUtilities::GetComponentByName<UVehicleAxleAssemblyComponent>(Owner, Template.AxleComponentName);
 			if (IsValid(Axle))
 			{
 				Axles.AddUnique(Axle);

@@ -27,6 +27,7 @@ enum class EVehicleSolidAxleAnimPivot : uint8
 	Left,
 	Right
 };
+
 USTRUCT(BlueprintType, Blueprintable)
 struct FVehicleAxleConfig
 {
@@ -145,4 +146,67 @@ struct FVehicleAxleSimState
 	FVector3f CachedAxleCenter = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "TractionControl")
 	bool bTCSTriggered = false;
+};
+
+class UVehicleDifferentialComponent;
+class UVehicleAxleAssemblyComponent;
+class UVehicleWheelComponent;
+/**
+* This is config for each axle under the DriveAssemblyComponent.
+*/
+USTRUCT(BlueprintType)
+struct KINETIFORGE_API FVehicleAxleSpawnTemplate
+{
+	GENERATED_USTRUCT_BODY()
+
+	/**
+	* Decide whether to use an existing AxleAssemblyComponent.
+	*
+	* If using existing manually created AxleAssemblyComponent,
+	* the level sequence correctly recognize and record its animations.
+	*
+	* Otherwise the level sequence will not record it.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bUseExistingComponent = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (GetOptions = "GetNamesOfAxlesOfOwner", EditCondition = "bUseExistingComponent", EditConditionHides))
+	FName AxleComponentName = FName();
+
+	/**
+	* Axle will be automatically generated from this subclass.
+	* If the value is empty, a default axle will be generated.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
+	TSubclassOf<UVehicleAxleAssemblyComponent> AxleClass = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
+	FVector AxlePosition = FVector(0.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
+	bool bDiasbleSteering = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
+	bool bDisableHandbrake = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
+	bool bDisableTractionControl = false;
+
+	/*
+	* /if < 0, won't override
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
+	float TorqueWeightOverride = -1.0f;
+
+	/*
+	* /if < 0, won't override
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
+	float TrackWidthOverride = -1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
+	TSubclassOf<UVehicleWheelComponent> WheelClassOverride = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseExistingComponent", EditConditionHides))
+	TSubclassOf<UVehicleDifferentialComponent> DifferentialClassOverride = nullptr;
 };

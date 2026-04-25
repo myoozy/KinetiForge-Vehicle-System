@@ -20,7 +20,8 @@ public:
 	// Sets default values for this component's properties
 	UVehicleGearboxComponent();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleGearboxConfig Config;
 
 protected:
@@ -52,6 +53,12 @@ protected:
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleGearbox")
+	const FVehicleGearboxConfig& GetConfig() { return Config; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleGearbox")
+	void SetConfig(const FVehicleGearboxConfig& NewConfig) { Config = NewConfig; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleGearbox")
 	void ShiftToTargetGear(int32 InTargetGear, bool bImmediate = false);

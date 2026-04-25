@@ -27,9 +27,9 @@ public:
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FVehicleSuspensionSpringConfig& SpringConfig,
 		const FTransform& ComponentRelativeTransform,
-		const FTransform& AsyncCarbodyWorldTransform,
+		const FTransform& AsyncChassisWorldTransform,
 		const UWorld* CurrentWorld,
-		Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
+		Chaos::FRigidBodyHandle_Internal* ChassisHandle,
 		float InDeltaTime,
 		float InSteeringAngle,
 		float InSwaybarForce
@@ -39,49 +39,58 @@ public:
 		const float WheelWidth,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FTransform& ComponentRelativeTransform,
-		const FTransform& AsyncCarbodyWorldTransform,
+		const FTransform& AsyncChassisWorldTransform,
 		const UWorld* CurrentWorld,
 		float InSteeringAngle,
-		FVector& OutApporximatedWheelWorldPos,
+		FVector& OutHitWorldLocation,
 		FVehicleSuspensionSimContext& Ctx
 	);
 	void FinalizeUpdateSolidAxle(
 		const float WheelRadius,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FVehicleSuspensionSpringConfig& SpringConfig,
-		const FTransform& AsyncCarbodyWorldTransform,
-		Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
+		const FTransform& AsyncChassisWorldTransform,
+		Chaos::FRigidBodyHandle_Internal* ChassisHandle,
 		float InDeltaTime,
 		float InSwaybarForce,
 		FVehicleSuspensionSimContext& Ctx,
-		const FVector& InKnuckleWorldPos,
-		const FVector& InAxleWorldDirection,
+		const float InTrackWidth,
+		const FVector& InThisWheelHitWorldLocation,
+		const FVector& InOtherWheelHitWorldLocation,
 		const FVector3f& TireForce
 	);
-	void ApplySuspensionStateDirect(
-		const float WheelRadius,
-		const FVehicleSuspensionKinematicsConfig& KineConfig,
+	static void RoughlyInitializeState(
 		const FTransform& ComponentRelativeTransform,
-		const FTransform& AsyncCarbodyWorldTransform,
-		float InExtensionRatio = 1.f,
-		float InSteeringAngle = 0.f
+		const FVehicleSuspensionKinematicsConfig& KineConfig,
+		FVehicleSuspensionSimState& InState
 	);
-	void StartApplySolidAxleStateDirect(
+	static FVehicleSuspensionSimState SolveKinematicsAtExtension(
 		const float WheelRadius,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FTransform& ComponentRelativeTransform,
-		const FTransform& AsyncCarbodyWorldTransform,
+		float InExtensionRatio = 1.f,
+		float InSteeringAngle = 0.f,
+		int32 Iteration = 2,
+		const FVehicleSuspensionCachedLUTs* LUTs = nullptr,
+		const FVehicleSuspensionSimState* PrevState = nullptr
+	);
+	static void StartSolveSolidAxleAtExtension(
+		const FVehicleSuspensionSimState& PrevState,
+		const float WheelRadius,
+		const FVehicleSuspensionKinematicsConfig& KineConfig,
+		const FTransform& ComponentRelativeTransform,
 		float InExtensionRatio,
 		float InSteeringAngle,
-		FVector& OutApporximatedWheelWorldPos,
+		FVector& OutHitWorldLocation,
 		FVehicleSuspensionSimContext& Ctx
 	);
-	void FinalizeApplySolidAxleStateDirect(
+	static FVehicleSuspensionSimState FinalizeSolveSolidAxleAtExtension(
 		const float WheelRadius,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		FVehicleSuspensionSimContext& Ctx,
-		const FVector& InKnuckleWorldPos,
-		const FVector& InAxleWorldDirection
+		const float InTrackWidth,
+		const FVector& InThisWheelHitWorldLocation,
+		const FVector& InOtherWheelHitWorldLocation
 	);
 	void DrawSuspension(
 		UVehicleWheelComponent* WheelComponent,
@@ -97,20 +106,19 @@ public:
 		float Length = 1);
 
 	void UpdateCachedLUTs(
-		FVehicleSuspensionKinematicsConfig& KineConfig);
+		const FVehicleSuspensionKinematicsConfig& KineConfig);
 
-	bool CheckAndFixTriangle(
-		FVehicleSuspensionKinematicsConfig& KineConfig);//Abandoned
+	static void CacheLUTs(FVehicleSuspensionCachedLUTs& LUTs, const FVehicleSuspensionKinematicsConfig& KineConfig);
 
 	static float GetVector2dAngleDegrees(FVector2D V2D);//Abandoned
 	static FVector2D ComputeCircleIntersection(FVector2D A, float RA, float R0, bool ReturnX1 = true); //Abandoned //Compute the intersection of the circle on point A and the point on (0, 0)
 	static FQuat4f MakeQuatFrom2DVectors(const FVector2f From, const FVector2f To, const FVector3f Axis);
 
-	void CopyContextToState(const FVehicleSuspensionSimContext& Context);
+	static void CopyContextToState(const FVehicleSuspensionSimContext& Context, FVehicleSuspensionSimState& NewState);
+	static void CopyContextToHitResult(const FVehicleSuspensionSimContext& Context, FVehicleSuspensionHitResult& NewHitResult);
+	static void CopyStateToContext(const FVehicleSuspensionSimState& PrevState, FVehicleSuspensionSimContext& Context);
 
-	void CopyStateToContext(FVehicleSuspensionSimContext& Context);
-
-	static FVector3f GetCamberToeCasterFromLUTs(
+	static FRotator3f GetCamberToeCasterFromLUTs(
 		const FVehicleSuspensionCachedLUTs& LUTs,
 		float CompressionRatio,
 		float WheelYPosSign,
@@ -122,15 +130,38 @@ public:
 		const FRotator3f& InSpindleMountRotationConfig,
 		const float WheelPos);
 
-	static FORCEINLINE FVector3f SuspensionPlaneToZYPlane(FVector2f V2D, float WheelYPosSign)
+	static FORCEINLINE FVector3f Coord2DTo3D(FVector2f V2D, float WheelYPosSign)
 	{
 		return FVector3f(0, V2D.Y * WheelYPosSign, V2D.X);
 	}
 
-	static FORCEINLINE FVector2f ZYPlaneToSuspensionPlane(FVector3f V3D, float WheelYPosSign)
+	static FORCEINLINE FVector2f Coord3DTo2D(FVector3f V3D, float WheelYPosSign)
 	{
 		return FVector2f(V3D.Z, V3D.Y * WheelYPosSign);
 	}
+
+	static FVector3f GetTopMountChassisLocation(
+		const FVehicleSuspensionKinematicsConfig& Config,
+		const FTransform3f& WheelComponentRelativeTransform
+	);
+
+	static void GetLowerWishboneState(
+		const FVehicleSuspensionKinematicsConfig& Config,
+		const FVehicleSuspensionSimState& SuspensionState,
+		const FTransform3f& WheelComponentRelativeTransform,
+		FVector3f& OutPivotChassisLocation,
+		FVector3f& OutAxisChassisDirection,
+		FVector3f& OutBallJointChassisLocation
+	);
+
+	static void GetUpperWishboneState(
+		const FVehicleSuspensionKinematicsConfig& Config,
+		const FVehicleSuspensionSimState& SuspensionState,
+		const FTransform3f& WheelComponentRelativeTransform,
+		FVector3f& OutPivotChassisLocation,
+		FVector3f& OutAxisChassisDirection,
+		FVector3f& OutBallJointChassisLocation
+	);
 
 	FVehicleSuspensionSimState State;
 	FVehicleSuspensionCachedLUTs CachedLUTs;
@@ -144,7 +175,15 @@ private:
 	static void PrepareSimulation(
 		FVehicleSuspensionSimContext& Ctx,
 		const FTransform& ComponentRelativeTransform,
-		const FTransform& AsyncCarbodyWorldTransform,
+		const FTransform& AsyncChassisWorldTransform,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static void ComputeStraightRayCastLocation(
+		FVehicleSuspensionSimContext& Ctx,
+		const FVehicleSuspensionKinematicsConfig& Config
+	);
+	static void ComputeWishboneRayCastLocation(
+		FVehicleSuspensionSimContext& Ctx,
 		const FVehicleSuspensionKinematicsConfig& Config
 	);
 	static void ComputeRayCastLocation(
@@ -218,15 +257,31 @@ private:
 		const FCollisionResponseParams& ResponseParams,
 		const FVehicleSuspensionKinematicsConfig& Config
 	);
-	static void ComputeStraightSuspension(
+	static void SolveLowerWishbone(
 		FVehicleSuspensionSimContext& Ctx,
 		const float WheelRadius,
 		const FVehicleSuspensionKinematicsConfig& Config
 	);
+	static void ComputeStraightSuspension(
+		FVehicleSuspensionSimContext& Ctx,
+		const float WheelRadius,
+		const FVehicleSuspensionKinematicsConfig& Config,
+		const FVehicleSuspensionCachedLUTs& LUTs
+	);
 	static void ComputeMacpherson(
 		FVehicleSuspensionSimContext& Ctx,
 		const float WheelRadius,
-		const FVehicleSuspensionKinematicsConfig& Config
+		const FVehicleSuspensionKinematicsConfig& Config,
+		const FVehicleSuspensionCachedLUTs& LUTs
+	);
+	static bool SolveUpperWishbone(
+		const FVector3f& LowerBallPos,
+		float KnuckleLength,
+		const FVector3f& UpperPivotPos,
+		const FVector3f& UpperPivotAxis,
+		const FVector3f& StrutDir,
+		float UpperArmLength,
+		FVector3f& OutUpperBallPos
 	);
 	static void ComputeDoubleWishbone(
 		FVehicleSuspensionSimContext& Ctx,
@@ -238,19 +293,53 @@ private:
 		FVehicleSuspensionSimContext& Ctx,
 		const float WheelRadius,
 		const FVehicleSuspensionKinematicsConfig& Config,
-		const FVector& InKnuckleWorldPos,
-		const FVector& InAxleWorldDirection
+		const float TrackWidth,
+		const FVector ThisWheelHitWorldLocation,
+		const FVector OtherWheelHitWorldLocation
 	);
-	static void UpdateAntiPitchRollGeometry(
+	static bool Solve2DLineIntersection(
+		const FVector2f& P1, const FVector2f& P2,
+		const FVector2f& P3, const FVector2f& P4,
+		FVector2f& OutIntersection
+	);
+	static float SolveSwingArmSlope2D(
+		const FVector2f& LowerInner, const FVector2f& LowerOuter,
+		const FVector2f& UpperInner, const FVector2f& UpperOuter,
+		const FVector2f& ContactPatch
+	);
+	static float CalculateMacPhersonAntiPitchScale(
+		const FVector3f& TopMount, const FVector3f& StrutDir,
+		const FVector3f& LowerPivot, const FVector3f& LowerBallJoint, const FVector3f& LowerAxis,
+		const FVector3f& HubLocation, float WheelRadius
+	);
+	static float CalculateMacPhersonRollCenterHeight(
+		const FVector3f& TopMount, const FVector3f& StrutDir,
+		const FVector3f& LowerPivot, const FVector3f& LowerBallJoint, const FVector3f& LowerAxis,
+		const FVector3f& HubLocation, float WheelRadius
+	);
+	static float CalculateDoubleWishboneAntiPitchScale(
+		const FVector3f& UpperPivot, const FVector3f& UpperBallJoint, const FVector3f& UpperAxis,
+		const FVector3f& LowerPivot, const FVector3f& LowerBallJoint, const FVector3f& LowerAxis,
+		const FVector3f& HubLocation, float WheelRadius
+	);
+	static float CalculateDoubleWishboneRollCenterHeight(
+		const FVector3f& UpperPivot, const FVector3f& UpperBallJoint, const FVector3f& UpperAxis,
+		const FVector3f& LowerPivot, const FVector3f& LowerBallJoint, const FVector3f& LowerAxis,
+		const FVector3f& HubLocation, float WheelRadius
+	);
+	static void ComputeAntiPitchRollGeometry(
 		FVehicleSuspensionSimContext& Ctx,
-		Chaos::FRigidBodyHandle_Internal* CarbodyHandle,
+		Chaos::FRigidBodyHandle_Internal* ChassisHandle,
+		const bool bOnlyFromLUTs, // for solid axles
+		const EVehicleIndependentSuspensionType SuspensionType,
+		const float WheelRadius,
 		const FVehicleSuspensionCachedLUTs& LUTs,
-		const FTransform& AsyncCarbodyWorldTransform,
+		const FTransform& AsyncChassisWorldTransform,
 		const FVector3f& TireForce
 	);
 	static void UpdateImpactPointWorldVelocity(
 		FVehicleSuspensionSimContext& Ctx,
-		Chaos::FRigidBodyHandle_Internal* CarbodyHandle
+		Chaos::FRigidBodyHandle_Internal* ChassisHandle
 	);
 	static float GetCriticalDamping(
 		const float SpringStiffness,

@@ -39,69 +39,70 @@ public:
 	// Sets default values for this component's properties
 	UVehicleAxleAssemblyComponent();
 
+protected:
 	/**
 	* Select whether to use existing wheel components. 
 	* If not, wheels will be automatically created from the subclass.
 	* The dynamically created wheels can also be recorded in the level sequence.
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	bool bUseExistingWheelComponent = false;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfWheelsOfOwner", EditCondition = "bUseExistingWheelComponent", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup", meta = (GetOptions = "GetNamesOfWheelsOfOwner", EditCondition = "bUseExistingWheelComponent", EditConditionHides))
 	FName LeftWheelComponentName = FName();
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfWheelsOfOwner", EditCondition = "bUseExistingWheelComponent", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup", meta = (GetOptions = "GetNamesOfWheelsOfOwner", EditCondition = "bUseExistingWheelComponent", EditConditionHides))
 	FName RightWheelComponentName = FName();
 
 	/**
 	* Wheel components will be automatically generated from this subclass.
 	* If the value is empty, it will generate a default wheel.
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelComponent", EditConditionHides))
-	TSubclassOf<UVehicleWheelComponent> WheelConfig;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelComponent", EditConditionHides))
+	TSubclassOf<UVehicleWheelComponent> WheelClass;
 
 	/**
 	* The rotation of the wheel component.
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelComponent", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup", meta = (EditCondition = "!bUseExistingWheelComponent", EditConditionHides))
 	FRotator VehicleWheelComponentSetupRotation;
 
 	/**
 	* Select whether to use existing differential component.
 	* If not, a differential will be automatically created from the subclass.
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	bool bUseExistingDifferentialComponent = false;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (GetOptions = "GetNamesOfDifferentialsOfOwner", EditCondition = "bUseExistingDifferentialComponent", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup", meta = (GetOptions = "GetNamesOfDifferentialsOfOwner", EditCondition = "bUseExistingDifferentialComponent", EditConditionHides))
 	FName DifferentialComponentName = FName();
 
 	/**
 	* Differential will be generated from this subclass.
 	* If the value is empty, it will generate a default differential.
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (EditCondition = "!bUseExistingDifferentialComponent", EditConditionHides))
-	TSubclassOf<UVehicleDifferentialComponent> DifferentialConfig;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup", meta = (EditCondition = "!bUseExistingDifferentialComponent", EditConditionHides))
+	TSubclassOf<UVehicleDifferentialComponent> DifferentialClass;
 
 	/**
 	* Decides wether the axle has two wheels or only one wheel.
 	* This can not be modified in realtime.
 	* If you want to destroy a wheel in realtime, just call destroy component to destroy the wheel component.
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	EVehicleAxleLayout AxleLayout = EVehicleAxleLayout::TwoWheels;
 
 	/**
 	* To simulate solid axle, the axle needs two wheels.
 	* If there is only one wheel, it will switch to independent suspension.
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	EVehicleAxleSuspensionType SuspensionType = EVehicleAxleSuspensionType::Independent;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleAxleConfig AxleConfig;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleAxleSteeringConfig AxleSteeringConfig;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleSteeringAssistConfig SteeringAssistConfig;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleTCSConfig TCSConfig;
 
 protected:
@@ -111,7 +112,7 @@ protected:
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 
 	UPROPERTY()
-	TWeakObjectPtr<UPrimitiveComponent> Carbody;
+	TWeakObjectPtr<UPrimitiveComponent> Chassis;
 	UPROPERTY()
 	TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinator;
 	
@@ -163,7 +164,7 @@ protected:
 		UVehicleWheelComponent* WheelL, 
 		UVehicleWheelComponent* WheelR
 	);
-	float CalculateDynTrackWidth(
+	float GetTrackWidth(
 		UVehicleWheelComponent* WheelL,
 		UVehicleWheelComponent* WheelR
 	);
@@ -174,6 +175,39 @@ public:
 
 	static void CopyAxleConfig(const UVehicleAxleAssemblyComponent* Source, UVehicleAxleAssemblyComponent* Target, bool bReInitializeWheel = false);
 
+	void ApplyInitialOverrides(const FVehicleAxleSpawnTemplate& AxleTemplate);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
+	EVehicleAxleSuspensionType GetAxleSuspensionType() { return SuspensionType; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	void SetAxleSuspensionType(EVehicleAxleSuspensionType NewType) { SuspensionType = NewType; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
+	const FVehicleAxleConfig& GetAxleConfig() { return AxleConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	void SetAxleConfig(const FVehicleAxleConfig& NewConfig) { AxleConfig = NewConfig; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
+	const FVehicleAxleSteeringConfig& GetAxleSteeringConfig() { return AxleSteeringConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	void SetAxleSteeringConfig(const FVehicleAxleSteeringConfig& NewConfig) { AxleSteeringConfig = NewConfig; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
+	const FVehicleSteeringAssistConfig& GetSteeringAssistConfig() { return SteeringAssistConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	void SetSteeringAssistConfig(const FVehicleSteeringAssistConfig& NewConfig) { SteeringAssistConfig = NewConfig; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
+	const FVehicleTCSConfig& GetTCSConfig() { return TCSConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	void SetTCSConfig(const FVehicleTCSConfig& NewConfig) { TCSConfig = NewConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void InitializeWheels();
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
@@ -195,8 +229,11 @@ public:
 	void GetDifferential(UVehicleDifferentialComponent*& OutDifferential)
 	{ OutDifferential = Differential.Get(); }
 
-	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
+	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly", meta = (DeprecatedFunction, DeprecationMessage = "Please use GetAxleState instead!"))
 	void GetAxleMovement(FVehicleAxleSimState& Out) { Out = State; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
+	const FVehicleAxleSimState& GetAxleState() { return State; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void SetP3MotorTorque(float NewTorque) { State.P3MotorTorque = NewTorque; }
@@ -216,7 +253,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void UpdateSolidAxleAnim(
 		USceneComponent* InSolidAxleMesh,
-		EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint = EVehicleSolidAxleAnimPivot::Center
+		EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint,
+		const FVector InMeshRightVector = FVector(0.f, 1.f, 0.f),
+		const FVector InMeshForwardVector = FVector(1.f, 0.f, 0.f) 
 	);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
@@ -266,7 +305,7 @@ public:
 	UVehicleWheelCoordinatorComponent* GetWheelCoordinator() { return WheelCoordinator.Get(); }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	UPrimitiveComponent* GetCarbody() { return Carbody.Get(); }
+	UPrimitiveComponent* GetChassis() { return Chassis.Get(); }
 
 private:
 	bool GenerateWheels();

@@ -38,8 +38,8 @@ protected:
 	float TimeSinceLastRefresh = 0.f;
 
 	UPROPERTY()
-	TWeakObjectPtr<UPrimitiveComponent> Carbody;
-	FVector3f CarbodyCOM;		//local position
+	TWeakObjectPtr<UPrimitiveComponent> Chassis;
+	FVector3f ChassisCOM;		//local position
 
 
 	UPROPERTY()
@@ -62,7 +62,7 @@ public:
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	static UVehicleWheelCoordinatorComponent* FindWheelCoordinator(USceneComponent* InCarbody);
+	static UVehicleWheelCoordinatorComponent* FindWheelCoordinator(USceneComponent* InChassis);
 
 	void NotifyWheelMoved();
 	void RegisterWheel(UVehicleWheelComponent* NewWheel);

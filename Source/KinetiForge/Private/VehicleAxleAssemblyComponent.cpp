@@ -25,7 +25,7 @@ void UVehicleAxleAssemblyComponent::BeginPlay()
 	// ...
 	SearchExistingWheels();
 	GenerateDifferential();
-	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Carbody.Get());
+	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Chassis.Get());
 	if (WheelCoordinator.IsValid())WheelCoordinator->RegisterAxle(this);
 }
 
@@ -34,7 +34,7 @@ void UVehicleAxleAssemblyComponent::OnRegister()
 	Super::OnRegister();
 
 	//...
-	Carbody = UVehicleUtilities::FindPhysicalParent(this);
+	Chassis = UVehicleUtilities::FindPhysicalParent(this);
 	//PreviewWheelMesh();
 	InitializeWheels();
 }
@@ -59,7 +59,7 @@ void UVehicleAxleAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarc
 	}
 	RightWheel = nullptr;
 
-	Carbody = nullptr;
+	Chassis = nullptr;
 
 	//...
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
@@ -117,8 +117,8 @@ void UVehicleAxleAssemblyComponent::UpdateTwoWheelAxle(
 	Diff->UpdateInputShaft(
 		WheelL->GetAngularVelocity(),
 		WheelR->GetAngularVelocity(),
-		WheelL->WheelConfig.Inertia,
-		WheelR->WheelConfig.Inertia,
+		WheelL->GetWheelInertia(),
+		WheelR->GetWheelInertia(),
 		State.AxleAngularVelocity,
 		ReflectedInertiaOfWheels
 	);
@@ -134,7 +134,7 @@ void UVehicleAxleAssemblyComponent::UpdateSingleWheelAxle(
 {
 	UVehicleDifferentialComponent* Diff = Differential.Get();
 
-	float DiffGearRatio = Diff ? Diff->Config.GearRatio : 1.f;
+	float DiffGearRatio = Diff ? Diff->GetConfig().GearRatio : 1.f;
 
 	if (AxleConfig.TorqueWeight <= 0 && FMath::IsNearlyZero(State.P3MotorTorque))
 	{
@@ -208,7 +208,7 @@ void UVehicleAxleAssemblyComponent::UpdateSteering(
 		&& State.NumOfWheels == 2)
 	{
 		// approximate the track width
-		float DynTrackWidth = CalculateDynTrackWidth(WheelL, WheelR);
+		float TrackWidth = GetTrackWidth(WheelL, WheelR);
 
 		//clamp angle to avoid divided by 0
 		InsideWheelSteeringAngle = FMath::Clamp(InsideWheelSteeringAngle, -89, 89);
@@ -225,7 +225,7 @@ void UVehicleAxleAssemblyComponent::UpdateSteering(
 
 			float InsideSteerRad = FMath::DegreesToRadians(UnsignedInsideWheelAngle);
 			float TanInside = FMath::Tan(InsideSteerRad);
-			float TanOutSide = State.WheelBase / (State.WheelBase / TanInside + DynTrackWidth);
+			float TanOutSide = State.WheelBase / (State.WheelBase / TanInside + TrackWidth);
 			float OutsideSteerRad = FMath::Atan(TanOutSide);
 			UnsignedOutsideWheelAngle = FMath::RadiansToDegrees(OutsideSteerRad);
 			UnsignedOutsideWheelAngle = FMath::Lerp(UnsignedInsideWheelAngle, UnsignedOutsideWheelAngle, AxleSteeringConfig.AckermannRatio);
@@ -258,17 +258,17 @@ void UVehicleAxleAssemblyComponent::UpdateSteeringAssist(float InSteeringInput)
 		FVector2D LocalVelocity2D = FVector2D(State.LocalLinearVelocity.X, State.LocalLinearVelocity.Y);
 		FVector2D LocalVelocityDirection = LocalVelocity2D.GetSafeNormal();
 
-		//get the slip angle of the carbody
-		float CarbodySlipAngle = FMath::Asin(LocalVelocityDirection.Y);
-		CarbodySlipAngle = FMath::RadiansToDegrees(CarbodySlipAngle);
+		//get the slip angle of the Chassis
+		float ChassisSlipAngle = FMath::Asin(LocalVelocityDirection.Y);
+		ChassisSlipAngle = FMath::RadiansToDegrees(ChassisSlipAngle);
 
 		if (State.LocalLinearVelocity.X > SteeringAssistConfig.ActivationSpeed
-			&& FMath::Abs(CarbodySlipAngle) > SteeringAssistConfig.ActivationAngle)
+			&& FMath::Abs(ChassisSlipAngle) > SteeringAssistConfig.ActivationAngle)
 		{
 			TargetInput  = FMath::GetMappedRangeValueClamped(
 				FVector2D(-AxleSteeringConfig.MaxSteeringAngle, AxleSteeringConfig.MaxSteeringAngle), 
 				FVector2D(-1.f, 1.f), 
-				CarbodySlipAngle * SteeringAssistConfig.Level
+				ChassisSlipAngle * SteeringAssistConfig.Level
 			);
 		}
 
@@ -302,30 +302,30 @@ void UVehicleAxleAssemblyComponent::UpdateLinearVelocity(
 	UVehicleWheelComponent* WheelR)
 {
 	FVector3f LeftWorldVel, RightWorldVel = FVector3f(0.f);
-	FQuat4f CarbodyRot = FQuat4f();
+	FQuat4f ChassisRot = FQuat4f();
 	if (WheelL)
 	{
 		LeftWorldVel = WheelL->GetWorldLinearVelocity();
-		CarbodyRot = (FQuat4f)WheelL->GetCarbodyAsyncWorldTransform().GetRotation();
+		ChassisRot = (FQuat4f)WheelL->GetChassisAsyncWorldTransform().GetRotation();
 	}
 	if (WheelR)
 	{
 		RightWorldVel = WheelR->GetWorldLinearVelocity();
-		CarbodyRot = (FQuat4f)WheelR->GetCarbodyAsyncWorldTransform().GetRotation();
+		ChassisRot = (FQuat4f)WheelR->GetChassisAsyncWorldTransform().GetRotation();
 	}
 	State.WorldLinearVelocity = State.NumOfWheels ? 
 		FVector3f(LeftWorldVel + RightWorldVel) / State.NumOfWheels : FVector3f(0.f);
 
-	CarbodyRot.Normalize();
-	State.LocalLinearVelocity = CarbodyRot.UnrotateVector(State.WorldLinearVelocity);
+	ChassisRot.Normalize();
+	State.LocalLinearVelocity = ChassisRot.UnrotateVector(State.WorldLinearVelocity);
 }
 
 void UVehicleAxleAssemblyComponent::UpdateSwaybarForce(
 	UVehicleWheelComponent* WheelL, 
 	UVehicleWheelComponent* WheelR)
 {
-	float HeightL = WheelL->GetKnuckleRelativePosition().Z;
-	float HeightR = WheelR->GetKnuckleRelativePosition().Z;
+	float HeightL = WheelL->GetHubChassisLocation().Z;
+	float HeightR = WheelR->GetHubChassisLocation().Z;
 	State.SwaybarForce = AxleConfig.SwaybarStiffness * 0.5f * (HeightL - HeightR);
 }
 
@@ -385,28 +385,15 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics(
 	UVehicleWheelComponent* WheelL, 
 	UVehicleWheelComponent* WheelR)
 {
-	FVector LeftWorldPos = FVector(0.f);
-	FVector RightWorldPos = FVector(0.f);
+	FVector LeftHitLocation, RightHitLocation;
 
 	FVehicleSuspensionSimContext LeftCtx;
-	WheelL->StartUpdateSolidAxlePhysics(State.LeftWheelSteeringAngle, LeftWorldPos, LeftCtx);
+	WheelL->StartUpdateSolidAxlePhysics(State.LeftWheelSteeringAngle, LeftHitLocation, LeftCtx);
 
 	FVehicleSuspensionSimContext RightCtx;
-	WheelR->StartUpdateSolidAxlePhysics(State.RightWheelSteeringAngle, RightWorldPos, RightCtx);
+	WheelR->StartUpdateSolidAxlePhysics(State.RightWheelSteeringAngle, RightHitLocation, RightCtx);
 
-	// get the world direction of the axle
-	FVector AxleDirection = (RightWorldPos - LeftWorldPos).GetSafeNormal();
-
-	// the center of axle under world coordinate
-	FVector AxleWorldCenter = (RightWorldPos + LeftWorldPos) * 0.5f;
-
-	// the track width
-	float DynTrackWidth = FMath::Abs(WheelL->GetRelativeLocation().Y - WheelR->GetRelativeLocation().Y);
-	DynTrackWidth += WheelL->SuspensionKinematicsConfig.ArmLength + WheelR->SuspensionKinematicsConfig.ArmLength;
-
-	// get the position of the ball joint(connecting the wheel and the suspension) of each wheel
-	FVector LeftKnuckleWorldPos = AxleWorldCenter - AxleDirection * DynTrackWidth * 0.5f;
-	FVector RightKnuckleWorldPos = AxleWorldCenter + AxleDirection * DynTrackWidth * 0.5f;
+	float TrackWidth = GetTrackWidth();
 
 	WheelL->FinalizeUpdateSolidAxlePhysics(
 		State.PhysicsDeltaTime,
@@ -416,8 +403,10 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics(
 		State.SwaybarForce,
 		State.ReflectedInertiaOnWheel,
 		LeftCtx,
-		LeftKnuckleWorldPos,
-		AxleDirection);
+		TrackWidth,
+		LeftHitLocation,
+		RightHitLocation
+	);
 	WheelR->FinalizeUpdateSolidAxlePhysics(
 		State.PhysicsDeltaTime,
 		State.RightDriveTorque,
@@ -426,36 +415,25 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxlePhysics(
 		-State.SwaybarForce,
 		State.ReflectedInertiaOnWheel,
 		RightCtx,
-		RightKnuckleWorldPos,
-		AxleDirection);
+		TrackWidth,
+		RightHitLocation,
+		LeftHitLocation
+	);
 }
 
-float UVehicleAxleAssemblyComponent::CalculateDynTrackWidth(
+float UVehicleAxleAssemblyComponent::GetTrackWidth(
 	UVehicleWheelComponent* WheelL, 
 	UVehicleWheelComponent* WheelR)
 {
-	if (!(WheelL && WheelR))return 0.f;
+	if (!(WheelL && WheelR))return AxleConfig.TrackWidth;
 
-	float DynTrackWidth = FMath::Abs(WheelL->GetRelativeLocation().Y - WheelR->GetRelativeLocation().Y);
-	float ArmLengthL = WheelL->SuspensionKinematicsConfig.ArmLength;
-	float ArmLengthR = WheelR->SuspensionKinematicsConfig.ArmLength;
-	float OffsetL = WheelL->SuspensionKinematicsConfig.AxialHubOffset;
-	float OffsetR = WheelR->SuspensionKinematicsConfig.AxialHubOffset;
-	float ProjL = -WheelL->GetRelativeTransform().GetRotation().GetRightVector().Y;
-	float ProjR = +WheelR->GetRelativeTransform().GetRotation().GetRightVector().Y;
+	const FTransform& TransformL = WheelL->GetRelativeTransform();
+	const FTransform& TransformR = WheelR->GetRelativeTransform();
 
-	switch (SuspensionType)
-	{
-	default:
-	case EVehicleAxleSuspensionType::Independent:
-		DynTrackWidth += ProjL * (ArmLengthL + OffsetL) + ProjR * (ArmLengthR + OffsetR);
-		break;
-	case EVehicleAxleSuspensionType::Solid:
-		DynTrackWidth += (ArmLengthL + OffsetL) + (ArmLengthR + OffsetR);
-		break;
-	}
+	float WheelL_Y = FTransform3f(TransformL).TransformPositionNoScale(WheelL->GetDesignedHubLocalTransform().GetLocation()).Y;
+	float WheelR_Y = FTransform3f(TransformR).TransformPositionNoScale(WheelR->GetDesignedHubLocalTransform().GetLocation()).Y;
 
-	return DynTrackWidth;
+	return FMath::Abs(WheelR_Y - WheelL_Y);
 }
 
 // Called every frame
@@ -471,11 +449,11 @@ void UVehicleAxleAssemblyComponent::CopyAxleConfig(const UVehicleAxleAssemblyCom
 	Target->bUseExistingWheelComponent = Source->bUseExistingWheelComponent;
 	Target->LeftWheelComponentName = Source->LeftWheelComponentName;
 	Target->RightWheelComponentName = Source->RightWheelComponentName;
-	Target->WheelConfig = Source->WheelConfig;
+	Target->WheelClass = Source->WheelClass;
 	Target->VehicleWheelComponentSetupRotation = Source->VehicleWheelComponentSetupRotation;
 	Target->bUseExistingDifferentialComponent = Source->bUseExistingDifferentialComponent;
 	Target->DifferentialComponentName = Source->DifferentialComponentName;
-	Target->DifferentialConfig = Source->DifferentialConfig;
+	Target->DifferentialClass = Source->DifferentialClass;
 	Target->AxleLayout = Source->AxleLayout;
 	Target->AxleConfig = Source->AxleConfig;
 	Target->AxleSteeringConfig = Source->AxleSteeringConfig;
@@ -488,32 +466,47 @@ void UVehicleAxleAssemblyComponent::CopyAxleConfig(const UVehicleAxleAssemblyCom
 	}
 }
 
+void UVehicleAxleAssemblyComponent::ApplyInitialOverrides(const FVehicleAxleSpawnTemplate& AxleTemplate)
+{
+	//override these
+	if (AxleTemplate.WheelClassOverride)WheelClass = AxleTemplate.WheelClassOverride;
+	if (AxleTemplate.DifferentialClassOverride)DifferentialClass = AxleTemplate.DifferentialClassOverride;
+	if (AxleTemplate.TrackWidthOverride >= 0)AxleConfig.TrackWidth = AxleTemplate.TrackWidthOverride;
+	if (AxleTemplate.bDiasbleSteering)AxleSteeringConfig.bAffectedBySteering = false;
+	if (AxleTemplate.bDisableHandbrake)AxleConfig.bAffectedByHandbrake = false;
+	if (AxleTemplate.bDisableTractionControl)TCSConfig.bTractionControlSystemEnabled = false;
+	if (AxleTemplate.TorqueWeightOverride >= 0)AxleConfig.TorqueWeight = AxleTemplate.TorqueWeightOverride;
+}
+
 void UVehicleAxleAssemblyComponent::InitializeWheels()
 {
 	GenerateWheels();
 
-	if (IsValid(WheelConfig))
+	UVehicleWheelComponent* WheelL = LeftWheel.Get();
+	UVehicleWheelComponent* WheelR = RightWheel.Get();
+
+	if (IsValid(WheelClass))
 	{
-		const UVehicleWheelComponent* TemplateWheel = Cast<UVehicleWheelComponent>(WheelConfig->GetDefaultObject());
-		if (LeftWheel.IsValid())
+		const UVehicleWheelComponent* TemplateWheel = Cast<UVehicleWheelComponent>(WheelClass->GetDefaultObject());
+		if (WheelL)
 		{
-			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, LeftWheel.Get());
+			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, WheelL);
 		}
-		if (RightWheel.IsValid())
+		if (WheelR)
 		{
-			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, RightWheel.Get());
+			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, WheelR);
 		}
 	}
 
 	UpdateTrackWidth();
 
-	if (LeftWheel.IsValid())
+	if (WheelL)
 	{
-		LeftWheel->InitializeWheel();
+		WheelL->InitializeWheel();
 	}
-	if (RightWheel.IsValid())
+	if (WheelR)
 	{
-		RightWheel->InitializeWheel();
+		WheelR->InitializeWheel();
 	}
 }
 
@@ -529,9 +522,9 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_UpdatePhysics);
 
-	if (!Carbody.IsValid())
+	if (!Chassis.IsValid())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: No Valid Carbody"));
+		UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: No Valid Chassis"));
 		return;
 	}
 
@@ -595,39 +588,56 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 
 void UVehicleAxleAssemblyComponent::SetWheelPosition(float NewTrackWidth)
 {
+	NewTrackWidth = FMath::Abs(NewTrackWidth);
+
+	UPrimitiveComponent* ChassisPtr = Chassis.Get();
+	if (!ChassisPtr)Chassis = UVehicleUtilities::FindPhysicalParent(this);
+
+	// attach itself to chassis
+	if (ChassisPtr && GetAttachParent() != ChassisPtr)
+	{
+		AttachToComponent(ChassisPtr, FAttachmentTransformRules::KeepWorldTransform);
+	}
+
 	//set left wheel
 	if (LeftWheel.IsValid())
 	{
-		if (Carbody.IsValid() && LeftWheel->GetAttachParent() != Carbody)
+		if (Chassis.IsValid() && LeftWheel->GetAttachParent() != Chassis)
 		{
-			LeftWheel->AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepRelativeTransform);
+			LeftWheel->AttachToComponent(Chassis.Get(), FAttachmentTransformRules::KeepRelativeTransform);
 		}
 
-		FVehicleSuspensionKinematicsConfig& KineConfig = LeftWheel->SuspensionKinematicsConfig;
-		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, -VehicleWheelComponentSetupRotation.Yaw, VehicleWheelComponentSetupRotation.Roll));
-		FVector WheelCompPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y - FMath::Abs(NewTrackWidth * 0.5), GetRelativeLocation().Z);
-		FQuat WheelAlignmentRot = (FQuat)FVehicleSuspensionSolver::GetSpindleMountQuat(
-			KineConfig.SpindleMountRotation, -1.f);
-		WheelCompPos += WheelAlignmentRot.GetRightVector() * KineConfig.AxialHubOffset;
-		WheelCompPos += WheelCompRot.GetRightVector() * KineConfig.ArmLength;
+		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, -VehicleWheelComponentSetupRotation.Yaw, -VehicleWheelComponentSetupRotation.Roll)).GetNormalized();
+		FVector WheelCompPos = GetRelativeLocation();
+		WheelCompPos.Y += -1.f * NewTrackWidth * 0.5f;
+		LeftWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
+
+		LeftWheel->CacheDesignedHubTransform();
+
+		const FVector DesignedHubLocalLocation = (FVector)LeftWheel->GetDesignedHubLocalTransform().GetLocation(); // in the space of wheel component
+		const FVector HubOffset = WheelCompRot.RotateVector(DesignedHubLocalLocation);
+		WheelCompPos -= HubOffset;
 		LeftWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
 	}
 
 	//set right wheel
 	if (RightWheel.IsValid())
 	{
-		if (Carbody.IsValid() && RightWheel->GetAttachParent() != Carbody)
+		if (Chassis.IsValid() && RightWheel->GetAttachParent() != Chassis)
 		{
-			RightWheel->AttachToComponent(Carbody.Get(), FAttachmentTransformRules::KeepRelativeTransform);
+			RightWheel->AttachToComponent(Chassis.Get(), FAttachmentTransformRules::KeepRelativeTransform);
 		}
 
-		FVehicleSuspensionKinematicsConfig& KineConfig = RightWheel->SuspensionKinematicsConfig;
-		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, VehicleWheelComponentSetupRotation.Yaw, -VehicleWheelComponentSetupRotation.Roll));
-		FVector WheelCompPos = FVector(GetRelativeLocation().X, GetRelativeLocation().Y + FMath::Abs(NewTrackWidth * 0.5), GetRelativeLocation().Z);
-		FQuat WheelAlignmentRot = (FQuat)FVehicleSuspensionSolver::GetSpindleMountQuat(
-			KineConfig.SpindleMountRotation, 1.f);
-		WheelCompPos -= WheelAlignmentRot.GetRightVector() * KineConfig.AxialHubOffset;
-		WheelCompPos -= WheelCompRot.GetRightVector() * KineConfig.ArmLength;
+		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, VehicleWheelComponentSetupRotation.Yaw, VehicleWheelComponentSetupRotation.Roll)).GetNormalized();
+		FVector WheelCompPos = GetRelativeLocation();
+		WheelCompPos.Y += +1.f * NewTrackWidth * 0.5f;
+		RightWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
+
+		RightWheel->CacheDesignedHubTransform();
+
+		const FVector DesignedHubLocalLocation = (FVector)RightWheel->GetDesignedHubLocalTransform().GetLocation(); // in the space of wheel component
+		const FVector HubOffset = WheelCompRot.RotateVector(DesignedHubLocalLocation);
+		WheelCompPos -= HubOffset;
 		RightWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
 	}
 }
@@ -643,7 +653,7 @@ float UVehicleAxleAssemblyComponent::GetTrackWidth()
 	UVehicleWheelComponent* WheelR = RightWheel.Get();
 	if (WheelL && WheelR)
 	{
-		return CalculateDynTrackWidth(WheelL, WheelR);
+		return GetTrackWidth(WheelL, WheelR);
 	}
 	else
 	{
@@ -653,42 +663,54 @@ float UVehicleAxleAssemblyComponent::GetTrackWidth()
 
 void UVehicleAxleAssemblyComponent::UpdateSolidAxleAnim(
 	USceneComponent* InSolidAxleMesh, 
-	EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint)
+	EVehicleSolidAxleAnimPivot AxleMeshAnchorPoint, 
+	const FVector InMeshRightVector,
+	const FVector InMeshForwardVector)
 {
-	if (!LeftWheel.IsValid() || !RightWheel.IsValid())return;
+	if (!InSolidAxleMesh || !LeftWheel.IsValid() || !RightWheel.IsValid() || !Chassis.IsValid()) return;
 
-	// get the position of the ball joint(connecting the wheel and the suspension) of each wheel
-	FVector LeftKnuckleRelativePos = LeftWheel->GetKnuckleRelativePosition();
-	FVector RightKnuckleRelativePos = RightWheel->GetKnuckleRelativePosition();
+	FVector LeftLocal = (FVector)LeftWheel->GetAnimHubChassisLocation();
+	FVector RightLocal = (FVector)RightWheel->GetAnimHubChassisLocation();
 
-	FVector LeftKnuckleWorldPos = Carbody->GetComponentTransform().TransformPositionNoScale(LeftKnuckleRelativePos);
-	FVector RightKnuckleWorldPos = Carbody->GetComponentTransform().TransformPositionNoScale(RightKnuckleRelativePos);
+	FVector AxleDirLocal = (RightLocal - LeftLocal).GetSafeNormal();
+	FVector AxleCenterLocal = (RightLocal + LeftLocal) * 0.5f;
 
-	// get the world direction of the axle
-	FVector AxleDirection = (RightKnuckleWorldPos - LeftKnuckleWorldPos).GetSafeNormal();
+	// 第一步：把网格体的主轴（如 Y 轴）对齐到左右轮的连线上
+	FQuat Q1 = FQuat::FindBetweenNormals(InMeshRightVector, AxleDirLocal);
 
-	// the center of axle under world coordinate
-	FVector AxleCenter = (RightKnuckleWorldPos + LeftKnuckleWorldPos) * 0.5f;
+	// 此时，网格体可能沿着车轴发生了任意角度的“自转”。
+	// 我们把它的副轴（如 X 轴）经过第一步旋转后的实际朝向拿出来：
+	FVector RotatedForward = Q1.RotateVector(InMeshForwardVector);
 
-	// get the relative rotation of the axle
-	FVector DefaultRight = FVector(0.f, 1.f, 0.f);
-	FQuat AxleRotation = FQuat::FindBetweenNormals(DefaultRight, AxleDirection);
-	InSolidAxleMesh->SetWorldRotation(AxleRotation);
+	// 我们希望它的副轴尽量指向底盘的正前方 (1, 0, 0)。
+	// 把 (1, 0, 0) 投影到垂直于车轴的平面上，得到理想的朝向：
+	FVector TargetForward = FVector::VectorPlaneProject(FVector(1.f, 0.f, 0.f), AxleDirLocal).GetSafeNormal();
 
+	// 第二步：算出消除自转的纠正 Quat
+	FQuat Q2 = FQuat::FindBetweenNormals(RotatedForward, TargetForward);
+
+	// 合并两步旋转：先做 Q1，再做 Q2 (注意四元数乘法从右向左读)
+	FQuat FinalLocalRotation = Q2 * Q1;
+
+	FVector FinalLocalLocation = AxleCenterLocal;
 	switch (AxleMeshAnchorPoint)
 	{
-	case EVehicleSolidAxleAnimPivot::Center:
-		InSolidAxleMesh->SetWorldLocation(AxleCenter);
-		break;
 	case EVehicleSolidAxleAnimPivot::Left:
-		InSolidAxleMesh->SetWorldLocation(LeftKnuckleWorldPos);
+		FinalLocalLocation = LeftLocal;
 		break;
 	case EVehicleSolidAxleAnimPivot::Right:
-		InSolidAxleMesh->SetWorldLocation(RightKnuckleWorldPos);
+		FinalLocalLocation = RightLocal;
 		break;
+	case EVehicleSolidAxleAnimPivot::Center:
 	default:
 		break;
 	}
+
+	FTransform ChassisTransform = Chassis->GetComponentTransform();
+	FVector WorldLocation = ChassisTransform.TransformPositionNoScale(FinalLocalLocation);
+	FQuat WorldRotation = ChassisTransform.GetRotation() * FinalLocalRotation;
+
+	InSolidAxleMesh->SetWorldLocationAndRotation(WorldLocation, WorldRotation, false, nullptr, ETeleportType::TeleportPhysics);
 }
 
 void UVehicleAxleAssemblyComponent::ApplySolidAxleStateDirect(float InExtensionRatio, float SteeringAngle)
@@ -698,36 +720,29 @@ void UVehicleAxleAssemblyComponent::ApplySolidAxleStateDirect(float InExtensionR
 	const int32 Iteration = 2;
 	for (int32 i = 0; i < Iteration; i++)
 	{
-		FVector LeftWorldPos = FVector(0.f);
-		FVector RightWorldPos = FVector(0.f);
+		FVector LeftHitLocation, RightHitLocation;
 
 		FVehicleSuspensionSimContext LeftCtx;
-		LeftWheel->StartApplySolidAxleStateDirect(InExtensionRatio, SteeringAngle, LeftWorldPos, LeftCtx);
+		LeftWheel->StartApplySolidAxleStateDirect(InExtensionRatio, SteeringAngle, LeftHitLocation, LeftCtx);
 
 		FVehicleSuspensionSimContext RightCtx;
-		RightWheel->StartApplySolidAxleStateDirect(InExtensionRatio, SteeringAngle, RightWorldPos, RightCtx);
-
-		// get the world direction of the axle
-		FVector AxleDirection = (RightWorldPos - LeftWorldPos).GetSafeNormal();
-
-		// the center of axle under world coordinate
-		FVector AxleWorldCenter = (RightWorldPos + LeftWorldPos) * 0.5f;
+		RightWheel->StartApplySolidAxleStateDirect(InExtensionRatio, SteeringAngle, RightHitLocation, RightCtx);
 
 		// the track width
-		float DynTrackWidth = GetTrackWidth();
-
-		// get the position of the ball joint(connecting the wheel and the suspension) of each wheel
-		FVector LeftKnuckleWorldPos = AxleWorldCenter - AxleDirection * DynTrackWidth * 0.5f;
-		FVector RightKnuckleWorldPos = AxleWorldCenter + AxleDirection * DynTrackWidth * 0.5f;
+		float TrackWidth = GetTrackWidth();
 
 		LeftWheel->FinalizeApplySolidAxleStateDirect(
 			LeftCtx,
-			LeftKnuckleWorldPos,
-			AxleDirection);
+			TrackWidth,
+			LeftHitLocation,
+			RightHitLocation
+		);
 		RightWheel->FinalizeApplySolidAxleStateDirect(
 			RightCtx,
-			RightKnuckleWorldPos,
-			AxleDirection);
+			TrackWidth,
+			RightHitLocation,
+			LeftHitLocation
+		);
 	}
 }
 
@@ -757,44 +772,50 @@ void UVehicleAxleAssemblyComponent::GetLinearVelocity(FVector3f& OutLocalVelocit
 
 FVector3f UVehicleAxleAssemblyComponent::GetAxleCenter()
 {
-	int32 n = LeftWheel.IsValid() + RightWheel.IsValid();
+	UVehicleWheelComponent* WheelL = LeftWheel.Get();
+	UVehicleWheelComponent* WheelR = RightWheel.Get();
+
+	int32 n = (WheelL != nullptr) + (WheelR != nullptr);
 
 	if (n == 2)
 	{
-		return 0.5f * (FVector3f)(LeftWheel->GetRelativeLocation() + RightWheel->GetRelativeLocation());
+		return 0.5f * (FVector3f)(WheelL->GetRelativeLocation() + WheelR->GetRelativeLocation());
 	}
 	else
 	{
-		if (LeftWheel.IsValid())return (FVector3f)LeftWheel->GetRelativeLocation();
-		if (RightWheel.IsValid())return (FVector3f)RightWheel->GetRelativeLocation();
+		if (WheelL)return (FVector3f)WheelL->GetRelativeLocation();
+		if (WheelR)return (FVector3f)WheelR->GetRelativeLocation();
 		return FVector3f(0.f);
 	}
 }
 
 bool UVehicleAxleAssemblyComponent::GenerateWheels()
 {
+	UVehicleWheelComponent* WheelL = LeftWheel.Get();
+	UVehicleWheelComponent* WheelR = RightWheel.Get();
+
 	// if use Component
 	if (bUseExistingWheelComponent)
 	{
-		if (LeftWheel.IsValid())
+		if (WheelL)
 		{
-			LeftWheel->DestroyComponent();
+			WheelL->DestroyComponent();
 		}
-		if (RightWheel.IsValid())
+		if (WheelR)
 		{
-			RightWheel->DestroyComponent();
+			WheelR->DestroyComponent();
 		}
 		return false;
 	}
 
 	//Destroy unused wheels
-	if (LeftWheel.IsValid() && AxleLayout == EVehicleAxleLayout::SingleRight)
+	if (WheelL && AxleLayout == EVehicleAxleLayout::SingleRight)
 	{
-		LeftWheel->DestroyComponent();
+		WheelL->DestroyComponent();
 	}
-	if (RightWheel.IsValid() && AxleLayout == EVehicleAxleLayout::SingleLeft)
+	if (WheelR && AxleLayout == EVehicleAxleLayout::SingleLeft)
 	{
-		RightWheel->DestroyComponent();
+		WheelR->DestroyComponent();
 	}
 
 	UObject* Outer = nullptr;
@@ -806,7 +827,7 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 	GetName(ThisName);
 
 	//Generate left wheel
-	if (!LeftWheel.IsValid() && AxleLayout != EVehicleAxleLayout::SingleRight)
+	if (!WheelL && AxleLayout != EVehicleAxleLayout::SingleRight)
 	{
 		FName Name = FName(ThisName + "_Wheel_L");
 		LeftWheel = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
@@ -817,7 +838,7 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 	}
 
 	//Generate right wheel
-	if (!RightWheel.IsValid() && AxleLayout != EVehicleAxleLayout::SingleLeft)
+	if (!WheelR && AxleLayout != EVehicleAxleLayout::SingleLeft)
 	{
 		FName Name = FName(ThisName + "_Wheel_R");
 		RightWheel = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
@@ -829,6 +850,7 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 
 	switch (AxleLayout)
 	{
+	default:
 	case EVehicleAxleLayout::TwoWheels:
 		return LeftWheel.IsValid() && RightWheel.IsValid();
 		break;
@@ -837,9 +859,6 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 		break;
 	case EVehicleAxleLayout::SingleRight:
 		return RightWheel.IsValid();
-		break;
-	default:
-		return LeftWheel.IsValid() && RightWheel.IsValid();
 		break;
 	}
 }
@@ -892,10 +911,10 @@ bool UVehicleAxleAssemblyComponent::GenerateDifferential()
 		if (!bExistingDiffFound)
 		{
 			//UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: GeneratingDifferential"));
-			if (DifferentialConfig)
+			if (DifferentialClass)
 			{
 				Differential = Cast<UVehicleDifferentialComponent>
-					(Owner->AddComponentByClass(DifferentialConfig, false, FTransform(), false));
+					(Owner->AddComponentByClass(DifferentialClass, false, FTransform(), false));
 			}
 			else
 			{

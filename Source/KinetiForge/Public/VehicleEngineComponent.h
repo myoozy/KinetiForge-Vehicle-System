@@ -21,18 +21,23 @@ public:
 	// Sets default values for this component's properties
 	UVehicleEngineComponent();
 
+#if WITH_EDITORONLY_DATA
 	/**
 	* Determines how often the look up tables will be synced.
 	* Set to 0 to sync in every frame.
 	* Set to <0 to disable sync (for performance).
+	* Only works in editor
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
 	float ConfigSyncInterval = -1.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+#endif
+
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleNaturallyAspiratedEngineConfig NAConfig;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleEngineTurboConfig TurboConfig;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleEngineExhaustConfig ExhaustConfig;
 
 protected:
@@ -45,7 +50,10 @@ protected:
 	TArray<FOnBackfiringDelegate> BackfiringCallbacks;
 	FVehicleEngineSimState State;
 	FVehicleLUT<32> CachedTorqueLUT = FVehicleLUT<32>(1.f);
+
+#if WITH_EDITORONLY_DATA
 	float TimeSinceLastConfigSync = 0.f;
+#endif
 
 	void EngineAcceleration();
 	void UpdateExhaust();
@@ -57,7 +65,40 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	void UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque, bool bDisableSpark = false);
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
+	const FVehicleNaturallyAspiratedEngineConfig& GetNaturallyAspiratedEngineConfig() { return NAConfig; }
+
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
+	void SetNaturallyAspiratedEngineConfig(const FVehicleNaturallyAspiratedEngineConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
+	void SetNAConfig(const FVehicleNaturallyAspiratedEngineConfig& NewConfig) { SetNaturallyAspiratedEngineConfig(NewConfig); }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
+	const FVehicleEngineTurboConfig& GetTurboConfig() { return TurboConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
+	void SetTurboConfig(const FVehicleEngineTurboConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
+	const FVehicleEngineExhaustConfig& GetExhaustConfig() { return ExhaustConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
+	void SetExhaustConfig(const FVehicleEngineExhaustConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
+	float GetMaxNaturallyAspiratedTorque() { return NAConfig.MaxEngineTorque; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
+	float GetMaxEngineTorque();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
+	float GetEngineInertia() { return NAConfig.EngineInertia; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleEngine")
+	const FVehicleEngineSimState& GetEngineState() { return State; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleEngine", meta = (DeprecatedFunction, DeprecationMessage = "Please use GetEngineState instead!"))
 	void GetEngineMovement(FVehicleEngineSimState& Out) { Out = State; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")

@@ -79,9 +79,9 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	{
 		if (!IsValid(Axle))continue;
 
-		bool IsDriveAxle = Axle->AxleConfig.TorqueWeight > 0;
+		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > 0;
 		NumOfDriveAxles += IsDriveAxle;
-		SumTorqueWeight += IsDriveAxle * FMath::Abs(Axle->AxleConfig.TorqueWeight);
+		SumTorqueWeight += IsDriveAxle * FMath::Abs(Axle->GetAxleConfig().TorqueWeight);
 		SumAngVel += IsDriveAxle * Axle->GetAngularVelocity();
 	}
 	float FloatNumOfDriveAxles = (float)NumOfDriveAxles;
@@ -101,13 +101,13 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 		float AxleInertia = 0.f;
 		float AxleAngVel = 0.f;
 
-		bool IsDriveAxle = Axle->AxleConfig.TorqueWeight > 0;
+		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > 0;
 		if (IsDriveAxle)
 		{
 			//central diff
 			float AngVelDifference = AverageAxleAngularVelocity - Axle->GetAngularVelocity();
 			float TorqueBias = UVehicleUtilities::SafeDivide(AngVelDifference * Axle->GetTotalAxleInertia() * Config.LockRatio, InDeltaTime);
-			float NormTorqueWeight = UVehicleUtilities::SafeDivide(Axle->AxleConfig.TorqueWeight, SumTorqueWeight);
+			float NormTorqueWeight = UVehicleUtilities::SafeDivide(Axle->GetAxleConfig().TorqueWeight, SumTorqueWeight);
 			float AxleDriveTorque = DriveTorque * NormTorqueWeight + TorqueBias;
 
 			//burnout assist
@@ -157,7 +157,7 @@ float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(
 	{
 		if (!IsValid(Axle))continue;
 
-		if (Axle->AxleConfig.TorqueWeight > 0)
+		if (Axle->GetAxleConfig().TorqueWeight > 0)
 		{
 			UVehicleWheelComponent* LeftWheel;
 			UVehicleWheelComponent* RightWheel;
@@ -170,12 +170,12 @@ float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(
 			int32 n = 0;
 			if (IsValid(LeftWheel))
 			{
-				SumR += LeftWheel->WheelConfig.Radius;
+				SumR += LeftWheel->GetWheelConfig().Radius;
 				n++;
 			}
 			if (IsValid(RightWheel))
 			{
-				SumR += RightWheel->WheelConfig.Radius;
+				SumR += RightWheel->GetWheelConfig().Radius;
 				n++;
 			}
 			float avgR = UVehicleUtilities::SafeDivide(SumR, (float)n);
