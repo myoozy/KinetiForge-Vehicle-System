@@ -1812,14 +1812,18 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	float MotionRatio = LUTs.MotionRatioCurve.FastEval(CompressionRatio).Value;
 
 	const float EquivSpringStiffness = SpringConfig.SpringStiffness * MotionRatio * MotionRatio;
-	float SpringForce = EquivSpringStiffness * (KineConfig.Stroke - Ctx.SuspensionCurrentLength);
+	const float MaxSpring = Ctx.SprungMass * DeltaTimeInv * DeltaTimeInv;
+	const float ActiveSpring = FMath::Min(MaxSpring, EquivSpringStiffness);
+	float SpringForce = ActiveSpring * (KineConfig.Stroke - Ctx.SuspensionCurrentLength);
 
 	float DamperStiffness = (Ctx.SuspensionCurrentLength > LastLength) ?
 		SpringConfig.ReboundDamping : SpringConfig.CompressionDamping;
 	if (SpringConfig.bUseDampingRatio)DamperStiffness *= GetCriticalDamping(SpringConfig.SpringStiffness, Ctx.SprungMass);
 	
-	float EquivDamperStiffness = DamperStiffness * MotionRatio * MotionRatio;
-	float DampingForce = EquivDamperStiffness * (LastLength - Ctx.SuspensionCurrentLength) * DeltaTimeInv;
+	const float EquivDamperStiffness = DamperStiffness * MotionRatio * MotionRatio;
+	const float MaxDamping = Ctx.SprungMass * DeltaTimeInv; // damper required to flip the sign of velocity in one frame
+	const float ActiveDamping = FMath::Min(MaxDamping, EquivDamperStiffness);
+	float DampingForce = ActiveDamping * (LastLength - Ctx.SuspensionCurrentLength) * DeltaTimeInv;
 
 	Ctx.SuspensionForce = SpringForce + DampingForce;
 
@@ -1842,8 +1846,8 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 		// the spring system in another direction (normal of impact surface)
 		FVector WheelCenterToImpactPoint = Ctx.HubWorldLocation - Ctx.HitResult.ImpactPoint;
 		float DistanceToSurface = FVector::DotProduct(Ctx.HitResult.Normal, WheelCenterToImpactPoint);
-		SpringForce = (WheelRadius - DistanceToSurface) * EquivSpringStiffness;
-		DampingForce = -VelocityAlongNormal * EquivDamperStiffness;
+		SpringForce = (WheelRadius - DistanceToSurface) * ActiveSpring;
+		DampingForce = -VelocityAlongNormal * ActiveDamping;
 		ForceToHoldCar += SpringForce + DampingForce;
 	}
 	Ctx.ForceAlongImpactNormal += SuspensionForceProj + ForceToHoldCar;
