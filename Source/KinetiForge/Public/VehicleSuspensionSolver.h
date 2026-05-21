@@ -337,13 +337,29 @@ private:
 		const FTransform& AsyncChassisWorldTransform,
 		const FVector3f& TireForce
 	);
-	static void UpdateImpactPointWorldVelocity(
+	static void FetchChassisPhysicsState(
+		Chaos::FRigidBodyHandle_Internal* ChassisHandle,
+		FVehicleChassisSimState& OutState
+	);
+	static void CalculateImpactPointWorldVelocity(
 		FVehicleSuspensionSimContext& Ctx,
-		Chaos::FRigidBodyHandle_Internal* ChassisHandle
+		const FVehicleChassisSimState& ChassisState
+	);
+	static Chaos::FVec3 CalculatePointEffectiveMass3D(
+		const Chaos::FReal TotalMass,
+		const Chaos::FMatrix33& WorldInvInertiaTensor,
+		const Chaos::FVec3& CoM_WorldLocation,
+		const Chaos::FVec3& Contact_WorldLocation,
+		Chaos::FVec3 ContactNormal,
+		Chaos::FVec3 WheelRight
+	);
+	static void CalculateEffectiveSprungMass(
+		FVehicleSuspensionSimContext& Ctx,
+		const FVehicleChassisSimState& ChassisState
 	);
 	static float GetCriticalDamping(
 		const float SpringStiffness,
-		const float SprungMass
+		const float StaticSprungMass
 	);
 	static void ComputeSuspensionForce(
 		FVehicleSuspensionSimContext& Ctx,

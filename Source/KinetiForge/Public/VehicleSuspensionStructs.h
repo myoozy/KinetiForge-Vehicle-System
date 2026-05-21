@@ -237,6 +237,22 @@ struct KINETIFORGE_API FVehicleSuspensionHitResult
 	FQuat4f TraceRot = FQuat4f(0.f);
 };
 
+USTRUCT()
+struct KINETIFORGE_API FVehicleChassisSimState
+{
+	GENERATED_BODY()
+
+	float Mass = 1.f;
+	Chaos::FVec3 CoMWorldLocation = Chaos::FVec3(0.f);
+	Chaos::FVec3 LinearVelocity = Chaos::FVec3(0.f);
+	Chaos::FVec3 AngularVelocity = Chaos::FVec3(0.f);
+	Chaos::FMatrix33 WorldInvInertiaTensor = Chaos::FMatrix33(
+		1.f, 0.f, 0.f,
+		0.f, 1.f, 0.f,
+		0.f, 0.f, 1.f
+	);
+};
+
 USTRUCT(BlueprintType, meta = (ToolTip = "suspension state in simulation"))
 struct KINETIFORGE_API FVehicleSuspensionSimState
 {
@@ -247,9 +263,17 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float SuspensionCurrentLength = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float SprungMass = 0.f;
+	float StaticSprungMass = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
+	float EffectiveSprungMassNormal = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
+	float EffectiveSprungMassLong = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
+	float EffectiveSprungMassLat = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float ForceAlongImpactNormal = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	float ImpactFriction = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float AntiPitchScale = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
@@ -274,8 +298,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	FVector3f ImpactWorldNormal = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector ImpactWorldLocation = FVector(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	float ImpactFriction = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
 	bool bIsRightWheel = true;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
@@ -324,8 +346,17 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float ForceAlongImpactNormal = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	float SprungMass = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
+	float StaticSprungMass = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
+	float EffectiveSprungMassNormal = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
+	float EffectiveSprungMassLong = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
+	float EffectiveSprungMassLat = 0.f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float WorldGravityZ = 9.8f;

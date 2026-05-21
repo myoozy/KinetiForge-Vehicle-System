@@ -80,7 +80,9 @@ void FVehicleWheelSolver::UpdateWheel(
 	);
 
 	UpdateTireForce(
-		SuspensionState.SprungMass,
+		SuspensionState.StaticSprungMass,
+		SuspensionState.EffectiveSprungMassLong,
+		SuspensionState.EffectiveSprungMassLat,
 		ForceIntoSurface,
 		SuspensionState.bHitGround,
 		LongForceDirUnNorm,
@@ -374,9 +376,13 @@ void FVehicleWheelSolver::UpdateSlipRatio(bool bHitGround)
 	State.SlipRatio = State.LongSlipVelocity / Denominator;
 }
 
-float FVehicleWheelSolver::CalculateConstraintLongForce(float SprungMass)
+float FVehicleWheelSolver::CalculateConstraintLongForce(float EffectiveSprungMass)
 {
-	float ForceRequiredToBringToStop = FMath::Abs(State.LocalLinearVelocity.X * State.PhysicsDeltaTimeInv * SprungMass);
+	const float BodyInvMassLong = 1.0f / EffectiveSprungMass;
+	const float WheelInvMassLong = UVehicleUtilities::SafeDivide(State.R * State.R, State.TotalInertia);
+	const float ExactTotalLongMass = 1.0f / (BodyInvMassLong + WheelInvMassLong);
+
+	float ForceRequiredToBringToStop = FMath::Abs(State.LocalLinearVelocity.X * State.PhysicsDeltaTimeInv * ExactTotalLongMass);
 	ForceRequiredToBringToStop += FMath::Abs(State.DriveTorque * State.RInv);
 
 	//get linear brake force
@@ -391,9 +397,9 @@ float FVehicleWheelSolver::CalculateConstraintLongForce(float SprungMass)
 	return (State.DriveTorque + SignedBrakeTorque + State.TorqueFromGroundInteraction) * State.RInv;
 }
 
-float FVehicleWheelSolver::CalculateConstraintLatForce(float SprungMass)
+float FVehicleWheelSolver::CalculateConstraintLatForce(float EffectiveSprungMass)
 {
-	float ForceRequiredToBringToStop = -State.LocalLinearVelocity.Y * State.PhysicsDeltaTimeInv * SprungMass;
+	float ForceRequiredToBringToStop = -State.LocalLinearVelocity.Y * State.PhysicsDeltaTimeInv * EffectiveSprungMass;
 	
 	return ForceRequiredToBringToStop;
 }
@@ -451,9 +457,9 @@ void FVehicleWheelSolver::UpdateGravityCompensationOnSlope(
 	State.GravityCompensationForce += (GravityComp - State.GravityCompensationForce) * Smoothing;
 }
 
-float FVehicleWheelSolver::CalculateScaledWheelLoad(float SprungMass, float WheelLoad, float Saturation)
+float FVehicleWheelSolver::CalculateScaledWheelLoad(float StaticSprungMass, float WheelLoad, float Saturation)
 {
-	float NormWheelLoad = SprungMass * 9.8;
+	float NormWheelLoad = StaticSprungMass * 9.8;
 	float LoadRatio = UVehicleUtilities::SafeDivide(WheelLoad, NormWheelLoad);
 	float b = (1.f - Saturation) / (2.f + 2.f * Saturation);
 	float LoadScale = LoadRatio / (1.f + b * LoadRatio);
@@ -461,7 +467,9 @@ float FVehicleWheelSolver::CalculateScaledWheelLoad(float SprungMass, float Whee
 }
 
 void FVehicleWheelSolver::UpdateTireForce(
-	float SprungMass, 
+	float StaticSprungMass,
+	float EffectiveSprungMassLong,
+	float EffectiveSprungMassLat,
 	float PositiveForceIntoSurface,
 	bool bHitGround,
 	const FVector3f& LongForceDirUnNorm,
@@ -481,12 +489,12 @@ void FVehicleWheelSolver::UpdateTireForce(
 
 	// Constraint tire force
 	FVector2f ConstraintTireForce = FVector2f(
-		CalculateConstraintLongForce(SprungMass),
-		CalculateConstraintLatForce(SprungMass)
+		CalculateConstraintLongForce(EffectiveSprungMassLong),
+		CalculateConstraintLatForce(EffectiveSprungMassLat)
 	);
 
 	// get wheel load
-	State.WheelLoad = CalculateScaledWheelLoad(SprungMass, PositiveForceIntoSurface, TireConfig.WheelLoadInfluenceFactor);
+	State.WheelLoad = CalculateScaledWheelLoad(StaticSprungMass, PositiveForceIntoSurface, TireConfig.WheelLoadInfluenceFactor);
 	float AvailableGrip = State.DynFrictionMultiplier * State.WheelLoad;
 
 	// get stiffness(tangent) of linear region

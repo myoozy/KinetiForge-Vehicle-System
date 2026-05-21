@@ -71,19 +71,21 @@ private:
 		float SlipVelocityTolerance = 0.1f);
 	void UpdateSlipAngle(bool bHitGround);
 	void UpdateSlipRatio(bool bHitGround);
-	float CalculateConstraintLongForce(float SprungMass);
-	float CalculateConstraintLatForce(float SprungMass);
+	float CalculateConstraintLongForce(float EffectiveSprungMass);
+	float CalculateConstraintLatForce(float EffectiveSprungMass);
 	void UpdateGravityCompensationOnSlope(
 		float PositiveForceIntoSurface,
 		bool bHitGround,
 		const FVector3f& LongForceDir,
 		const FVector3f& LatForceDir);
 	float CalculateScaledWheelLoad(
-		float SprungMass,
+		float StaticSprungMass,
 		float WheelLoad,
 		float Saturation);
 	void UpdateTireForce(
-		float SprungMass,
+		float StaticSprungMass,
+		float EffectiveSprungMassLong,
+		float EffectiveSprungMassLat,
 		float PositiveForceIntoSurface,
 		bool bHitGround,
 		const FVector3f& LongForceDirUnNorm,
