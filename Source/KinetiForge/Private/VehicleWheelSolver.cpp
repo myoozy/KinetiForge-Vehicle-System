@@ -168,23 +168,6 @@ void FVehicleWheelSolver::DrawWheelForce(
 	}
 }
 
-void FVehicleWheelSolver::SmoothenSlip(float InDeltaTime, float InInterpSpeed)
-{
-	SmoothenedSlipRatio = FMath::FInterpTo(
-		SmoothenedSlipRatio,
-		State.SlipRatio,
-		InDeltaTime,
-		InInterpSpeed
-	);
-
-	SmoothenedSlipAngle = FMath::FInterpTo(
-		SmoothenedSlipAngle,
-		State.SlipAngle,
-		InDeltaTime,
-		InInterpSpeed
-	);
-}
-
 void FVehicleWheelSolver::UpdateCachedLUTs(const FVehicleTireConfig& Config)
 {
 	if (IsValid(Config.Fx))
