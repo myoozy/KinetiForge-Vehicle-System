@@ -202,9 +202,7 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float TorqueFromGroundInteraction = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	FVector2f MFTireForce2D = FVector2f(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
-	FVector2f GravityCompensationForce = FVector2f(0.f);
+	FVector2f TransientSlip = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	FVector2f TireForce2D = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")

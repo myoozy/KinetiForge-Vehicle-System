@@ -353,10 +353,6 @@ private:
 		Chaos::FVec3 ContactNormal,
 		Chaos::FVec3 WheelRight
 	);
-	static void CalculateEffectiveSprungMass(
-		FVehicleSuspensionSimContext& Ctx,
-		const FVehicleChassisSimState& ChassisState
-	);
 	static float GetCriticalDamping(
 		const float SpringStiffness,
 		const float StaticSprungMass
@@ -364,6 +360,7 @@ private:
 	static void ComputeSuspensionForce(
 		FVehicleSuspensionSimContext& Ctx,
 		const float WheelRadius,
+		const FVehicleChassisSimState& ChassisState,
 		const FVehicleSuspensionSpringConfig& SpringConfig,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FVehicleSuspensionCachedLUTs& LUTs

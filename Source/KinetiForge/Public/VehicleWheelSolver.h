@@ -71,9 +71,13 @@ private:
 		float SlipVelocityTolerance = 0.1f);
 	void UpdateSlipAngle(bool bHitGround);
 	void UpdateSlipRatio(bool bHitGround);
+	/**Returns transient slip ratio and slip angle (normalized)*/
+	FVector2f UpdateTransientSlip(
+		const bool bHitGround,
+		const FVector2f& RelaxationLength);
 	float CalculateConstraintLongForce(float EffectiveSprungMass);
-	float CalculateConstraintLatForce(float EffectiveSprungMass);
-	void UpdateGravityCompensationOnSlope(
+	float CalculateConstraintLatForce(float EffectiveSprungMassy);
+	FVector2f CalculateGravityCompensationOnSlope(
 		float PositiveForceIntoSurface,
 		bool bHitGround,
 		const FVector3f& LongForceDir,
@@ -90,5 +94,7 @@ private:
 		bool bHitGround,
 		const FVector3f& LongForceDirUnNorm,
 		const FVector3f& LatForceDirUnNorm,
+		const FVector3f& LongForceDir,
+		const FVector3f& LatForceDir,
 		const FVehicleTireConfig& TireConfig);
 };

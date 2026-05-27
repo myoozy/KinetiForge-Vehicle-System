@@ -270,10 +270,10 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	float EffectiveSprungMassLong = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
 	float EffectiveSprungMassLat = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
+	float ImpactFriction = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float ForceAlongImpactNormal = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
-	float ImpactFriction = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float AntiPitchScale = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")

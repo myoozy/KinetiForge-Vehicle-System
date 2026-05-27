@@ -127,11 +127,6 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 		ChassisState
 	);
 
-	CalculateEffectiveSprungMass(
-		Ctx,
-		ChassisState
-	);
-
 	ComputeAntiPitchRollGeometry(
 		Ctx,
 		ChassisHandle,
@@ -145,7 +140,8 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 
 	ComputeSuspensionForce(
 		Ctx, 
-		WheelRadius, 
+		WheelRadius,
+		ChassisState,
 		SpringConfig, 
 		KineConfig, 
 		CachedLUTs
@@ -230,11 +226,6 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 		ChassisState
 	);
 
-	CalculateEffectiveSprungMass(
-		Ctx,
-		ChassisState
-	);
-
 	ComputeAntiPitchRollGeometry(
 		Ctx,
 		ChassisHandle,
@@ -250,6 +241,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	ComputeSuspensionForce(
 		Ctx, 
 		WheelRadius, 
+		ChassisState,
 		SpringConfig, 
 		KineConfig, 
 		CachedLUTs
@@ -829,7 +821,9 @@ void FVehicleSuspensionSolver::PrepareSimulation(
 	Ctx.TopMountChassisLocation = Ctx.WheelCompToChassisTransform.TransformPositionNoScale(TopMountLocalPos);
 }
 
-void FVehicleSuspensionSolver::ComputeStraightRayCastLocation(FVehicleSuspensionSimContext& Ctx, const FVehicleSuspensionKinematicsConfig& Config)
+void FVehicleSuspensionSolver::ComputeStraightRayCastLocation(
+	FVehicleSuspensionSimContext& Ctx, 
+	const FVehicleSuspensionKinematicsConfig& Config)
 {
 	/*
 	* 
@@ -899,7 +893,9 @@ void FVehicleSuspensionSolver::ComputeWishboneRayCastLocation(
 	Ctx.RayCastDirectionWorld = Ctx.ChassisWorldTransform.TransformVectorNoScale((FVector)RayDirChassis);
 }
 
-void FVehicleSuspensionSolver::ComputeRayCastLocation(FVehicleSuspensionSimContext& Ctx, const FVehicleSuspensionKinematicsConfig& Config)
+void FVehicleSuspensionSolver::ComputeRayCastLocation(
+	FVehicleSuspensionSimContext& Ctx, 
+	const FVehicleSuspensionKinematicsConfig& Config)
 {
 	switch (Config.SuspensionType)
 	{
@@ -1486,7 +1482,12 @@ void FVehicleSuspensionSolver::ComputeSolidAxle(
 	FVector3f KnuckleLocalLocation = Ctx.WheelCompToChassisTransform.InverseTransformPositionNoScale(Ctx.LowerBallJointChassisLocation);
 }
 
-bool FVehicleSuspensionSolver::Solve2DLineIntersection(const FVector2f& P1, const FVector2f& P2, const FVector2f& P3, const FVector2f& P4, FVector2f& OutIntersection)
+bool FVehicleSuspensionSolver::Solve2DLineIntersection(
+	const FVector2f& P1, 
+	const FVector2f& P2, 
+	const FVector2f& P3, 
+	const FVector2f& P4, 
+	FVector2f& OutIntersection)
 {
 	float Denom = (P1.X - P2.X) * (P3.Y - P4.Y) - (P1.Y - P2.Y) * (P3.X - P4.X);
 
@@ -1505,7 +1506,12 @@ bool FVehicleSuspensionSolver::Solve2DLineIntersection(const FVector2f& P1, cons
 	return true;
 }
 
-float FVehicleSuspensionSolver::SolveSwingArmSlope2D(const FVector2f& LowerInner, const FVector2f& LowerOuter, const FVector2f& UpperInner, const FVector2f& UpperOuter, const FVector2f& ContactPatch)
+float FVehicleSuspensionSolver::SolveSwingArmSlope2D(
+	const FVector2f& LowerInner, 
+	const FVector2f& LowerOuter, 
+	const FVector2f& UpperInner, 
+	const FVector2f& UpperOuter, 
+	const FVector2f& ContactPatch)
 {
 	FVector2f IC;
 	float Slope = 0.f;
@@ -1890,23 +1896,6 @@ Chaos::FVec3 FVehicleSuspensionSolver::CalculatePointEffectiveMass3D(
 		ComputeEffectiveMass(ImpactNormal));
 }
 
-void FVehicleSuspensionSolver::CalculateEffectiveSprungMass(
-	FVehicleSuspensionSimContext& Ctx, 
-	const FVehicleChassisSimState& ChassisState)
-{
-	const Chaos::FVec3 EffectiveMass = CalculatePointEffectiveMass3D(
-		ChassisState.Mass,
-		ChassisState.WorldInvInertiaTensor,
-		ChassisState.CoMWorldLocation,
-		Ctx.HitResult.ImpactPoint,
-		Ctx.HitResult.Normal,
-		Ctx.WheelWorldRightVector
-	);
-	Ctx.EffectiveSprungMassLong = EffectiveMass.X;
-	Ctx.EffectiveSprungMassLat = EffectiveMass.Y;
-	Ctx.EffectiveSprungMassNormal = EffectiveMass.Z;
-}
-
 float FVehicleSuspensionSolver::GetCriticalDamping(
 	const float SpringStiffness,
 	const float StaticSprungMass)
@@ -1926,10 +1915,21 @@ float FVehicleSuspensionSolver::GetCriticalDamping(
 void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	FVehicleSuspensionSimContext& Ctx,
 	const float WheelRadius,
+	const FVehicleChassisSimState& ChassisState,
 	const FVehicleSuspensionSpringConfig& SpringConfig,
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
 	const FVehicleSuspensionCachedLUTs& LUTs)
 {
+	const Chaos::FVec3 EffectiveMass = CalculatePointEffectiveMass3D(
+		ChassisState.Mass,
+		ChassisState.WorldInvInertiaTensor,
+		ChassisState.CoMWorldLocation,
+		Ctx.HitResult.ImpactPoint,
+		Ctx.HitResult.Normal,
+		Ctx.WheelWorldRightVector
+	);
+	Ctx.EffectiveSprungMassNormal = EffectiveMass.Z;
+
 	float DeltaTimeInv = UVehicleUtilities::SafeDivide(1.f, Ctx.PhysicsDeltaTime);
 
 	const float LastLength = Ctx.SuspensionCurrentLength;
@@ -2002,4 +2002,11 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 		Ctx.ForceAlongImpactNormal = 0.f;
 		Ctx.SuspensionForce = 0.f;
 	}
+
+	// get effective mass in other directions
+	const float ForceIntoSurface = FMath::Max(Ctx.ForceAlongImpactNormal, 0.f);
+	const float DynLoadMass = ForceIntoSurface / Ctx.WorldGravityZ;
+	const float LoadFactor = UVehicleUtilities::SafeDivide(DynLoadMass, ChassisState.Mass);
+	Ctx.EffectiveSprungMassLong = EffectiveMass.X * LoadFactor;
+	Ctx.EffectiveSprungMassLat = EffectiveMass.Y * LoadFactor;
 }
