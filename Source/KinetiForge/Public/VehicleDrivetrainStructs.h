@@ -223,7 +223,8 @@ UENUM(BlueprintType)
 enum class EClutchSimMode : uint8
 {
 	SpringModel     UMETA(ToolTip = "more realistic, but not recommended for Arcade/EVs/Large physics time step"),
-	DampingModel    UMETA(ToolTip = "always safe to use")
+	DampingModel    UMETA(ToolTip = "behaves like AT-gearbox"),
+	ConstraintModel UMETA(ToolTip = "more fps tolerant")
 };
 
 USTRUCT(BlueprintType)

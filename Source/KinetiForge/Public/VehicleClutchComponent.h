@@ -41,6 +41,13 @@ protected:
 		const float EngineInertia,
 		const float GearboxReflectedInertia,
 		const float GearboxInputShaftInertia);
+	float GetTorqueConstraintModel(
+		const float DeltaTime,
+		const float ClutchSlip,
+		const float EngineInertia,
+		const float GearboxReflectedInertia,
+		const float GearboxInputShaftInertia
+	);
 
 public:	
 	// Called every frame
