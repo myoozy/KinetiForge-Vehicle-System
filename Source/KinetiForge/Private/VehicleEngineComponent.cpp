@@ -73,8 +73,8 @@ void UVehicleEngineComponent::EngineAcceleration()
 	if (TurboConfig.MaxBoostPressure > SMALL_NUMBER && NAConfig.EngineIdleRPM > 0.f)
 	{
 		float RPMFactor = FMath::GetMappedRangeValueClamped(
-			FVector2D(0.f, TurboConfig.FullBoostRPM),
-			FVector2D(0.0f, 1.0f), 
+			FVector2f(0.f, TurboConfig.FullBoostRPM),
+			FVector2f(0.0f, 1.0f), 
 			AbsolutRPM
 		);
 
@@ -118,6 +118,12 @@ void UVehicleEngineComponent::EngineAcceleration()
 			// if throttle is hit, blow off valve close
 			SpoolInterpSpeed = (TurboConfig.SpoolUpDuration > SMALL_NUMBER) ? 3.f / TurboConfig.SpoolUpDuration : 0.f;
 
+			const float StaticIntakeRestriction = FMath::GetMappedRangeValueClamped(
+				FVector2f(0.f, NAConfig.EngineIdleRPM),
+				FVector2f(0.f, TurboConfig.StaticIntakeRestriction),
+				State.EngineRPM
+			);
+
 			if (State.bIsAntiLagTriggered)
 			{
 				// inject fuel during exhaust stroke
@@ -131,12 +137,12 @@ void UVehicleEngineComponent::EngineAcceleration()
 				// if the turbo rpm is too low, the intake will have restriction
 				// we estimate the max restriction as vacuum pressure
 				float CurrentIntakeRestriction = FMath::GetMappedRangeValueClamped(
-					FVector2D(0.f, MinSpoolForPositiveBoost),
-					FVector2D(TurboConfig.StaticIntakeRestriction, 0.f),
+					FVector2f(0.f, MinSpoolForPositiveBoost),
+					FVector2f(StaticIntakeRestriction, 0.f),
 					State.TurboSpool
 				);
 
-				ManifoldVacuum = FMath::Lerp(TurboConfig.StaticIntakeRestriction, CurrentIntakeRestriction, State.RawThrottleInput);
+				ManifoldVacuum = FMath::Lerp(StaticIntakeRestriction, CurrentIntakeRestriction, State.RawThrottleInput);
 			}
 		}
 
@@ -152,8 +158,8 @@ void UVehicleEngineComponent::EngineAcceleration()
 		State.TurboSpool = FMath::Clamp(State.TurboSpool, 0.f, 1.f);
 		float SpoolSqr = State.TurboSpool * State.TurboSpool;
 		float CurrentBoost = FMath::GetMappedRangeValueClamped(
-			FVector2D(MinSpoolForPositiveBoost * MinSpoolForPositiveBoost, 1.f),
-			FVector2D(0.0f, TurboConfig.MaxBoostPressure),
+			FVector2f(MinSpoolForPositiveBoost * MinSpoolForPositiveBoost, 1.f),
+			FVector2f(0.0f, TurboConfig.MaxBoostPressure),
 			SpoolSqr
 		);
 
@@ -222,8 +228,8 @@ void UVehicleEngineComponent::UpdateExhaust()
 	float TargetLamda = bIsDecelerating ?
 		NAConfig.DeceleratingLambda :
 		FMath::GetMappedRangeValueClamped(
-			FVector2D(0.8f, 0.9f),
-			FVector2D(1.f, NAConfig.MaxPowerLambda),
+			FVector2f(0.8f, 0.9f),
+			FVector2f(1.f, NAConfig.MaxPowerLambda),
 			State.RawThrottleInput
 		);
 
