@@ -229,7 +229,7 @@ void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* C
 	// project the suspension force onto the impact normal
 	// so that the car will not move by itself when parked
 	FVector SuspensionForceProj = ImpactNormal * Suspension.State.ForceAlongImpactNormal;
-	FVector Impulse = ((FVector)Wheel.State.TireForce + SuspensionForceProj) * Wheel.State.PhysicsDeltaTime;
+	FVector Impulse = ((FVector)Wheel.State.TireForce + SuspensionForceProj) * 1/120;
 	Impulse *= 100.;	// because of the unit of unreal engine
 
 	// apply force to Chassis
@@ -858,7 +858,7 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 		TimeSinceLastPhysicsTick += DeltaTime;
 
 		// blend between physics frames
-		float Alpha = FMath::Clamp(TimeSinceLastPhysicsTick / Wheel.State.PhysicsDeltaTime, 0.0f, 1.0f);
+		float Alpha = FMath::Clamp(TimeSinceLastPhysicsTick *120, 0.0f, 1.0f);
 		FVector3f TargetAnimHubePos = FMath::Lerp(PrevHubChassisLocation, Suspension.State.HubChassisLocation, Alpha);
 		FQuat4f TargetAnimHubRot = FMath::Lerp(PrevHubChassisRotation, Suspension.State.HubChassisRotation, Alpha);
 

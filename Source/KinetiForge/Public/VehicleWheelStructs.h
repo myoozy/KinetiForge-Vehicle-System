@@ -155,16 +155,6 @@ struct KINETIFORGE_API FVehicleWheelSimState
 {
 	GENERATED_BODY()
 	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
-	float PhysicsDeltaTime = 0.008333f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
-	float PhysicsDeltaTimeInv = 120.f;
-
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float R = 0.33f;				//Radius in meter
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float RInv = 3.0303f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float TotalInertia = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -211,4 +201,31 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	bool bIsLocked = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AntiBrake")
 	bool bABSTriggered = false;
+};
+
+USTRUCT(BlueprintType, meta = (ToolTip = ""))
+struct KINETIFORGE_API FVehicleWheelSimContext
+{
+	GENERATED_BODY()
+
+	float MacroDeltaTime = 1 / 120.f;
+	float MacroDeltaTimeInv = 120.f;
+	float SubStepDeltaTime = 1 / 120.f;
+	float SubStepDeltaTimeInv = 120.f;
+	int32 TotalSubSteps = 1;
+
+	FVector3f LongDirUnNorm = FVector3f(0.f);
+	FVector3f LatDirUnNorm = FVector3f(0.f);
+	FVector3f LongDir = FVector3f(0.f);
+	FVector3f LatDir = FVector3f(0.f);
+
+	float ForceIntoSurface = 0.f;
+	float AvailableGrip = 0.f;
+	float MaxFx = 0.f;
+	float MaxFy = 0.f;
+	FVector2f GravityComp2D = FVector2f(0.f);
+	FVector2f ChassisConstraintForce2D = FVector2f(0.f);
+
+	float R = 0.33f;
+	float RInv = 1 / 0.33f;
 };
