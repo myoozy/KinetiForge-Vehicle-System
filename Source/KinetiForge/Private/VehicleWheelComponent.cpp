@@ -289,13 +289,6 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	{
 		UpdateWheelAnim(DeltaTime, AnimWheelMaxRotationSpeed);
 	}
-
-	// smoothen the slip
-	Wheel.SmoothenSlip(DeltaTime, 10.f);
-	/*
-	* get the smoothend slip:
-	* Wheel.SmoothendSlipRatio; Wheel.SmoothendSlipAngle;
-	*/
 }
 
 void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Source, UVehicleWheelComponent* Target, bool bReInitialize)
@@ -486,6 +479,30 @@ FTransform3f UVehicleWheelComponent::GetHubChassisTransform()
 	);
 }
 
+float UVehicleWheelComponent::GetSlipRatio(bool bTransientSlip)
+{
+	if (bTransientSlip)
+	{
+		return Wheel.State.TransientSlip.X;
+	}
+	else
+	{
+		return Wheel.State.SlipRatio;
+	}
+}
+
+float UVehicleWheelComponent::GetSlipAngle(bool bTransientSlip)
+{
+	if (bTransientSlip)
+	{
+		return FMath::RadiansToDegrees(FMath::Atan(Wheel.State.TransientSlip.Y));
+	}
+	else
+	{
+		return Wheel.State.SlipAngle;
+	}
+}
+
 float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float LateralScale)
 {
 	// get tire stiffness
@@ -504,11 +521,11 @@ float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float L
 
 	// if the slip velocity is too low, should scale the affection of slip ratio, 0.5 is just magic number
 	float SpeedScaleX = FMath::Clamp(0.5f * Wheel.State.LongSlipVelocity, -1.f, 1.f);
-	float NormalizedSx = Wheel.SmoothenedSlipRatio * LongitudinalScale * SpeedScaleX * Wx * NormFactor;
+	float NormalizedSx = Wheel.State.TransientSlip.X * LongitudinalScale * SpeedScaleX * Wx * NormFactor;
 
 	// also if the lateral velocity is too low, should scale the affection of slip angle
 	float SpeedScaleY = FMath::Clamp(0.5f * Wheel.State.LocalLinearVelocity.Y, -1.f, 1.f);
-	float NormalizedSy = Wheel.SmoothenedSlipAngle / 90.f * LateralScale * SpeedScaleY * Wy * NormFactor;
+	float NormalizedSy = FMath::Atan(Wheel.State.TransientSlip.Y) / (0.5f * PI) * LateralScale * SpeedScaleY * Wy * NormFactor;
 
 	// combined slip
 	float NormalizedSc = FMath::Sqrt(NormalizedSx * NormalizedSx + NormalizedSy * NormalizedSy);

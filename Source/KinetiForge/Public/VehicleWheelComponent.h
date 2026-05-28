@@ -236,10 +236,10 @@ public:
 	float GetWheelInertia() { return WheelConfig.Inertia; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
-	float GetSlipRatio() { return Wheel.State.SlipRatio; }
+	float GetSlipRatio(bool bTransientSlip = true);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
-	float GetSlipAngle() { return Wheel.State.SlipAngle; }
+	float GetSlipAngle(bool bTransientSlip = true);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetPredictedSlipRatio() { return Wheel.State.PredictedSlipRatio; }

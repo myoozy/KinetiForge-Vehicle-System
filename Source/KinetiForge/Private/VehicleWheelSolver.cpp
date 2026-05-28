@@ -168,23 +168,6 @@ void FVehicleWheelSolver::DrawWheelForce(
 	}
 }
 
-void FVehicleWheelSolver::SmoothenSlip(float InDeltaTime, float InInterpSpeed)
-{
-	SmoothenedSlipRatio = FMath::FInterpTo(
-		SmoothenedSlipRatio,
-		State.SlipRatio,
-		InDeltaTime,
-		InInterpSpeed
-	);
-
-	SmoothenedSlipAngle = FMath::FInterpTo(
-		SmoothenedSlipAngle,
-		State.SlipAngle,
-		InDeltaTime,
-		InInterpSpeed
-	);
-}
-
 void FVehicleWheelSolver::UpdateCachedLUTs(const FVehicleTireConfig& Config)
 {
 	if (IsValid(Config.Fx))
@@ -375,6 +358,8 @@ FVector2f FVehicleWheelSolver::UpdateTransientSlip(const bool bHitGround, const 
 {
 	if (bHitGround)
 	{
+		const FVector2f SafeRelaxationLength = FVector2f::Max(RelaxationLength, FVector2f(SMALL_NUMBER));
+
 		FVector2f SlipVelocity = FVector2f(State.LongSlipVelocity, -State.LocalLinearVelocity.Y);
 		float AbsVx = FMath::Abs(State.LocalLinearVelocity.X);
 		float AbsOmegaR = FMath::Abs(State.AngularVelocity * State.R);
@@ -383,8 +368,8 @@ FVector2f FVehicleWheelSolver::UpdateTransientSlip(const bool bHitGround, const 
 		AbsVx2D = FVector2f::Max(AbsVx2D, FVector2f(MinVx));
 
 		State.TransientSlip =
-			(State.TransientSlip + (SlipVelocity * State.PhysicsDeltaTime) / RelaxationLength) /
-			(FVector2f(1.f, 1.f) + (AbsVx2D * State.PhysicsDeltaTime) / RelaxationLength);
+			(State.TransientSlip + (SlipVelocity * State.PhysicsDeltaTime) / SafeRelaxationLength) /
+			(FVector2f(1.f, 1.f) + (AbsVx2D * State.PhysicsDeltaTime) / SafeRelaxationLength);
 
 		float TransientSlipRatio = State.TransientSlip.X;
 		float TransientSlipAngle = FMath::Atan(State.TransientSlip.Y) / (0.5f * PI);
