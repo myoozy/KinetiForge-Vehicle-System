@@ -25,6 +25,8 @@ void FVehicleWheelSolver::PreStep(
 	const FVehicleWheelConfig& WheelConfig,
 	const FVehicleTireConfig& TireConfig)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
+
 	FVehicleWheelSimContext& Context = CurrentContext;
 	FVehicleWheelSimState& LocalState = State;
 
@@ -80,6 +82,8 @@ void FVehicleWheelSolver::Substep(
 	const FVehicleABSConfig& ABSConfig,
 	const FVehicleSuspensionSimState& SuspensionState)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
+
 	const FVehicleWheelConfig& Config = WheelConfig;
 	FVehicleWheelSimContext& Context = CurrentContext;
 	FVehicleWheelSimState& LocalState = State;
@@ -127,6 +131,8 @@ void FVehicleWheelSolver::Substep(
 
 void FVehicleWheelSolver::PostStep()
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
+
 	FVehicleWheelSimContext& Context = CurrentContext;
 	FVehicleWheelSimState& LocalState = State;
 	LocalState.TireForce2D = Context.AccumulateTireImpulse2D * Context.MacroDeltaTimeInv;

@@ -329,6 +329,8 @@ void UVehicleAxleAssemblyComponent::PreStepAxle(
 	float InMacroDeltaTime, 
 	float InSteeringInput)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_PhysicsPreStep);
+
 	UVehicleWheelComponent* WheelL = LeftWheel.Get();
 	UVehicleWheelComponent* WheelR = RightWheel.Get();
 
@@ -416,6 +418,8 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 	float& OutAxleEffectiveInertia,
 	float& OutAngularVelocity)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_PhysicsSubstep);
+
 	UVehicleWheelComponent* WheelL = LeftWheel.Get();
 	UVehicleWheelComponent* WheelR = RightWheel.Get();
 	UVehicleDifferentialComponent* Diff = Differential.Get();
@@ -514,6 +518,8 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 
 void UVehicleAxleAssemblyComponent::PostStepAxle()
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_PhysicsPostStep);
+
 	UVehicleWheelComponent* WheelL = LeftWheel.Get();
 	UVehicleWheelComponent* WheelR = RightWheel.Get();
 
