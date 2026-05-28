@@ -210,21 +210,19 @@ struct KINETIFORGE_API FVehicleWheelSimContext
 
 	float MacroDeltaTime = 1 / 120.f;
 	float MacroDeltaTimeInv = 120.f;
-	float SubStepDeltaTime = 1 / 120.f;
-	float SubStepDeltaTimeInv = 120.f;
-	int32 TotalSubSteps = 1;
+	float SubstepDeltaTime = 1 / 120.f;
+	float SubstepDeltaTimeInv = 120.f;
 
-	FVector3f LongDirUnNorm = FVector3f(0.f);
-	FVector3f LatDirUnNorm = FVector3f(0.f);
-	FVector3f LongDir = FVector3f(0.f);
-	FVector3f LatDir = FVector3f(0.f);
+	FVector3f LongForceDirUnNorm = FVector3f(0.f);
+	FVector3f LatForceDirUnNorm = FVector3f(0.f);
+	FVector3f LongForceDir = FVector3f(0.f);
+	FVector3f LatForceDir = FVector3f(0.f);
 
 	float ForceIntoSurface = 0.f;
 	float AvailableGrip = 0.f;
 	float MaxFx = 0.f;
 	float MaxFy = 0.f;
 	FVector2f GravityComp2D = FVector2f(0.f);
-	FVector2f ChassisConstraintForce2D = FVector2f(0.f);
 
 	float R = 0.33f;
 	float RInv = 1 / 0.33f;
