@@ -23,6 +23,7 @@ public:
 	void PreStep(
 		float InMacroDeltaTime,
 		const FVehicleSuspensionSimState& SuspensionState,
+		const FVehicleWheelConfig& WheelConfig,
 		const FVehicleTireConfig& TireConfig
 	);
 

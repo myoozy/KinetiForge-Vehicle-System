@@ -22,6 +22,7 @@ void FVehicleWheelSolver::Initialize(const FVehicleTireConfig& TireConfig)
 void FVehicleWheelSolver::PreStep(
 	float InMacroDeltaTime, 
 	const FVehicleSuspensionSimState& SuspensionState, 
+	const FVehicleWheelConfig& WheelConfig,
 	const FVehicleTireConfig& TireConfig)
 {
 	FVehicleWheelSimContext& Context = CurrentContext;
@@ -29,6 +30,9 @@ void FVehicleWheelSolver::PreStep(
 
 	Context.MacroDeltaTime = InMacroDeltaTime;
 	Context.MacroDeltaTimeInv = UVehicleUtilities::SafeDivide(1.f, InMacroDeltaTime);
+
+	Context.R = WheelConfig.Radius * 0.01f;
+	Context.RInv = UVehicleUtilities::SafeDivide(1.f, Context.R);
 
 	const FVector3f WheelRightVec = SuspensionState.WheelWorldRightVector;
 	const FVector3f ImpactNormal = SuspensionState.ImpactWorldNormal;
@@ -52,6 +56,14 @@ void FVehicleWheelSolver::PreStep(
 		Context.LatForceDir
 	);
 
+	// get wheel load
+	LocalState.WheelLoad = CalculateScaledWheelLoad(
+		SuspensionState.StaticSprungMass, 
+		Context.ForceIntoSurface,
+		TireConfig.WheelLoadInfluenceFactor
+	);
+	Context.AvailableGrip = LocalState.DynFrictionMultiplier * LocalState.WheelLoad;
+
 	// clear tire force
 	Context.AccumulateTireImpulse2D = FVector2f(0.f);
 }
@@ -74,6 +86,8 @@ void FVehicleWheelSolver::Substep(
 	Context.SubstepDeltaTime = InSubstepDeltaTime;
 	Context.SubstepDeltaTimeInv = UVehicleUtilities::SafeDivide(1.f, InSubstepDeltaTime);
 
+	LocalState.TotalInertia = Config.Inertia + InReflectedInertia;
+	LocalState.DriveTorque = InDriveTorque + LocalState.P4MotorTorque;
 
 	// get target brake torque
 	// brake torque from esp can be negative (which means to reduce brake torque)
@@ -558,10 +572,6 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 
 	ConstraintTireForce += Context.GravityComp2D;
 
-	// get wheel load
-	LocalState.WheelLoad = CalculateScaledWheelLoad(StaticSprungMass, PositiveForceIntoSurface, TireConfig.WheelLoadInfluenceFactor);
-	float AvailableGrip = LocalState.DynFrictionMultiplier * LocalState.WheelLoad;
-
 	// get stiffness(tangent) of linear region
 	FVector2f LinearRegionStiffness = FVector2f(
 		TireLUTs.Fx.FastEval(0.f).RightTangent,
@@ -593,8 +603,8 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	bool bUseFyCurve = LinearRegionStiffness.Y != 0.f;
 
 	// magic formula
-	float MaxFx = TireConfig.MaxFx * AvailableGrip;
-	float MaxFy = TireConfig.MaxFy * AvailableGrip;
+	float MaxFx = TireConfig.MaxFx * Context.AvailableGrip;
+	float MaxFy = TireConfig.MaxFy * Context.AvailableGrip;
 	FVector2f MFTireForce = ConstraintTireForce;
 	if (bUseFxCurve)
 	{

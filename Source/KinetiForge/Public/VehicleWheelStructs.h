@@ -220,8 +220,6 @@ struct KINETIFORGE_API FVehicleWheelSimContext
 
 	float ForceIntoSurface = 0.f;
 	float AvailableGrip = 0.f;
-	float MaxFx = 0.f;
-	float MaxFy = 0.f;
 	FVector2f GravityComp2D = FVector2f(0.f);
 	FVector2f AccumulateTireImpulse2D = FVector2f(0.f);
 

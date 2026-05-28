@@ -356,7 +356,7 @@ void UVehicleWheelComponent::FinalizePreStepSolidAxleSuspension(
 void UVehicleWheelComponent::PreStepWheel(
 	float InMacroDeltaTime)
 {
-	Wheel.PreStep(InMacroDeltaTime, Suspension.State, TireConfig);
+	Wheel.PreStep(InMacroDeltaTime, Suspension.State, WheelConfig, TireConfig);
 }
 
 void UVehicleWheelComponent::SubStepWheel(
