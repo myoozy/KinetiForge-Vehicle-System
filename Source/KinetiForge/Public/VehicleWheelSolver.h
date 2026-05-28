@@ -83,7 +83,7 @@ private:
 	static void WheelAcceleration(
 		FVehicleWheelSimState& LocalState,
 		const FVehicleWheelSimContext& Context,
-		const FVector3f& LongForceDir,
+		const float LastTireLongitudinalForce,
 		const float SlipVelocityTolerance = 0.1f);
 	static void UpdateSlipAngle(
 		FVehicleWheelSimState& LocalState,

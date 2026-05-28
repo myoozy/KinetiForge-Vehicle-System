@@ -394,7 +394,6 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	//if in N gear, don't update
 	if (!GearboxRaw->GetCurrentGear())return;
 
-	TArray<UVehicleAxleAssemblyComponent*> AxlesRaw;
 	GetAxles(AxlesRaw);
 	GearboxRaw->CalculateSpeedRangeOfEachGear(
 		TransferCase->CalculateEffectiveWheelRadius(AxlesRaw),
@@ -720,72 +719,108 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		return;
 	}
 
+	// get pointers
 	UVehicleEngineComponent* EngineRaw = Engine.Get();
 	UVehicleClutchComponent* ClutchRaw = Clutch.Get();
 	UVehicleGearboxComponent* GearboxRaw = Gearbox.Get();
 	UVehicleDifferentialComponent* TransferCaseRaw = TransferCase.Get();
-	TArray<UVehicleAxleAssemblyComponent*> AxlesRaw;
 	GetAxles(AxlesRaw);
 
-	// update engine
-	float ClutchTorque = (NumOfDriveAxles > 0) ? Clutch->GetCluchTorque() : 0.f;
-	// sequential transmission disables spark when shifting up
-	bool bDisableSpark = GearboxRaw->GetShouldCutSpark();
-	EngineRaw->UpdatePhysics(PhysicsDeltaTime, InputValues.Final.Throttle, ClutchTorque, bDisableSpark);
+	// get substeps
+	int32 SubSteps = FMath::CeilToInt32(UVehicleUtilities::SafeDivide(InDeltaTime, SubstepDeltaTime));
+	SubSteps = FMath::Max(SubSteps, 1);
 
-	// get gearbox output torque
-	float GearboxOutputTorque;
-	float GearboxReflectedInertia;
-	GearboxRaw->UpdateOutputShaft(ClutchTorque, GearboxOutputTorque, GearboxReflectedInertia);
+	float RealSubstepDeltaTime = InDeltaTime / (float)SubSteps;
 
-	// update transfercase
-	float SumAxleInertia;
-	float GearboxOutputShaftAngularVelocity;
-	NumOfDriveAxles = TransferCaseRaw->UpdateTransferCase(
-		AxlesRaw,
-		PhysicsDeltaTime,
-		GearboxOutputTorque,
-		GearboxReflectedInertia,
-		InputValues.Final.Brake,
-		InputValues.Final.Handbrake,
-		InputValues.Final.Steering,
-		InputAssistConfig.bBurnOutAssist
-		&& InputValues.Final.Throttle > 0.9
-		&& InputValues.Final.Brake > 0.9
-		&& LocalLinearVelocity.X < 1.f,
-		GearboxOutputShaftAngularVelocity,
-		SumAxleInertia
-	);
+	/**
+	* ==================== PreStep ====================
+	*/
+	for (UVehicleAxleAssemblyComponent* Axle : AxlesRaw)
+	{
+		if (Axle)
+		{
+			Axle->PreStepAxle(
+				InDeltaTime,
+				InputValues.Final.Steering
+			);
+		}
+	}
 
-	// get gearbox inputshaft angular velocity
-	float GearboxInputShaftVelocity;
-	// float GearboxReflectedInertia; // already defined
-	float GearboxInputShaftInertia;
-	float CurrentGearboxRatio;
-	float HighestGearReflectedInertia;
-	GearboxRaw->UpdateInputShaft(
-		GearboxOutputShaftAngularVelocity, 
-		SumAxleInertia,
-		GearboxInputShaftVelocity, 
-		GearboxReflectedInertia, 
-		GearboxInputShaftInertia, 
-		CurrentGearboxRatio, 
-		HighestGearReflectedInertia
-	);
+	/**
+	* ==================== SubStep ====================
+	*/
+	for (int i = 0; i < SubSteps; i++)
+	{
+		// update engine
+		float ClutchTorque = (NumOfDriveAxles > 0) ? Clutch->GetCluchTorque() : 0.f;
+		// sequential transmission disables spark when shifting up
+		bool bDisableSpark = GearboxRaw->GetShouldCutSpark();
+		EngineRaw->UpdatePhysics(RealSubstepDeltaTime, InputValues.Final.Throttle, ClutchTorque, bDisableSpark);
 
-	// get clutch torque for next frame
-	ClutchRaw->UpdatePhysics(
-		PhysicsDeltaTime, 
-		InputValues.Final.Clutch,
-		GearboxInputShaftVelocity, 
-		GearboxReflectedInertia,
-		GearboxInputShaftInertia,
-		CurrentGearboxRatio, 
-		HighestGearReflectedInertia,
-		EngineRaw->GetAngularVelocity(),
-		EngineRaw->GetEngineInertia(),
-		EngineRaw->GetMaxEngineTorque()
-	);
+		// get gearbox output torque
+		float GearboxOutputTorque;
+		float GearboxReflectedInertia;
+		GearboxRaw->UpdateOutputShaft(ClutchTorque, GearboxOutputTorque, GearboxReflectedInertia);
+
+		// update transfercase
+		float SumAxleInertia;
+		float GearboxOutputShaftAngularVelocity;
+		NumOfDriveAxles = TransferCaseRaw->SubstepTransferCase(
+			AxlesRaw,
+			RealSubstepDeltaTime,
+			GearboxOutputTorque,
+			GearboxReflectedInertia,
+			InputValues.Final.Brake,
+			InputValues.Final.Handbrake,
+			InputAssistConfig.bBurnOutAssist
+			&& InputValues.Final.Throttle > 0.9
+			&& InputValues.Final.Brake > 0.9
+			&& LocalLinearVelocity.X < 1.f,
+			GearboxOutputShaftAngularVelocity,
+			SumAxleInertia
+		);
+
+		// get gearbox inputshaft angular velocity
+		float GearboxInputShaftVelocity;
+		// float GearboxReflectedInertia; // already defined
+		float GearboxInputShaftInertia;
+		float CurrentGearboxRatio;
+		float HighestGearReflectedInertia;
+		GearboxRaw->UpdateInputShaft(
+			GearboxOutputShaftAngularVelocity,
+			SumAxleInertia,
+			GearboxInputShaftVelocity,
+			GearboxReflectedInertia,
+			GearboxInputShaftInertia,
+			CurrentGearboxRatio,
+			HighestGearReflectedInertia
+		);
+
+		// get clutch torque for next frame
+		ClutchRaw->UpdatePhysics(
+			RealSubstepDeltaTime,
+			InputValues.Final.Clutch,
+			GearboxInputShaftVelocity,
+			GearboxReflectedInertia,
+			GearboxInputShaftInertia,
+			CurrentGearboxRatio,
+			HighestGearReflectedInertia,
+			EngineRaw->GetAngularVelocity(),
+			EngineRaw->GetEngineInertia(),
+			EngineRaw->GetMaxEngineTorque()
+		);
+	}
+
+	/**
+	* ==================== PostStep ====================
+	*/
+	for (UVehicleAxleAssemblyComponent* Axle : AxlesRaw)
+	{
+		if (Axle)
+		{
+			Axle->PostStepAxle();
+		}
+	}
 
 	// get velocity
 	NumOfWheelsOnGround = 0;
@@ -812,7 +847,7 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 	// get acceleration
 	FVector3f LastAbsVelocity = AbsoluteWorldLinearVelocity;
 	AbsoluteWorldLinearVelocity = 0.01f * (FVector3f)UAsyncTickFunctions::ATP_GetLinearVelocity(Chassis.Get());
-	WorldAcceleration = UVehicleUtilities::SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, PhysicsDeltaTime);
+	WorldAcceleration = UVehicleUtilities::SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, InDeltaTime);
 	FQuat4f ChassisRot = (FQuat4f)UAsyncTickFunctions::ATP_GetTransform(Chassis.Get()).GetRotation();
 	LocalAcceleration = ChassisRot.UnrotateVector(WorldAcceleration);
 }

@@ -76,7 +76,7 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 	float SumAngVel = 0.f;
 	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
-		if (!IsValid(Axle))continue;
+		if (Axle == nullptr)continue;
 
 		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > 0;
 		NumOfDriveAxles += IsDriveAxle;
@@ -96,7 +96,7 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 	float SumDriveAxleInertia = 0.f;
 	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
-		if (!IsValid(Axle))continue;
+		if (Axle == nullptr)continue;
 
 		float AxleInertia = 0.f;
 		float AxleAngVel = 0.f;

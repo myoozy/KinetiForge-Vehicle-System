@@ -218,6 +218,8 @@ struct KINETIFORGE_API FVehicleWheelSimContext
 	FVector3f LongForceDir = FVector3f(0.f);
 	FVector3f LatForceDir = FVector3f(0.f);
 
+	float LongForceDirUnNormLength = 1.f; // scaling of tire force due to camber
+
 	float ForceIntoSurface = 0.f;
 	float AvailableGrip = 0.f;
 	FVector2f GravityComp2D = FVector2f(0.f);

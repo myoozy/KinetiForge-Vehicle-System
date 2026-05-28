@@ -41,6 +41,7 @@ void FVehicleWheelSolver::PreStep(
 	Context.LatForceDirUnNorm = FVector3f::VectorPlaneProject(WheelRightVec, ImpactNormal);
 	Context.LongForceDir = Context.LongForceDirUnNorm.GetSafeNormal();
 	Context.LatForceDir = Context.LatForceDirUnNorm.GetSafeNormal();
+	Context.LongForceDirUnNormLength = Context.LongForceDirUnNorm.Length();
 
 	UpdateLinearVelocity(LocalState, Context.LongForceDir, Context.LatForceDir, SuspensionState.ImpactWorldVelocity);
 
@@ -70,12 +71,12 @@ void FVehicleWheelSolver::PreStep(
 
 void FVehicleWheelSolver::Substep(
 	float InSubstepDeltaTime,
-	float InDriveTorque, 
-	float InBrakeTorque, 
-	float InHandbrakeTorque, 
-	float InReflectedInertia, 
-	const FVehicleWheelConfig& WheelConfig, 
-	const FVehicleTireConfig& TireConfig, 
+	float InDriveTorque,
+	float InBrakeTorque,
+	float InHandbrakeTorque,
+	float InReflectedInertia,
+	const FVehicleWheelConfig& WheelConfig,
+	const FVehicleTireConfig& TireConfig,
 	const FVehicleABSConfig& ABSConfig,
 	const FVehicleSuspensionSimState& SuspensionState)
 {
@@ -89,24 +90,16 @@ void FVehicleWheelSolver::Substep(
 	LocalState.EffectiveInertia = Config.Inertia + InReflectedInertia;
 	LocalState.DriveTorque = InDriveTorque + LocalState.P4MotorTorque;
 
-	// get target brake torque
-	// brake torque from esp can be negative (which means to reduce brake torque)
-	// but the target total brake torque should not be negative (the brake should not accelerate the wheel)
 	float TargetBrakeTorque = FMath::Max(0.f, FMath::Abs(InBrakeTorque) + LocalState.BrakeTorqueFromESP);
-
-	// update abs
 	PredictSlipAndUpdateABS(LocalState, Context, ABSConfig, TargetBrakeTorque, SuspensionState.bHitGround);
 
-	// get total brake torque
 	LocalState.BrakeTorqueFromHandbrake = FMath::Abs(InHandbrakeTorque);
 	LocalState.BrakeTorque = LocalState.BrakeTorqueFromBrake + Config.RollingRisistance + LocalState.BrakeTorqueFromHandbrake;
 
-	const float SlipVelocityTolerance = 0.1f;
-	LocalState.DriveTorque = InDriveTorque;
-	WheelAcceleration(LocalState, Context, Context.LongForceDir, SlipVelocityTolerance);
-
+	// =========================================================
+	// 1. Get tire force (using wheel speed from last frame)
+	// =========================================================
 	float ForceIntoSurface = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
-
 	FVector2f SubstepForce2D = SolveTireForce(
 		LocalState, Context,
 		SuspensionState.StaticSprungMass,
@@ -121,6 +114,13 @@ void FVehicleWheelSolver::Substep(
 		TireConfig,
 		CachedLUTs
 	);
+
+	// =========================================================
+	// 2. Get wheel speed
+	// =========================================================
+	const float SlipVelocityTolerance = 0.1f;
+	const float ActualTireLongitudinalForce = SubstepForce2D.X * Context.LongForceDirUnNormLength;
+	WheelAcceleration(LocalState, Context, ActualTireLongitudinalForce, SlipVelocityTolerance);
 
 	Context.AccumulateTireImpulse2D += SubstepForce2D * Context.SubstepDeltaTime;
 }
@@ -327,7 +327,7 @@ void FVehicleWheelSolver::UpdateLinearVelocity(
 void FVehicleWheelSolver::WheelAcceleration(
 	FVehicleWheelSimState& LocalState,
 	const FVehicleWheelSimContext& Context,
-	const FVector3f& LongForceDir,
+	const float LastTireLongitudinalForce,
 	const float SlipVelocityTolerance)
 {
 	float LastAngularVelocity = LocalState.AngularVelocity;
@@ -349,7 +349,7 @@ void FVehicleWheelSolver::WheelAcceleration(
 	MaxFrictionTorque += ToleranceTorque;
 
 	//clamp the friction torque, friction torque should not flip the sign of the relative rotation to the ground
-	float FrictionTorque = FVector3f::DotProduct(LocalState.TireForce, LongForceDir) * Context.R;
+	float FrictionTorque = LastTireLongitudinalForce * Context.R;
 	float ClampedFrictionTorque = FMath::Clamp(FrictionTorque, -MaxFrictionTorque, MaxFrictionTorque);
 
 	//since the brake torque is not considered when calculating max friction torque, we have to get the excess friction torque to deal with brake torque
