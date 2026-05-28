@@ -106,8 +106,6 @@ struct FVehicleAxleSimState
 	int32 NumOfWheels = 2;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	int32 NumOfWheelOnGround = 2;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
-	float PhysicsDeltaTime = 0.0083333;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float LeftWheelSteeringAngle = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")

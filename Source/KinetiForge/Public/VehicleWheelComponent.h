@@ -161,7 +161,7 @@ public:
 		float InBrakeTorque,
 		float InHandbrakeTorque,
 		float InReflectedInertia);
-	void PostStepWheel();
+	void PostStepApplyForce();
 
 public:	
 	// Called every frame

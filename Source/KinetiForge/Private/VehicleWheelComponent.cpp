@@ -370,7 +370,7 @@ void UVehicleWheelComponent::SubStepWheel(
 		WheelConfig, TireConfig, ABSConfig, Suspension.State);
 }
 
-void UVehicleWheelComponent::PostStepWheel()
+void UVehicleWheelComponent::PostStepApplyForce()
 {
 	Wheel.PostStep();
 	ApplyWheelForce(ChassisHandle);
@@ -678,7 +678,7 @@ void UVehicleWheelComponent::UpdatePhysics(
 		InHandbrakeTorque,
 		InReflectedInertia
 	);
-	PostStepWheel();
+	PostStepApplyForce();
 }
 
 bool UVehicleWheelComponent::CheckHasBeenMoved()
@@ -756,7 +756,7 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 		InHandbrakeTorque,
 		InReflectedInertia
 	);
-	PostStepWheel();
+	PostStepApplyForce();
 }
 
 void UVehicleWheelComponent::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)

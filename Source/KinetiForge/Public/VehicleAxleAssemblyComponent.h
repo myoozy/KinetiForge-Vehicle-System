@@ -125,24 +125,14 @@ protected:
 	UPROPERTY()
 	TWeakObjectPtr<UVehicleDifferentialComponent> Differential;
 
-	void UpdateTwoWheelAxle(
-		UVehicleWheelComponent* WheelL, 
-		UVehicleWheelComponent* WheelR, 
-		float InDriveTorque, 
-		float InReflectedInertia
-	);
-	void UpdateSingleWheelAxle(
-		UVehicleWheelComponent* WheelL, 
-		UVehicleWheelComponent* WheelR, 
-		float InDriveTorque, 
-		float InReflectedInertia
-	);
 	void UpdateSteering(
 		float InSteeringInput,
 		UVehicleWheelComponent* WheelL,
 		UVehicleWheelComponent* WheelR
 	);
-	void UpdateSteeringAssist(float InSteeringInput);
+	void UpdateSteeringAssist(
+		float DeltaTime, 
+		float InSteeringInput);
 	void UpdateLinearVelocity(
 		UVehicleWheelComponent* WheelL, 
 		UVehicleWheelComponent* WheelR
@@ -156,15 +146,15 @@ protected:
 		UVehicleWheelComponent* WheelR, 
 		float TargetDriveTorque
 	);
-	void UpdateIndependentSuspensionPhysics(
-		UVehicleWheelComponent* WheelL, 
-		UVehicleWheelComponent* WheelR
-	);
-	void UpdateSolidAxlePhysics(
-		UVehicleWheelComponent* WheelL, 
-		UVehicleWheelComponent* WheelR
-	);
 	float GetTrackWidth(
+		UVehicleWheelComponent* WheelL,
+		UVehicleWheelComponent* WheelR
+	);
+	void PreStepSolidAxleSuspension(
+		const float InMacroDeltaTime,
+		const float SteerAngleLeft,
+		const float SteerAngleRight,
+		const float AntiRollBarForce,
 		UVehicleWheelComponent* WheelL,
 		UVehicleWheelComponent* WheelR
 	);
@@ -176,6 +166,21 @@ public:
 	static void CopyAxleConfig(const UVehicleAxleAssemblyComponent* Source, UVehicleAxleAssemblyComponent* Target, bool bReInitializeWheel = false);
 
 	void ApplyInitialOverrides(const FVehicleAxleSpawnTemplate& AxleTemplate);
+
+	void PreStepAxle(
+		float InMacroDeltaTime,
+		float InSteeringInput
+	);
+	void SubstepAxle(
+		float InSubstepDeltaTime,
+		float InDriveTorque,
+		float InBrakeInput,
+		float InHandbrakeInput,
+		float InReflectedInertia,
+		float& OutAxleTotalInertia,
+		float& OutAngularVelocity
+	);
+	void PostStepAxle();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	EVehicleAxleSuspensionType GetAxleSuspensionType() { return SuspensionType; }
