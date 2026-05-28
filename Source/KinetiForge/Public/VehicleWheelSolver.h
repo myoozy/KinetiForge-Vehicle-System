@@ -42,16 +42,6 @@ public:
 
 	);
 
-	void UpdateWheel(
-		float InPhysicsDeltaTime,
-		float InDriveTorque,
-		float InBrakeTorque,
-		float InHandbrakeTorque,
-		float InReflectedInertia,
-		const FVehicleWheelConfig& WheelConfig,
-		const FVehicleTireConfig& TireConfig,
-		const FVehicleABSConfig& ABSConfig,
-		const FVehicleSuspensionSimState& SuspensionState);
 	void DrawWheelForce(
 		UVehicleWheelComponent* WheelComponent,
 		const FVehicleSuspensionSimState& SuspensionState,

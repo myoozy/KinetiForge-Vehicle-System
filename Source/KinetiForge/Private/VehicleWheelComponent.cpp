@@ -191,7 +191,7 @@ bool UVehicleWheelComponent::InitializeMeshComponents()
 	return RefreshWheelMesh();
 }
 
-void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* ChassisHandle)
+void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* InChassisHandle)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_ApplyForce);
 
@@ -215,8 +215,8 @@ void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* C
 	}
 
 	// get world com
-	Chaos::FVec3 ChassisWorldCOM = ChassisHandle != nullptr ? 
-		Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(ChassisHandle) : ChassisAsyncWorldTransform.GetLocation();
+	Chaos::FVec3 ChassisWorldCOM = InChassisHandle != nullptr ? 
+		Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(InChassisHandle) : ChassisAsyncWorldTransform.GetLocation();
 
 	// get arm
 	Chaos::FVec3 LeverArmVec = PosToApplyImpulse - ChassisWorldCOM;
@@ -229,15 +229,15 @@ void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* C
 	// project the suspension force onto the impact normal
 	// so that the car will not move by itself when parked
 	FVector SuspensionForceProj = ImpactNormal * Suspension.State.ForceAlongImpactNormal;
-	FVector Impulse = ((FVector)Wheel.State.TireForce + SuspensionForceProj) * 1/120;
+	FVector Impulse = ((FVector)Wheel.State.TireForce + SuspensionForceProj) * Wheel.CurrentContext.MacroDeltaTime;
 	Impulse *= 100.;	// because of the unit of unreal engine
 
 	// apply force to Chassis
-	if (ChassisHandle)
+	if (InChassisHandle)
 	{
 		FVector AngularImpulse = FVector::CrossProduct(LeverArmVec, Impulse);
-		ChassisHandle->SetLinearImpulse(ChassisHandle->LinearImpulse() + Impulse, false);
-		ChassisHandle->SetAngularImpulse(ChassisHandle->AngularImpulse() + AngularImpulse, false);
+		InChassisHandle->SetLinearImpulse(InChassisHandle->LinearImpulse() + Impulse, false);
+		InChassisHandle->SetAngularImpulse(InChassisHandle->AngularImpulse() + AngularImpulse, false);
 	}
 
 	// also add force to the contacted component
@@ -255,6 +255,125 @@ void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* C
 			);
 		}
 	}
+}
+
+void UVehicleWheelComponent::PreStepIndependentSuspension(
+	float InMacroDeltaTime, 
+	float InSteeringAngle, 
+	float InSwaybarForce)
+{
+	// get rigid handle to get world com position
+	ChassisHandle = UVehicleUtilities::GetInternalHandle(Chassis.Get());
+	if (!ChassisHandle)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid Chassis!!!"));
+		return;
+	}
+
+	//Update anim cache
+	PrevLowerBallJointChassisLocation = Suspension.State.LowerBallJointChassisLocation;
+	PrevUpperBallJointChassisLocation = Suspension.State.UpperBallJointChassisLocation;
+	PrevHubChassisLocation = Suspension.State.HubChassisLocation;
+	PrevHubChassisRotation = Suspension.State.HubChassisRotation;
+	TimeSinceLastPhysicsTick = 0.f;
+
+	ChassisAsyncWorldTransform = Chaos::FParticleUtilitiesGT::GetActorWorldTransform(ChassisHandle);
+	if (!ChassisAsyncWorldTransform.IsRotationNormalized()) ChassisAsyncWorldTransform.NormalizeRotation();
+
+	Suspension.UpdateSuspension(
+		WheelConfig.Radius,
+		WheelConfig.Width,
+		Wheel.State.TireForce,
+		SuspensionKinematicsConfig,
+		SuspensionSpringConfig,
+		GetRelativeTransform(),
+		ChassisAsyncWorldTransform,
+		GetWorld(),
+		ChassisHandle,
+		InMacroDeltaTime,
+		InSteeringAngle,
+		InSwaybarForce);
+}
+
+void UVehicleWheelComponent::StartPreStepSolidAxleSuspension(
+	float InSteeringAngle, 
+	FVector& OutHitWorldLocation, 
+	FVehicleSuspensionSimContext& Ctx)
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
+
+	ChassisHandle = UVehicleUtilities::GetInternalHandle(Chassis.Get());
+	if (!ChassisHandle)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid Chassis!!!"));
+		return;
+	}
+
+	ChassisAsyncWorldTransform = Chaos::FParticleUtilitiesGT::GetActorWorldTransform(ChassisHandle);
+
+	Suspension.StartUpdateSolidAxle(
+		WheelConfig.Radius,
+		WheelConfig.Width,
+		SuspensionKinematicsConfig,
+		GetRelativeTransform(),
+		ChassisAsyncWorldTransform,
+		GetWorld(),
+		InSteeringAngle,
+		OutHitWorldLocation,
+		Ctx);
+}
+
+void UVehicleWheelComponent::FinalizePreStepSolidAxleSuspension(
+	float InMacroDeltaTime, 
+	float InSwaybarForce, 
+	FVehicleSuspensionSimContext& Ctx, 
+	const float InTrackWidth, 
+	const FVector& InThisWheelHitWorldLocation, 
+	const FVector& InOtherWheelHitWorldLocation)
+{
+	if (!ChassisHandle)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid Chassis!!!"));
+		return;
+	}
+
+	Suspension.FinalizeUpdateSolidAxle(
+		WheelConfig.Radius,
+		SuspensionKinematicsConfig,
+		SuspensionSpringConfig,
+		ChassisAsyncWorldTransform,
+		ChassisHandle,
+		InMacroDeltaTime,
+		InSwaybarForce,
+		Ctx,
+		InTrackWidth,
+		InThisWheelHitWorldLocation,
+		InOtherWheelHitWorldLocation,
+		Wheel.State.TireForce
+	);
+}
+
+void UVehicleWheelComponent::PreStepWheel(
+	float InMacroDeltaTime)
+{
+	Wheel.PreStep(InMacroDeltaTime, Suspension.State, TireConfig);
+}
+
+void UVehicleWheelComponent::SubStepWheel(
+	float InSubstepDeltaTime, 
+	float InDriveTorque, 
+	float InBrakeTorque, 
+	float InHandbrakeTorque, 
+	float InReflectedInertia)
+{
+	Wheel.Substep(InSubstepDeltaTime, InDriveTorque, InBrakeTorque, InHandbrakeTorque, InReflectedInertia, 
+		WheelConfig, TireConfig, ABSConfig, Suspension.State);
+}
+
+void UVehicleWheelComponent::PostStepWheel()
+{
+	Wheel.PostStep();
+	ApplyWheelForce(ChassisHandle);
 }
 
 // Called every frame
@@ -543,52 +662,23 @@ void UVehicleWheelComponent::UpdatePhysics(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
 
-	// get rigid handle to get world com position
-	Chaos::FRigidBodyHandle_Internal* ChassisHandle = UVehicleUtilities::GetInternalHandle(Chassis.Get());
-	if (!ChassisHandle)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid Chassis!!!"));
-		return;
-	}
-
-	//Update anim cache
-	PrevLowerBallJointChassisLocation = Suspension.State.LowerBallJointChassisLocation;
-	PrevUpperBallJointChassisLocation = Suspension.State.UpperBallJointChassisLocation;
-	PrevHubChassisLocation = Suspension.State.HubChassisLocation;
-	PrevHubChassisRotation = Suspension.State.HubChassisRotation;
-	TimeSinceLastPhysicsTick = 0.f;
-
-	ChassisAsyncWorldTransform = Chaos::FParticleUtilitiesGT::GetActorWorldTransform(ChassisHandle);
-	if (!ChassisAsyncWorldTransform.IsRotationNormalized()) ChassisAsyncWorldTransform.NormalizeRotation();
-
-	//Suspension
-	Suspension.UpdateSuspension(
-		WheelConfig.Radius,
-		WheelConfig.Width,
-		Wheel.State.TireForce,
-		SuspensionKinematicsConfig,
-		SuspensionSpringConfig,
-		GetRelativeTransform(),
-		ChassisAsyncWorldTransform,
-		GetWorld(),
-		ChassisHandle,
-		InPhysicsDeltaTime, 
+	PreStepIndependentSuspension(
+		InPhysicsDeltaTime,
 		InSteeringAngle,
-		InSwaybarForce);
+		InSwaybarForce
+	);
 
-	//Wheel
-	Wheel.UpdateWheel(
+	PreStepWheel(
+		InPhysicsDeltaTime
+	);
+	SubStepWheel(
 		InPhysicsDeltaTime,
 		InDriveTorque,
 		InBrakeTorque,
 		InHandbrakeTorque,
-		InReflectedInertia,
-		WheelConfig,
-		TireConfig,
-		ABSConfig,
-		Suspension.State);
-
-	ApplyWheelForce(ChassisHandle);
+		InReflectedInertia
+	);
+	PostStepWheel();
 }
 
 bool UVehicleWheelComponent::CheckHasBeenMoved()
@@ -625,25 +715,11 @@ void UVehicleWheelComponent::StartUpdateSolidAxlePhysics(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
 
-	Chaos::FRigidBodyHandle_Internal* ChassisHandle = UVehicleUtilities::GetInternalHandle(Chassis.Get());
-	if (!ChassisHandle)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid Chassis!!!"));
-		return;
-	}
-
-	ChassisAsyncWorldTransform = Chaos::FParticleUtilitiesGT::GetActorWorldTransform(ChassisHandle);
-
-	return Suspension.StartUpdateSolidAxle(
-		WheelConfig.Radius,
-		WheelConfig.Width,
-		SuspensionKinematicsConfig,
-		GetRelativeTransform(),
-		ChassisAsyncWorldTransform,
-		GetWorld(),
-		InSteeringAngle, 
+	StartPreStepSolidAxleSuspension(
+		InSteeringAngle,
 		OutHitWorldLocation,
-		Ctx);
+		Ctx
+	);
 }
 
 void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
@@ -661,51 +737,26 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
 
-	// get rigid handle to get world com position
-	Chaos::FRigidBodyHandle_Internal* ChassisHandle = nullptr;
-	if (Chassis.IsValid())
-	{
-		if (const FBodyInstance* BodyInstance = Chassis->GetBodyInstance())
-		{
-			if (const auto Handle = BodyInstance->ActorHandle)
-			{
-				ChassisHandle = Handle->GetPhysicsThreadAPI();
-			}
-		}
-	}
-	if (!ChassisHandle)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("WheelPhysics: No Valid Chassis!!!"));
-		return;
-	}
-
-	Suspension.FinalizeUpdateSolidAxle(
-		WheelConfig.Radius,
-		SuspensionKinematicsConfig,
-		SuspensionSpringConfig,
-		ChassisAsyncWorldTransform,
-		ChassisHandle,
-		InPhysicsDeltaTime, 
+	FinalizePreStepSolidAxleSuspension(
+		InPhysicsDeltaTime,
 		InSwaybarForce,
 		Ctx,
 		InTrackWidth,
 		InThisWheelHitWorldLocation,
-		InOtherWheelHitWorldLocation,
-		Wheel.State.TireForce
+		InOtherWheelHitWorldLocation
 	);
 
-	Wheel.UpdateWheel(
+	PreStepWheel(
+		InPhysicsDeltaTime
+	);
+	SubStepWheel(
 		InPhysicsDeltaTime,
 		InDriveTorque,
 		InBrakeTorque,
 		InHandbrakeTorque,
-		InReflectedInertia,
-		WheelConfig,
-		TireConfig,
-		ABSConfig,
-		Suspension.State);
-
-	ApplyWheelForce(ChassisHandle);
+		InReflectedInertia
+	);
+	PostStepWheel();
 }
 
 void UVehicleWheelComponent::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
@@ -858,7 +909,7 @@ void UVehicleWheelComponent::UpdateWheelAnim(float DeltaTime, float MaxAnimAngul
 		TimeSinceLastPhysicsTick += DeltaTime;
 
 		// blend between physics frames
-		float Alpha = FMath::Clamp(TimeSinceLastPhysicsTick *120, 0.0f, 1.0f);
+		float Alpha = FMath::Clamp(TimeSinceLastPhysicsTick * Wheel.CurrentContext.MacroDeltaTimeInv, 0.0f, 1.0f);
 		FVector3f TargetAnimHubePos = FMath::Lerp(PrevHubChassisLocation, Suspension.State.HubChassisLocation, Alpha);
 		FQuat4f TargetAnimHubRot = FMath::Lerp(PrevHubChassisRotation, Suspension.State.HubChassisRotation, Alpha);
 

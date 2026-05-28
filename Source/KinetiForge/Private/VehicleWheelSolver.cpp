@@ -53,7 +53,7 @@ void FVehicleWheelSolver::PreStep(
 	);
 
 	// clear tire force
-	LocalState.TireForce2D = FVector2f(0.f, 0.f);
+	Context.AccumulateTireImpulse2D = FVector2f(0.f);
 }
 
 void FVehicleWheelSolver::Substep(
@@ -108,53 +108,17 @@ void FVehicleWheelSolver::Substep(
 		CachedLUTs
 	);
 
-	float SubstepWeight = Context.SubstepDeltaTime * Context.MacroDeltaTimeInv;
-	LocalState.TireForce2D += SubstepForce2D * SubstepWeight;
+	Context.AccumulateTireImpulse2D += SubstepForce2D * Context.SubstepDeltaTime;
 }
 
 void FVehicleWheelSolver::PostStep()
 {
 	FVehicleWheelSimContext& Context = CurrentContext;
 	FVehicleWheelSimState& LocalState = State;
+	LocalState.TireForce2D = Context.AccumulateTireImpulse2D * Context.MacroDeltaTimeInv;
 	LocalState.TireForce =
 		LocalState.TireForce2D.X * Context.LongForceDirUnNorm +
 		LocalState.TireForce2D.Y * Context.LatForceDirUnNorm;
-}
-
-void FVehicleWheelSolver::UpdateWheel(
-	float InPhysicsDeltaTime,
-	float InDriveTorque,
-	float InBrakeTorque,
-	float InHandbrakeTorque,
-	float InReflectedInertia,
-	const FVehicleWheelConfig& WheelConfig,
-	const FVehicleTireConfig& TireConfig,
-	const FVehicleABSConfig& ABSConfig,
-	const FVehicleSuspensionSimState& SuspensionState)
-{
-	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
-
-	PreStep(
-		InPhysicsDeltaTime,
-		SuspensionState,
-		TireConfig
-	);
-
-	Substep(
-		InPhysicsDeltaTime,
-		InDriveTorque,
-		InBrakeTorque,
-		InHandbrakeTorque,
-		InReflectedInertia,
-		WheelConfig,
-		TireConfig,
-		ABSConfig,
-		SuspensionState
-	);
-
-	PostStep(
-
-	);
 }
 
 void FVehicleWheelSolver::DrawWheelForce(

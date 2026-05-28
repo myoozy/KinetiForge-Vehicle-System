@@ -94,7 +94,7 @@ protected:
 	virtual void OnRegister() override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 	bool InitializeMeshComponents();
-	void ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* ChassisHandle);
+	void ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* InChassisHandle);
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> WheelHubComponent;
@@ -114,6 +114,7 @@ protected:
 	//wheel movement
 	FVehicleWheelSolver Wheel;
 
+	Chaos::FRigidBodyHandle_Internal* ChassisHandle;
 	FTransform ChassisAsyncWorldTransform;
 	FTransform3f DesignedHubLocalTransform;
 
@@ -134,6 +135,33 @@ protected:
 #if WITH_EDITORONLY_DATA
 	float TimeSinceLastConfigSync = 0.f;
 #endif
+
+public:
+	void PreStepIndependentSuspension(
+		float InMacroDeltaTime,
+		float InSteeringAngle,
+		float InSwaybarForce);
+	void StartPreStepSolidAxleSuspension(
+		float InSteeringAngle,
+		FVector& OutHitWorldLocation,
+		FVehicleSuspensionSimContext& Ctx);
+	void FinalizePreStepSolidAxleSuspension(
+		float InMacroDeltaTime,
+		float InSwaybarForce,
+		FVehicleSuspensionSimContext& Ctx,
+		const float InTrackWidth,
+		const FVector& InThisWheelHitWorldLocation,
+		const FVector& InOtherWheelHitWorldLocation);
+
+	void PreStepWheel(
+		float InMacroDeltaTime);
+	void SubStepWheel(
+		float InSubstepDeltaTime,
+		float InDriveTorque,
+		float InBrakeTorque,
+		float InHandbrakeTorque,
+		float InReflectedInertia);
+	void PostStepWheel();
 
 public:	
 	// Called every frame
