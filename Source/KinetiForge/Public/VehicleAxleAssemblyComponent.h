@@ -177,7 +177,7 @@ public:
 		float InBrakeInput,
 		float InHandbrakeInput,
 		float InReflectedInertia,
-		float& OutAxleTotalInertia,
+		float& OutAxleEffectiveInertia,
 		float& OutAngularVelocity
 	);
 	void PostStepAxle();
@@ -223,7 +223,7 @@ public:
 		float InHandbrakeInput,
 		float InSteeringInput,
 		float InReflectedInertia,
-		float& OutAxleTotalInertia, 
+		float& OutAxleEffectiveInertia,
 		float& OutAngularVelocity);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
@@ -288,7 +288,7 @@ public:
 	float GetAngularVelocity() { return State.AxleAngularVelocity; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	float GetTotalAxleInertia() { return State.AxleTotalInertia; }
+	float GetTotalAxleInertia() { return State.AxleEffectiveInertia; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	int32 GetNumOfWheelsOnGround() { return State.NumOfWheelOnGround; }

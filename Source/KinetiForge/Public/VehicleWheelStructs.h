@@ -156,7 +156,7 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	GENERATED_BODY()
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float TotalInertia = 1.f;
+	float EffectiveInertia = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float AngularVelocity = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")

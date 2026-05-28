@@ -129,7 +129,7 @@ struct FVehicleAxleSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")
 	float RealSteeringValue = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	float AxleTotalInertia = 0.f;
+	float AxleEffectiveInertia = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float AxleAngularVelocity = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")

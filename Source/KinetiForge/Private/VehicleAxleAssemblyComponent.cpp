@@ -413,14 +413,17 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 	float InBrakeInput,
 	float InHandbrakeInput,
 	float InReflectedInertia,
-	float& OutAxleTotalInertia,
+	float& OutAxleEffectiveInertia,
 	float& OutAngularVelocity)
 {
 	UVehicleWheelComponent* WheelL = LeftWheel.Get();
 	UVehicleWheelComponent* WheelR = RightWheel.Get();
 	UVehicleDifferentialComponent* Diff = Differential.Get();
 
+	// number of living wheels
 	State.NumOfWheels = (WheelL ? 1 : 0) + (WheelR ? 1 : 0);
+
+	// get brake torque
 	State.BrakeTorque = AxleConfig.MaxBrakeTorque * FMath::Clamp(InBrakeInput, 0.f, 1.f);
 	State.HandbrakeTorque = AxleConfig.bAffectedByHandbrake ?
 		AxleConfig.MaxHandbrakeTorque * FMath::Clamp(InHandbrakeInput, 0.f, 1.f) : 0.f;
@@ -428,18 +431,18 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 	const bool bNoDriveTorque = AxleConfig.TorqueWeight <= SMALL_NUMBER && FMath::IsNearlyZero(State.P3MotorTorque);
 	const bool bWheelNotDriven = bNoDriveTorque || (Diff == nullptr) || (State.NumOfWheels == 0);
 
-	// 1. 数据准备：初始化传给车轮的默认参数
+	// 1. data preparation
 	State.LeftDriveTorque = 0.f;
 	State.RightDriveTorque = 0.f;
 	State.ReflectedInertiaOnWheel = 0.f;
 
-	// 2. 核心分支：只算扭矩和惯量，不碰车轮的执行函数
+	// 2. torque distribution and inertia calculation
 	if (bWheelNotDriven)
 	{
-		// 空转/无动力状态
+		// losing power or differential broken
 		State.AxleDriveTorque = bNoDriveTorque ? 0.f : InDriveTorque;
-		State.AxleTotalInertia = AxleConfig.DriveShaftInertia;
-		float AngAcc = UVehicleUtilities::SafeDivide(State.AxleDriveTorque, State.AxleTotalInertia);
+		State.AxleEffectiveInertia = AxleConfig.DriveShaftInertia;
+		float AngAcc = UVehicleUtilities::SafeDivide(State.AxleDriveTorque, State.AxleEffectiveInertia);
 		State.AxleAngularVelocity += AngAcc * InSubstepDeltaTime;
 	}
 	else
@@ -448,37 +451,38 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 
 		if (State.NumOfWheels == 2)
 		{
-			// 双轮完整：限滑差速器正常工作
+			// two wheels: limited-slip-differential
 			Diff->UpdateOutputShaft(
 				State.AxleDriveTorque,
 				WheelL->GetAngularVelocity(), WheelR->GetAngularVelocity(),
-				WheelL->GetTotalInertia(), WheelR->GetTotalInertia(),
+				WheelL->GetEffectiveInertia(), WheelR->GetEffectiveInertia(),
 				InSubstepDeltaTime, InReflectedInertia + AxleConfig.DriveShaftInertia,
 				State.LeftDriveTorque, State.RightDriveTorque, State.ReflectedInertiaOnWheel
 			);
 		}
-		else // State.NumOfWheels == 1
+		else // single wheel
 		{
-			// 单轮残缺：降级分配
 			const float DiffGearRatio = Diff->GetConfig().GearRatio;
 			State.ReflectedInertiaOnWheel = InReflectedInertia * DiffGearRatio * DiffGearRatio;
 
 			if (AxleLayout == EVehicleAxleLayout::TwoWheels)
 			{
+				// open diff
 				Diff->GetOpenDiffOutputTorque(State.AxleDriveTorque, State.LeftDriveTorque, State.RightDriveTorque);
 			}
 			else
 			{
+				// if there was initially only one wheel
 				State.LeftDriveTorque = State.RightDriveTorque = DiffGearRatio * State.AxleDriveTorque;
 			}
 		}
 	}
 
-	// 3. 统一执行：无论是否被驱动，只要车轮存在，就必须跑子步算地面摩擦和刹车
+	// 3. wheel substepping
 	if (WheelL) WheelL->SubStepWheel(InSubstepDeltaTime, State.LeftDriveTorque, State.BrakeTorque, State.HandbrakeTorque, State.ReflectedInertiaOnWheel);
 	if (WheelR) WheelR->SubStepWheel(InSubstepDeltaTime, State.RightDriveTorque, State.BrakeTorque, State.HandbrakeTorque, State.ReflectedInertiaOnWheel);
 
-	// 4. 统一收集：驱动状态下，从存活的车轮反推主轴转速和总惯量
+	// 4. get axle effective inertia and angular velocity
 	if (!bWheelNotDriven)
 	{
 		float ReflectedInertiaOfWheels = 0.f;
@@ -487,22 +491,24 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 		{
 			Diff->UpdateInputShaft(
 				WheelL->GetAngularVelocity(), WheelR->GetAngularVelocity(),
-				WheelL->GetWheelInertia(), WheelR->GetWheelInertia(),
+				WheelL->GetIntrinsicInertia(), WheelR->GetIntrinsicInertia(), // only the inertia of the wheel itself
 				State.AxleAngularVelocity, ReflectedInertiaOfWheels
 			);
 		}
-		else // 单轮情况
+		else
 		{
+			// single wheel
 			const float DiffGearRatio = Diff->GetConfig().GearRatio;
-			UVehicleWheelComponent* ActiveWheel = WheelL ? WheelL : WheelR; // 提取存活车轮
+			UVehicleWheelComponent* ActiveWheel = WheelL ? WheelL : WheelR;
 			State.AxleAngularVelocity = ActiveWheel->GetAngularVelocity() * DiffGearRatio;
-			ReflectedInertiaOfWheels = UVehicleUtilities::SafeDivide(ActiveWheel->GetTotalInertia(), DiffGearRatio * DiffGearRatio);
+			ReflectedInertiaOfWheels = UVehicleUtilities::SafeDivide(ActiveWheel->GetIntrinsicInertia(), DiffGearRatio * DiffGearRatio);
 		}
 
-		State.AxleTotalInertia = ReflectedInertiaOfWheels + AxleConfig.DriveShaftInertia;
+		State.AxleEffectiveInertia = ReflectedInertiaOfWheels + AxleConfig.DriveShaftInertia;
 	}
 
-	OutAxleTotalInertia = State.AxleTotalInertia;
+	// 5. output effective inertia and angular velocity
+	OutAxleEffectiveInertia = State.AxleEffectiveInertia;
 	OutAngularVelocity = State.AxleAngularVelocity;
 }
 
@@ -559,8 +565,8 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 	float InBrakeInput,
 	float InHandbrakeInput,
 	float InSteeringInput,
-	float InReflectedInertia, 
-	float& OutAxleTotalInertia,
+	float InReflectedInertia,
+	float& OutAxleEffectiveInertia,
 	float& OutAngularVelocity)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_UpdatePhysics);
@@ -574,7 +580,7 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 	PreStepAxle(InPhysicsDeltaTime, InSteeringInput);
 	SubstepAxle(InPhysicsDeltaTime,
 		InDriveTorque, InBrakeInput, InHandbrakeInput,
-		InReflectedInertia, OutAxleTotalInertia, OutAngularVelocity);
+		InReflectedInertia, OutAxleEffectiveInertia, OutAngularVelocity);
 	PostStepAxle();
 }
 

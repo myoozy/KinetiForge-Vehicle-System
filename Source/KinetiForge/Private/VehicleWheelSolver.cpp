@@ -86,7 +86,7 @@ void FVehicleWheelSolver::Substep(
 	Context.SubstepDeltaTime = InSubstepDeltaTime;
 	Context.SubstepDeltaTimeInv = UVehicleUtilities::SafeDivide(1.f, InSubstepDeltaTime);
 
-	LocalState.TotalInertia = Config.Inertia + InReflectedInertia;
+	LocalState.EffectiveInertia = Config.Inertia + InReflectedInertia;
 	LocalState.DriveTorque = InDriveTorque + LocalState.P4MotorTorque;
 
 	// get target brake torque
@@ -212,7 +212,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 	{
 		FColor InertiaColor = FColor(255, 255, 255);
 		FVector TempWheelLocation = WheelTrans.GetLocation();
-		FString TextInertia = FString(TEXT("Inertia = ")) + FString::SanitizeFloat(State.TotalInertia);
+		FString TextInertia = FString(TEXT("Inertia = ")) + FString::SanitizeFloat(State.EffectiveInertia);
 		DrawDebugString(CurrentWorld, TempWheelLocation, TextInertia, 0, InertiaColor, Duration, true, Length * 100);
 	}
 }
@@ -335,11 +335,11 @@ void FVehicleWheelSolver::WheelAcceleration(
 	//friction torque should not flip the sign of the relative rotation to the ground
 	//but there should be tolerance, because even when there is no drive torque or brake torque, the wheel should not always be completely sticked to the road
 	//allow small angular acceleration tolerance to prevent sticky behavior when slip ~ 0 (empirical value)
-	float ToleranceTorque = LocalState.TotalInertia * SlipVelocityTolerance * Context.SubstepDeltaTimeInv;
+	float ToleranceTorque = LocalState.EffectiveInertia * SlipVelocityTolerance * Context.SubstepDeltaTimeInv;
 
 	//Get the torque required to flip the sign of relative rotation between ground and wheel
 	float AngularLongSlip = LocalState.AngularVelocity - LocalState.LocalLinearVelocity.X * Context.RInv;
-	float MaxFrictionTorque = AngularLongSlip * LocalState.TotalInertia * Context.SubstepDeltaTimeInv;
+	float MaxFrictionTorque = AngularLongSlip * LocalState.EffectiveInertia * Context.SubstepDeltaTimeInv;
 
 	//drive torque must be considered, but till now we cannot define the direction of the brake torque, so just donot take brake torque into account
 	MaxFrictionTorque += LocalState.DriveTorque;
@@ -358,15 +358,15 @@ void FVehicleWheelSolver::WheelAcceleration(
 	float ExcessFrictionTorque = FMath::Clamp(FrictionTorque - ClampedFrictionTorque, -LocalState.BrakeTorque, LocalState.BrakeTorque);
 
 	// avoid divided by 0
-	float TotalInertiaInv = UVehicleUtilities::SafeDivide(1.f, LocalState.TotalInertia);
+	float EffectiveInertiaInv = UVehicleUtilities::SafeDivide(1.f, LocalState.EffectiveInertia);
 
 	//get the angular velocity without braking
-	LocalState.AngularVelocity += Context.SubstepDeltaTime * TotalInertiaInv * (LocalState.DriveTorque - ClampedFrictionTorque);
+	LocalState.AngularVelocity += Context.SubstepDeltaTime * EffectiveInertiaInv * (LocalState.DriveTorque - ClampedFrictionTorque);
 	float AngVelSignIfNotBraking = FMath::Sign(LocalState.AngularVelocity);
 
 	//finally the sign of brake torque can be defined
 	float ActuralBrakingTorque = LocalState.BrakeTorque * (-AngVelSignIfNotBraking);
-	LocalState.AngularVelocity += Context.SubstepDeltaTime * TotalInertiaInv * (ActuralBrakingTorque - ExcessFrictionTorque);
+	LocalState.AngularVelocity += Context.SubstepDeltaTime * EffectiveInertiaInv * (ActuralBrakingTorque - ExcessFrictionTorque);
 
 	//zero cross check
 	//if the wheel is locked, the angular velocity should be 0
@@ -454,7 +454,7 @@ float FVehicleWheelSolver::CalculateConstraintLongForce(
 	const float EffectiveSprungMass)
 {
 	const float BodyInvMassLong = 1.0f / EffectiveSprungMass;
-	const float WheelInvMassLong = UVehicleUtilities::SafeDivide(Context.R * Context.R, LocalState.TotalInertia);
+	const float WheelInvMassLong = UVehicleUtilities::SafeDivide(Context.R * Context.R, LocalState.EffectiveInertia);
 	const float ExactTotalLongMass = 1.0f / (BodyInvMassLong + WheelInvMassLong);
 
 	float Vx = FMath::Abs(LocalState.LocalLinearVelocity.X) + SMALL_NUMBER;
@@ -468,7 +468,7 @@ float FVehicleWheelSolver::CalculateConstraintLongForce(
 
 	//torque from ground interaction is the torque required to make angularvelocity == linearvelocity / radius
 	float GroundAngularVelocity = LocalState.LocalLinearVelocity.X * Context.RInv;
-	LocalState.TorqueFromGroundInteraction = Context.SubstepDeltaTimeInv * LocalState.TotalInertia * (LocalState.AngularVelocity - GroundAngularVelocity);
+	LocalState.TorqueFromGroundInteraction = Context.SubstepDeltaTimeInv * LocalState.EffectiveInertia * (LocalState.AngularVelocity - GroundAngularVelocity);
 
 	//get longitudinal force
 	return (LocalState.DriveTorque + SignedBrakeTorque + LocalState.TorqueFromGroundInteraction) * Context.RInv;
