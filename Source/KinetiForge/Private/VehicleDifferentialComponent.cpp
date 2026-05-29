@@ -60,7 +60,26 @@ void UVehicleDifferentialComponent::UpdateInputShaft(float InLeftOutputShaftAngu
 }
 
 int32 UVehicleDifferentialComponent::SubstepTransferCase(
-	const TArray<UVehicleAxleAssemblyComponent*>& InAxles,
+	const TArray<UVehicleAxleAssemblyComponent*>& InAxles, 
+	float InSubstepDeltaTime,
+	float InGearboxOutputTorque,
+	float InReflectedInertia,
+	float InBrakeValue,
+	float InHandbrakeValue,
+	bool bLineLockActive,
+	float& OutTransmissionOutputShaftAngularVelocity,
+	float& OutTransmissionOutputShaftEffectiveInertia)
+{
+	return SubstepTransferCase_Internal(
+		InAxles, InSubstepDeltaTime, InGearboxOutputTorque, 
+		InReflectedInertia, InBrakeValue, InHandbrakeValue, 
+		bLineLockActive, 
+		OutTransmissionOutputShaftAngularVelocity, 
+		OutTransmissionOutputShaftEffectiveInertia);
+}
+
+int32 UVehicleDifferentialComponent::SubstepTransferCase_Internal(
+	TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
 	float InSubstepDeltaTime, 
 	float InGearboxOutputTorque, 
 	float InReflectedInertia, 
@@ -186,8 +205,13 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	return NumOfDriveAxles;
 }
 
-float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(
-	const TArray<UVehicleAxleAssemblyComponent*>& InAxles)
+float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius(const TArray<UVehicleAxleAssemblyComponent*>& InAxles)
+{
+	return CalculateEffectiveWheelRadius_Internal(InAxles);
+}
+
+float UVehicleDifferentialComponent::CalculateEffectiveWheelRadius_Internal(
+	TArrayView<UVehicleAxleAssemblyComponent* const> InAxles)
 {
 	float effectiveR = 0.f;
 	int32 driveAxleNum = 0;

@@ -394,9 +394,18 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	//if in N gear, don't update
 	if (!GearboxRaw->GetCurrentGear())return;
 
-	GetAxles(AxlesRaw);
+	TArray<UVehicleAxleAssemblyComponent*, TInlineAllocator<8>> AxlesRaw;
+
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxlePtr : Axles)
+	{
+		if (UVehicleAxleAssemblyComponent* AxleRaw = AxlePtr.Get())
+		{
+			AxlesRaw.Add(AxleRaw);
+		}
+	}
+	
 	GearboxRaw->CalculateSpeedRangeOfEachGear(
-		TransferCase->CalculateEffectiveWheelRadius(AxlesRaw),
+		TransferCase->CalculateEffectiveWheelRadius_Internal(AxlesRaw),
 		EngineRaw->GetIdleRPM(),
 		EngineRaw->GetMaxRPM(),
 		SpeedRangeOfEachGear);
@@ -722,7 +731,15 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 	UVehicleClutchComponent* ClutchRaw = Clutch.Get();
 	UVehicleGearboxComponent* GearboxRaw = Gearbox.Get();
 	UVehicleDifferentialComponent* TransferCaseRaw = TransferCase.Get();
-	GetAxles(AxlesRaw);
+	TArray<UVehicleAxleAssemblyComponent*, TInlineAllocator<8>> AxlesRaw;
+
+	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxlePtr : Axles)
+	{
+		if (UVehicleAxleAssemblyComponent* AxleRaw = AxlePtr.Get())
+		{
+			AxlesRaw.Add(AxleRaw);
+		}
+	}
 
 	// get substeps
 	int32 SubSteps = FMath::CeilToInt32(UVehicleUtilities::SafeDivide(InDeltaTime, SubstepDeltaTime));
@@ -765,7 +782,7 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		// update transfercase
 		float SumAxleInertia;
 		float GearboxOutputShaftAngularVelocity;
-		NumOfDriveAxles = TransferCaseRaw->SubstepTransferCase(
+		NumOfDriveAxles = TransferCaseRaw->SubstepTransferCase_Internal(
 			AxlesRaw,
 			RealSubstepDeltaTime,
 			GearboxOutputTorque,
