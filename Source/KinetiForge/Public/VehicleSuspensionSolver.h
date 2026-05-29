@@ -98,7 +98,9 @@ public:
 		float Thickness = 0, 
 		bool bDrawSuspension = true,
 		bool bDrawWheel = true,
-		bool bDrawRayCast = true);
+		bool bDrawRayCast = true,
+		bool bSolidAxle = false,
+		UVehicleWheelComponent* OtherWheel = nullptr);
 	void DrawSuspensionForce(
 		UVehicleWheelComponent* WheelComponent,
 		float Duration = -1,

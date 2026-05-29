@@ -399,7 +399,9 @@ void FVehicleSuspensionSolver::DrawSuspension(
 	float Thickness, 
 	bool bDrawSuspension, 
 	bool bDrawWheel, 
-	bool bDrawRayCast)
+	bool bDrawRayCast,
+	bool bSolidAxle,
+	UVehicleWheelComponent* OtherWheel)
 {
 	UWorld* TempWorld = WheelComponent->GetWorld();
 	if (!IsValid(TempWorld))return;
@@ -414,6 +416,8 @@ void FVehicleSuspensionSolver::DrawSuspension(
 
 	if (bDrawSuspension)
 	{
+		bSolidAxle = bSolidAxle && IsValid(OtherWheel);
+
 		FVector LowerPivotChassis, LowerAxisChassis, LowerBallJointChassis, 
 			UpperPivotChassis, UpperAxisChassis, UpperBallJointChassis;
 		WheelComponent->GetLowerWishboneState(LowerPivotChassis, LowerAxisChassis, LowerBallJointChassis);
@@ -427,40 +431,49 @@ void FVehicleSuspensionSolver::DrawSuspension(
 		FVector UpperBallJointLocation = ChassisWorldTrans.TransformPositionNoScale(UpperBallJointChassis);
 		FVector TopMountLocation = ChassisWorldTrans.TransformPositionNoScale((FVector)State.TopMountChassisLocation);
 
-		// draw arm
-		if (KineConfig.SuspensionType != EVehicleIndependentSuspensionType::StraightLine)
-		{
-			DrawDebugLine(TempWorld, LowerPivotLocation, LowerBallJointLocation, FColor(0, 0, 255), false, Duration, 0, Thickness);
-			
-			// draw axis
-			float AxisLength = WheelComponent->GetSuspensionKinematicsConfig().LowerWishbone.Length * 0.5f;
-			DrawDebugLine(TempWorld,
-				LowerPivotLocation + LowerAxisDirection * AxisLength,
-				LowerPivotLocation - LowerAxisDirection * AxisLength,
-				FColor(0, 0, 255), false, Duration, 0, Thickness);
-			
-			if (KineConfig.SuspensionType == EVehicleIndependentSuspensionType::DoubleWishbone)
-			{
-				DrawDebugLine(TempWorld, UpperPivotLocation, UpperBallJointLocation, FColor(0, 0, 255), false, Duration, 0, Thickness);
-
-				AxisLength = WheelComponent->GetSuspensionKinematicsConfig().UpperWishbone.Length * 0.5f;
-				DrawDebugLine(TempWorld,
-					UpperPivotLocation + UpperAxisDirection * AxisLength,
-					UpperPivotLocation - UpperAxisDirection * AxisLength,
-					FColor(0, 0, 255), false, Duration, 0, Thickness);
-			}
-		}
-		
 		// draw strut
 		DrawDebugLine(TempWorld, TopMountLocation, LowerBallJointLocation, FColor(255, 255, 0), false, Duration, 0, Thickness);
 
 		// draw knuckle
-		if (KineConfig.SuspensionType == EVehicleIndependentSuspensionType::DoubleWishbone)
+		if (KineConfig.SuspensionType == EVehicleIndependentSuspensionType::DoubleWishbone && !bSolidAxle)
 		{
 			DrawDebugLine(TempWorld, LowerBallJointLocation, UpperBallJointLocation, FColor(0, 255, 255), false, Duration, 0, Thickness);
-		}
-		
+		}		
 		DrawDebugLine(TempWorld, LowerBallJointLocation, HubWorldPos, FColor(0, 255, 255), false, Duration, 0, Thickness);
+
+		// draw arm
+		if (bSolidAxle)
+		{
+			FVector OtherHubRelativePos = OtherWheel->GetHubChassisLocation();
+			FVector OtherHubWorldPos = OtherWheel->GetChassisAsyncWorldTransform().TransformPositionNoScale(OtherHubRelativePos);
+
+			DrawDebugLine(TempWorld, HubWorldPos, OtherHubWorldPos, FColor(0, 0, 255), false, Duration, 0, Thickness);
+		}
+		else
+		{
+			if (KineConfig.SuspensionType != EVehicleIndependentSuspensionType::StraightLine)
+			{
+				DrawDebugLine(TempWorld, LowerPivotLocation, LowerBallJointLocation, FColor(0, 0, 255), false, Duration, 0, Thickness);
+
+				// draw axis
+				float AxisLength = WheelComponent->GetSuspensionKinematicsConfig().LowerWishbone.Length * 0.5f;
+				DrawDebugLine(TempWorld,
+					LowerPivotLocation + LowerAxisDirection * AxisLength,
+					LowerPivotLocation - LowerAxisDirection * AxisLength,
+					FColor(0, 0, 255), false, Duration, 0, Thickness);
+
+				if (KineConfig.SuspensionType == EVehicleIndependentSuspensionType::DoubleWishbone)
+				{
+					DrawDebugLine(TempWorld, UpperPivotLocation, UpperBallJointLocation, FColor(0, 0, 255), false, Duration, 0, Thickness);
+
+					AxisLength = WheelComponent->GetSuspensionKinematicsConfig().UpperWishbone.Length * 0.5f;
+					DrawDebugLine(TempWorld,
+						UpperPivotLocation + UpperAxisDirection * AxisLength,
+						UpperPivotLocation - UpperAxisDirection * AxisLength,
+						FColor(0, 0, 255), false, Duration, 0, Thickness);
+				}
+			}
+		}
 	}
 
 	if (bDrawWheel)
