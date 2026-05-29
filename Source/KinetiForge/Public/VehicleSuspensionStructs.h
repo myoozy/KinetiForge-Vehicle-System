@@ -312,164 +312,117 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 	GENERATED_BODY()
 
 	// [原 WheelPos] 这是一个乘数 (1 或 -1)，叫 Sign/Multiplier 更准确，Pos 会和 Position 混淆
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Config")
 	float WheelSideSign = 1.f;
 
 	// [原 PhysicsDelatTime] 修复了拼写错误 Delat -> Delta
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Time")
 	float PhysicsDeltaTime = 0.00833333f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	float RayCastLength = 1.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast", meta = (ToolTip = "The smoothened hit distance from hit result (smoothened using spring and damper)"))
 	float HitDistance = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float SuspensionCurrentLength = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float SuspensionExtensionRatio = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float SteeringAngle = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Config")
 	float ValidPreload = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float SwaybarForce = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float SuspensionForce = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float ForceAlongImpactNormal = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
 	float StaticSprungMass = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
 	float EffectiveSprungMassNormal = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
 	float EffectiveSprungMassLong = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
 	float EffectiveSprungMassLat = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float WorldGravityZ = 9.8f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	float ImpactFriction = 1.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float AntiPitchScale = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float AntiRollScale = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float JackingForce = 0.f;
 
 	// [原 HubToLowerArmEnd] 明确指出它是车身空间的偏移向量
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f HubOffsetFromLowerJointChassis = FVector3f(0.f);
 
 	// [原 LowerWishboneEnd] 统一使用 BallJoint + 坐标系
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f LowerBallJointChassisLocation = FVector3f(0.f);
 
 	// [原 UpperWishboneEnd]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f UpperBallJointChassisLocation = FVector3f(0.f);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f LowerPivotChassisLocation = FVector3f(0.f);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f UpperPivotChassisLocation = FVector3f(0.f);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f LowerWishboneChassisAxis = FVector3f::ForwardVector;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f UpperWishboneChassisAxis = FVector3f::ForwardVector;
 
 	// [原 TopMountRelativePos]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f TopMountChassisLocation = FVector3f(0.f);
 
 	// [原 StrutRelativeDirection]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry", meta = (ToolTip = "The strut direction in Chassis space"))
 	FVector3f StrutChassisDirection = FVector3f(0.f);
 
 	// [原 KinpinRelative] 修复拼写 Kinpin -> SteerAxis
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector3f SteerAxisChassisDirection = FVector3f(0.f);
 
 	// [原 RayCastStartRelative]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector3f RayCastStartChassisLocation = FVector3f(0.f);
 
 	// [原 ImpactPointWorldVelocity]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	FVector3f ImpactWorldVelocity = FVector3f(0.f);
 
 	// [原 LowerWishboneAxisRot] 明确它是相对于车轮组件的 Local 旋转
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FQuat4f LowerWishboneLocalRotation = FQuat4f::Identity;
 
 	// [原 WheelRightVector]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector WheelWorldRightVector = FVector(0.f);
 
 	// [原 RayCastStartWorld]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector RayCastStartWorldLocation = FVector(0.f);
 
 	// [原 RayCastEndWorld]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector RayCastEndWorldLocation = FVector(0.f);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FVector RayCastDirectionWorld = FVector(0.f);
 
 	// [原 StrutDirection]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector StrutWorldDirection = FVector(0.f);
 
 	// [原 HubWorldPos]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FVector HubWorldLocation = FVector(0.f);
 
 	// [原 RayCastTransform]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FTransform RayCastWorldTransform = FTransform(FQuat(0.f));
 
 	// [原 ChassisWorldTransform] 终于可以彻底正名为 Chassis 了
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FTransform ChassisWorldTransform = FTransform(FQuat(0.f));
 
 	// [原 RelativeTransform] 极其危险的命名！明确改为组件到车身的 Transform
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FTransform3f WheelCompToChassisTransform = FTransform3f(FQuat4f(0.f));
 
 	// [原 HubRelativeTransform]
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	FTransform3f HubChassisTransform = FTransform3f(FQuat4f(0.f));
 
 	// [原 HitStruct] 虚幻原生喜欢叫 HitResult
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	FHitResult HitResult = FHitResult();
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	bool bHitGround = true;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	bool bRayCastRefined = false;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RayCast")
 	bool bValidKinematicsConfig = true;
 };

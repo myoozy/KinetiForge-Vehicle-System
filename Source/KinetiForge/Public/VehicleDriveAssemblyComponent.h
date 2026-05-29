@@ -82,6 +82,10 @@ public:
     FAutoGearboxConfig AutoGearboxConfig;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bUpdatePhysicsAutomatically = true;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+    bool bDrivetrainSubstepping = true;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
+    float SubstepDeltaTime = 1.f / 240.f;
 
 protected:
     // Called when the game starts
@@ -173,6 +177,7 @@ protected:
     FVector3f WorldAcceleration;
     FVector3f LocalAcceleration;
     TArray<FVector2D> SpeedRangeOfEachGear;
+    TArray<UVehicleAxleAssemblyComponent*> AxlesRaw;
 
     FVehicleInputPipeline InputValues;
 

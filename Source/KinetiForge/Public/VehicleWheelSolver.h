@@ -19,8 +19,16 @@ public:
 	~FVehicleWheelSolver();
 
 	void Initialize(const FVehicleTireConfig& TireConfig);
-	void UpdateWheel(
-		float InPhysicsDeltaTime,
+
+	void PreStep(
+		float InMacroDeltaTime,
+		const FVehicleSuspensionSimState& SuspensionState,
+		const FVehicleWheelConfig& WheelConfig,
+		const FVehicleTireConfig& TireConfig
+	);
+
+	void Substep(
+		float InSubstepDeltaTime,
 		float InDriveTorque,
 		float InBrakeTorque,
 		float InHandbrakeTorque,
@@ -28,7 +36,13 @@ public:
 		const FVehicleWheelConfig& WheelConfig,
 		const FVehicleTireConfig& TireConfig,
 		const FVehicleABSConfig& ABSConfig,
-		const FVehicleSuspensionSimState& SuspensionState);
+		const FVehicleSuspensionSimState& SuspensionState
+	);
+
+	void PostStep(
+
+	);
+
 	void DrawWheelForce(
 		UVehicleWheelComponent* WheelComponent,
 		const FVehicleSuspensionSimState& SuspensionState,
@@ -44,51 +58,77 @@ public:
 
 	// all data during simulation
 	FVehicleWheelSimState State;
+	FVehicleWheelSimContext CurrentContext;
 	FVehicleWheelCachedLUTs CachedLUTs;
 
 protected:
 
 private:
-	void PredictSlipAndUpdateABS(
+	static void PredictSlipAndUpdateABS(
+		FVehicleWheelSimState& LocalState,
+		const FVehicleWheelSimContext& Context,
 		const FVehicleABSConfig& ABSConfig,
 		const float TargetBrakeTorque,
 		const bool bHitGround);
-	void UpdateDynamicFrictionMultiplier(
+	static void UpdateDynamicFrictionMultiplier(
+		FVehicleWheelSimState& LocalState,
+		const FVehicleWheelSimContext& Context,
 		const FVehicleTireConfig& TireConfig,
 		const float ImpactFriction);
-	void UpdateLinearVelocity(
+	static void UpdateLinearVelocity(
+		FVehicleWheelSimState& LocalState,
 		const FVector3f& LongForceDir,
 		const FVector3f& LatForceDir,
 		const FVector3f& ImpactPointWorldVelocity);
-	void WheelAcceleration(
-		const FVector3f& LongForceDir,
-		float SlipVelocityTolerance = 0.1f);
-	void UpdateSlipAngle(bool bHitGround);
-	void UpdateSlipRatio(bool bHitGround);
+	static void WheelAcceleration(
+		FVehicleWheelSimState& LocalState,
+		const FVehicleWheelSimContext& Context,
+		const float LastTireLongitudinalForce,
+		const float SlipVelocityTolerance = 0.1f);
+	static void UpdateSlipAngle(
+		FVehicleWheelSimState& LocalState,
+		const bool bHitGround);
+	static void UpdateSlipRatio(
+		FVehicleWheelSimState& LocalState,
+		const FVehicleWheelSimContext& Context,
+		const bool bHitGround);
 	/**Returns transient slip ratio and slip angle (normalized)*/
-	FVector2f UpdateTransientSlip(
+	static FVector2f UpdateTransientSlip(
+		FVehicleWheelSimState& LocalState,
+		const FVehicleWheelSimContext& Context,
 		const bool bHitGround,
 		const FVector2f& RelaxationLength);
-	float CalculateConstraintLongForce(float EffectiveSprungMass);
-	float CalculateConstraintLatForce(float EffectiveSprungMassy);
-	FVector2f CalculateGravityCompensationOnSlope(
-		float PositiveForceIntoSurface,
-		bool bHitGround,
+	static float CalculateConstraintLongForce(
+		FVehicleWheelSimState& LocalState,
+		const FVehicleWheelSimContext& Context,
+		const float EffectiveSprungMass);
+	static float CalculateConstraintLatForce(
+		FVehicleWheelSimState& LocalState,
+		const FVehicleWheelSimContext& Context,
+		const float EffectiveSprungMassy);
+	static FVector2f CalculateGravityCompensationOnSlope(
+		FVehicleWheelSimState& LocalState,
+		FVehicleWheelSimContext& Context,
+		const float PositiveForceIntoSurface,
+		const bool bHitGround,
 		const FVector3f& LongForceDir,
 		const FVector3f& LatForceDir);
-	float CalculateScaledWheelLoad(
-		float StaticSprungMass,
-		float WheelLoad,
-		float Saturation);
-	void UpdateTireForce(
-		float StaticSprungMass,
-		float EffectiveSprungMassLong,
-		float EffectiveSprungMassLat,
-		float PositiveForceIntoSurface,
-		bool bHitGround,
+	static float CalculateScaledWheelLoad(
+		const float StaticSprungMass,
+		const float WheelLoad,
+		const float Saturation);
+	static FVector2f SolveTireForce(
+		FVehicleWheelSimState& LocalState,
+		const FVehicleWheelSimContext& Context,
+		const float StaticSprungMass,
+		const float EffectiveSprungMassLong,
+		const float EffectiveSprungMassLat,
+		const float PositiveForceIntoSurface,
+		const bool bHitGround,
 		const FVector3f& LongForceDirUnNorm,
 		const FVector3f& LatForceDirUnNorm,
 		const FVector3f& LongForceDir,
 		const FVector3f& LatForceDir,
-		const FVehicleTireConfig& TireConfig);
+		const FVehicleTireConfig& TireConfig,
+		const FVehicleWheelCachedLUTs& TireLUTs);
 };

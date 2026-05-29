@@ -62,6 +62,17 @@ public:
 		float& OutReflectedInertia
 	);
 	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
+	int32 SubstepTransferCase(
+		const TArray<UVehicleAxleAssemblyComponent*>& InAxles,
+		float InSubstepDeltaTime,
+		float InGearboxOutputTorque,
+		float InReflectedInertia,
+		float InBrakeValue,
+		float InHandbrakeValue,
+		bool bLineLockActive,
+		float& OutTransmissionOutputShaftAngularVelocity,
+		float& OutTransmissionOutputShaftEffectiveInertia);
+	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	int32 UpdateTransferCase(
 		const TArray<UVehicleAxleAssemblyComponent*>& InAxles,
 		float InDeltaTime,
@@ -71,8 +82,8 @@ public:
 		float InHandbrakeValue,
 		float InSteeringValue,
 		bool bLineLockActive,
-		float& OutGearboxOutputShaftAngularVelocity,
-		float& OutTotalInertia);
+		float& OutTransmissionOutputShaftAngularVelocity,
+		float& OutTransmissionOutputShaftEffectiveInertia);
 	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	float CalculateEffectiveWheelRadius(
 		const TArray<UVehicleAxleAssemblyComponent*>& InAxles

@@ -94,7 +94,7 @@ protected:
 	virtual void OnRegister() override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 	bool InitializeMeshComponents();
-	void ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* ChassisHandle);
+	void ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* InChassisHandle);
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> WheelHubComponent;
@@ -114,6 +114,7 @@ protected:
 	//wheel movement
 	FVehicleWheelSolver Wheel;
 
+	Chaos::FRigidBodyHandle_Internal* ChassisHandle;
 	FTransform ChassisAsyncWorldTransform;
 	FTransform3f DesignedHubLocalTransform;
 
@@ -134,6 +135,33 @@ protected:
 #if WITH_EDITORONLY_DATA
 	float TimeSinceLastConfigSync = 0.f;
 #endif
+
+public:
+	void PreStepIndependentSuspension(
+		float InMacroDeltaTime,
+		float InSteeringAngle,
+		float InSwaybarForce);
+	void StartPreStepSolidAxleSuspension(
+		float InSteeringAngle,
+		FVector& OutHitWorldLocation,
+		FVehicleSuspensionSimContext& Ctx);
+	void FinalizePreStepSolidAxleSuspension(
+		float InMacroDeltaTime,
+		float InSwaybarForce,
+		FVehicleSuspensionSimContext& Ctx,
+		const float InTrackWidth,
+		const FVector& InThisWheelHitWorldLocation,
+		const FVector& InOtherWheelHitWorldLocation);
+
+	void PreStepWheel(
+		float InMacroDeltaTime);
+	void SubStepWheel(
+		float InSubstepDeltaTime,
+		float InDriveTorque,
+		float InBrakeTorque,
+		float InHandbrakeTorque,
+		float InReflectedInertia);
+	void PostStepApplyForce();
 
 public:	
 	// Called every frame
@@ -233,7 +261,10 @@ public:
 	float GetWheelWidth() { return WheelConfig.Width; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
-	float GetWheelInertia() { return WheelConfig.Inertia; }
+	float GetIntrinsicInertia() { return WheelConfig.Inertia; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	float GetWheelInertia() { return GetIntrinsicInertia(); }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetSlipRatio(bool bTransientSlip = true);
@@ -258,7 +289,10 @@ public:
 	* Including all the inertia from the drivetrain which is reflected on the wheel
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
-	float GetTotalInertia() { return Wheel.State.TotalInertia; }
+	float GetEffectiveInertia() { return Wheel.State.EffectiveInertia; }
+	
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	float GetTotalInertia() { return GetEffectiveInertia(); }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	FVector3f GetWorldLinearVelocity() { return Suspension.State.ImpactWorldVelocity; }
