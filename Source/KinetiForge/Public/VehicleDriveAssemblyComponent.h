@@ -177,7 +177,6 @@ protected:
     FVector3f WorldAcceleration;
     FVector3f LocalAcceleration;
     TArray<FVector2D> SpeedRangeOfEachGear;
-    TArray<UVehicleAxleAssemblyComponent*> AxlesRaw;
 
     FVehicleInputPipeline InputValues;
 

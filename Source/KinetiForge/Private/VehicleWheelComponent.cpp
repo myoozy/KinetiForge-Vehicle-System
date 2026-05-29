@@ -284,6 +284,7 @@ void UVehicleWheelComponent::PreStepIndependentSuspension(
 	Suspension.UpdateSuspension(
 		WheelConfig.Radius,
 		WheelConfig.Width,
+		WheelConfig.Inertia,
 		Wheel.State.TireForce,
 		SuspensionKinematicsConfig,
 		SuspensionSpringConfig,
@@ -340,6 +341,7 @@ void UVehicleWheelComponent::FinalizePreStepSolidAxleSuspension(
 
 	Suspension.FinalizeUpdateSolidAxle(
 		WheelConfig.Radius,
+		WheelConfig.Inertia,
 		SuspensionKinematicsConfig,
 		SuspensionSpringConfig,
 		ChassisAsyncWorldTransform,

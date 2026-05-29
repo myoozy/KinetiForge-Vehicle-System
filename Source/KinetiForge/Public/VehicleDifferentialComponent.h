@@ -72,6 +72,16 @@ public:
 		bool bLineLockActive,
 		float& OutTransmissionOutputShaftAngularVelocity,
 		float& OutTransmissionOutputShaftEffectiveInertia);
+	int32 SubstepTransferCase_Internal(
+		TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
+		float InSubstepDeltaTime,
+		float InGearboxOutputTorque,
+		float InReflectedInertia,
+		float InBrakeValue,
+		float InHandbrakeValue,
+		bool bLineLockActive,
+		float& OutTransmissionOutputShaftAngularVelocity,
+		float& OutTransmissionOutputShaftEffectiveInertia);
 	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	int32 UpdateTransferCase(
 		const TArray<UVehicleAxleAssemblyComponent*>& InAxles,
@@ -87,6 +97,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	float CalculateEffectiveWheelRadius(
 		const TArray<UVehicleAxleAssemblyComponent*>& InAxles
+	);
+	float CalculateEffectiveWheelRadius_Internal(
+		TArrayView<UVehicleAxleAssemblyComponent* const> InAxles
 	);
 
 	void GetOutputTorque(

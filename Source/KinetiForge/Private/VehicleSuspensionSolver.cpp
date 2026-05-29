@@ -61,6 +61,7 @@ void FVehicleSuspensionSolver::SetSprungMass(
 void FVehicleSuspensionSolver::UpdateSuspension(
 	const float WheelRadius,
 	const float WheelWidth,
+	const float WheelInertia,
 	const FVector3f& TireForce,
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
 	const FVehicleSuspensionSpringConfig& SpringConfig,
@@ -141,6 +142,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	ComputeSuspensionForce(
 		Ctx, 
 		WheelRadius,
+		WheelInertia,
 		ChassisState,
 		SpringConfig, 
 		KineConfig, 
@@ -188,6 +190,7 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 
 void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	const float WheelRadius,
+	const float WheelInertia,
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
 	const FVehicleSuspensionSpringConfig& SpringConfig,
 	const FTransform& AsyncChassisWorldTransform,
@@ -241,6 +244,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	ComputeSuspensionForce(
 		Ctx, 
 		WheelRadius, 
+		WheelInertia,
 		ChassisState,
 		SpringConfig, 
 		KineConfig, 
@@ -942,6 +946,7 @@ void FVehicleSuspensionSolver::ComputeHitDistance(
 		Ctx.HitResult.Distance + EquivalentSphereTraceRadius : Ctx.RayCastLength + WheelRadius;
 	float HitDistanceNoBias = FMath::Max(0.f, Ctx.HitDistance - WheelRadius);
 	Ctx.SuspensionExtensionRatio = UVehicleUtilities::SafeDivide(HitDistanceNoBias, Ctx.RayCastLength);
+	Ctx.SuspensionExtensionRatio = FMath::Clamp(Ctx.SuspensionExtensionRatio, 0.f, 1.f);
 }
 
 void FVehicleSuspensionSolver::CacheImpactFriction(
@@ -1928,6 +1933,7 @@ float FVehicleSuspensionSolver::GetCriticalDamping(
 void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	FVehicleSuspensionSimContext& Ctx,
 	const float WheelRadius,
+	const float WheelInertia,
 	const FVehicleChassisSimState& ChassisState,
 	const FVehicleSuspensionSpringConfig& SpringConfig,
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
@@ -1958,12 +1964,13 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	}
 
 	const float CompressionRatio = 1.f - Ctx.SuspensionExtensionRatio;
+	const float SpringCompression = KineConfig.Stroke - Ctx.SuspensionCurrentLength;
 	float MotionRatio = LUTs.MotionRatioCurve.FastEval(CompressionRatio).Value;
 
 	const float EquivSpringStiffness = SpringConfig.SpringStiffness * MotionRatio * MotionRatio;
 	const float MaxSpring = 4.f * Ctx.EffectiveSprungMassNormal * DeltaTimeInv * DeltaTimeInv;
 	const float ActiveSpring = FMath::Min(MaxSpring, EquivSpringStiffness);
-	float SpringForce = ActiveSpring * (KineConfig.Stroke - Ctx.SuspensionCurrentLength);
+	float SpringForce = ActiveSpring * SpringCompression;
 
 	float DamperStiffness = (Ctx.SuspensionCurrentLength > LastLength) ?
 		SpringConfig.ReboundDamping : SpringConfig.CompressionDamping;
@@ -1976,9 +1983,7 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 
 	Ctx.SuspensionForce = SpringForce + DampingForce;
 
-	FVector ChassisUpVector = Ctx.ChassisWorldTransform.GetRotation().GetUpVector();
-	FVector SwaybarForceVector = Ctx.SwaybarForce * ChassisUpVector;
-	FVector SuspensionForceVector = Ctx.StrutWorldDirection * Ctx.SuspensionForce + SwaybarForceVector;
+	FVector SuspensionForceVector = Ctx.StrutWorldDirection * Ctx.SuspensionForce;
 	float SuspensionForceProj = FVector::DotProduct(SuspensionForceVector, Ctx.HitResult.Normal);
 
 	// some limits of constraint
@@ -1986,7 +1991,15 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	float VelocityAlongNormal = FVector::DotProduct(Ctx.HitResult.Normal, FVector(Ctx.ImpactWorldVelocity));
 	float ImpulseAlongNormal = VelocityAlongNormal * Ctx.EffectiveSprungMassNormal;
 	float ForceToBringToStop = FMath::Max(0.f, -ImpulseAlongNormal * DeltaTimeInv);
+	float NormalProjOnWorldUp = FVector::DotProduct(FVector::UpVector, Ctx.HitResult.Normal);
 	float DynSprungMassGravity = Ctx.WorldGravityZ * Ctx.EffectiveSprungMassNormal;
+	float ForceToCancelOutSprungWeight = UVehicleUtilities::SafeDivide(DynSprungMassGravity, NormalProjOnWorldUp);
+
+	// when suspension pulls the car down, the force can't be too high to lift the wheel
+	float EstimatedWheelMass = (2.0f * WheelInertia) / (WheelRadius * WheelRadius * 0.0001f);
+	float VirtualUnsprungMass = EstimatedWheelMass + 20.0f; // 20 is a magic number, the weight of suspension & brake
+	float ForceToCancelOutUnsprungWeight = UVehicleUtilities::SafeDivide(VirtualUnsprungMass, NormalProjOnWorldUp);
+	SuspensionForceProj = FMath::Max(SuspensionForceProj, -ForceToCancelOutUnsprungWeight);
 
 	// if suspension is compeletly compressed
 	if (Ctx.SuspensionCurrentLength < SMALL_NUMBER)
@@ -2002,19 +2015,22 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 		ForceToHoldCar += SpringForce + DampingForce;
 		SuspensionForceProj += ForceToHoldCar;
 	}
+
 	Ctx.ForceAlongImpactNormal += SuspensionForceProj;
+
+	// sway bar
+	FVector ChassisUpVector = Ctx.ChassisWorldTransform.GetRotation().GetUpVector();
+	FVector SwaybarForceVector = Ctx.SwaybarForce * ChassisUpVector;
+	Ctx.ForceAlongImpactNormal += FVector::DotProduct(SwaybarForceVector, Ctx.HitResult.Normal);
 
 	// spring preload
 	float StrutProjOnNormal = FVector::DotProduct(Ctx.StrutWorldDirection, Ctx.HitResult.Normal);
-	float NormalProjOnWorldUp = FVector::DotProduct(FVector::UpVector, Ctx.HitResult.Normal);
 
 	float RawPreloadAlongSpring = SpringConfig.SpringPreload * MotionRatio;
 	float RawPreloadAlongNormal = StrutProjOnNormal * RawPreloadAlongSpring;
 
-	float MaxStaticPreloadAlongNormal = UVehicleUtilities::SafeDivide(DynSprungMassGravity, NormalProjOnWorldUp);
-
 	float ImpulseScale = FMath::Clamp(FMath::Abs(CompressionRatio * 10.f), 0.f, 1.f);
-	float MaxPreloadAlongNormal = MaxStaticPreloadAlongNormal - ImpulseAlongNormal * DeltaTimeInv * ImpulseScale - Ctx.ForceAlongImpactNormal;
+	float MaxPreloadAlongNormal = ForceToCancelOutSprungWeight - ImpulseAlongNormal * DeltaTimeInv * ImpulseScale - Ctx.ForceAlongImpactNormal;
 	float ValidPreloadAlongNormal = FMath::Max(0.f, FMath::Min(MaxPreloadAlongNormal * ConstraintScale, RawPreloadAlongNormal));
 
 	Ctx.ForceAlongImpactNormal += ValidPreloadAlongNormal;

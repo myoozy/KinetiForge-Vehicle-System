@@ -23,6 +23,7 @@ public:
 	void UpdateSuspension(
 		const float WheelRadius,
 		const float WheelWidth,
+		const float WheelInertia,
 		const FVector3f& TireForce,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FVehicleSuspensionSpringConfig& SpringConfig,
@@ -47,6 +48,7 @@ public:
 	);
 	void FinalizeUpdateSolidAxle(
 		const float WheelRadius,
+		const float WheelInertia,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
 		const FVehicleSuspensionSpringConfig& SpringConfig,
 		const FTransform& AsyncChassisWorldTransform,
@@ -362,6 +364,7 @@ private:
 	static void ComputeSuspensionForce(
 		FVehicleSuspensionSimContext& Ctx,
 		const float WheelRadius,
+		const float WheelInertia,
 		const FVehicleChassisSimState& ChassisState,
 		const FVehicleSuspensionSpringConfig& SpringConfig,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
