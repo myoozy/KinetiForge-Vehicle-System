@@ -1991,45 +1991,15 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	float VelocityAlongNormal = FVector::DotProduct(Ctx.HitResult.Normal, FVector(Ctx.ImpactWorldVelocity));
 	float ImpulseAlongNormal = VelocityAlongNormal * Ctx.EffectiveSprungMassNormal;
 	float ForceToBringToStop = FMath::Max(0.f, -ImpulseAlongNormal * DeltaTimeInv);
-	float DynSprungMassGravity = Ctx.WorldGravityZ * Ctx.EffectiveSprungMassNormal;
 	float NormalProjOnWorldUp = FVector::DotProduct(FVector::UpVector, Ctx.HitResult.Normal);
+	float DynSprungMassGravity = Ctx.WorldGravityZ * Ctx.EffectiveSprungMassNormal;
 	float ForceToCancelOutSprungWeight = UVehicleUtilities::SafeDivide(DynSprungMassGravity, NormalProjOnWorldUp);
 
-	// Energy-Preserving Clamp
-	// 1. get spring potential energy: Es = 0.5 * k * x^2
-	float SpringPE = 0.5f * EquivSpringStiffness * SpringCompression * SpringCompression;
-
-	// 2. speed moving up
-	float V_up = -VelocityAlongNormal;
-
-	// 3. solve: J^2 / (2*Meff) + V_up * J - Es <= 0
-	float A = 0.5f / Ctx.EffectiveSprungMassNormal;
-	float B = V_up;
-	float C = -SpringPE;
-
-	float Delta = B * B - 4.f * A * C;
-
-	if (Delta >= 0.f)
-	{
-		// Take the positive root 
-		// to obtain the maximum allowable momentum 
-		// that does not violate the law of conservation of energy.
-		float MaxJ_Energy = (-B + FMath::Sqrt(Delta)) / (2.f * A);
-
-		// impulse to force
-		float MaxF_Energy = MaxJ_Energy * DeltaTimeInv;
-
-		// add up gravity
-		MaxF_Energy += ForceToCancelOutSprungWeight;
-
-		// consider wheel
-		float EstimatedWheelMass = (2.0f * WheelInertia) / (WheelRadius * WheelRadius * 0.0001f);
-		float VirtualUnsprungMass = EstimatedWheelMass + 20.0f; // 20 is a magic number
-		float ForceToCancelOutUnsprungWeight = UVehicleUtilities::SafeDivide(VirtualUnsprungMass, NormalProjOnWorldUp);
-
-		// clamp
-		SuspensionForceProj = FMath::Clamp(SuspensionForceProj, -ForceToCancelOutUnsprungWeight, MaxF_Energy);
-	}
+	// when suspension pulls the car down, the force can't be too high to lift the wheel
+	float EstimatedWheelMass = (2.0f * WheelInertia) / (WheelRadius * WheelRadius * 0.0001f);
+	float VirtualUnsprungMass = EstimatedWheelMass + 20.0f; // 20 is a magic number, the weight of suspension & brake
+	float ForceToCancelOutUnsprungWeight = UVehicleUtilities::SafeDivide(VirtualUnsprungMass, NormalProjOnWorldUp);
+	SuspensionForceProj = FMath::Max(SuspensionForceProj, -ForceToCancelOutUnsprungWeight);
 
 	// if suspension is compeletly compressed
 	if (Ctx.SuspensionCurrentLength < SMALL_NUMBER)
