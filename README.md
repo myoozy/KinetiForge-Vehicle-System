@@ -26,6 +26,7 @@ High-performance, modular vehicle physics system for Unreal Engine 5, fully impl
 
 **Drivetrain (1D physics, implicit integration)**  
 - Driveshaft torsional stiffness simulated  
+- Internal physical sub-steps of the drivetrain and tires
 
 **Engine**  
 - Models starter motor, spark plugs, fuel injectors, turbocharger, etc.  
@@ -176,6 +177,7 @@ MIT License
 
 **传动系统**  
 - 1D 物理，隐式积分，模拟传动轴扭转刚度  
+- 传动系统和轮胎的内部物理子步
 
 **引擎**  
 - 模拟启动机、火花塞、喷油嘴、涡轮增压器等  

@@ -1931,18 +1931,24 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	Ctx.EffectiveSprungMassNormal = EffectiveMass.Z;
 
 	float DeltaTimeInv = UVehicleUtilities::SafeDivide(1.f, Ctx.PhysicsDeltaTime);
-
 	const float LastLength = Ctx.SuspensionCurrentLength;
-
 	Ctx.SuspensionCurrentLength = KineConfig.Stroke * Ctx.SuspensionExtensionRatio;
-
 	Ctx.StrutWorldDirection = Ctx.ChassisWorldTransform.TransformVectorNoScale((FVector)Ctx.StrutChassisDirection);
+
+	if (!Ctx.bHitGround)
+	{
+		Ctx.ForceAlongImpactNormal = 0.f;
+		Ctx.SuspensionForce = 0.f;
+		Ctx.EffectiveSprungMassLong = EffectiveMass.X;
+		Ctx.EffectiveSprungMassLat = EffectiveMass.Y;
+		return;
+	}
 
 	const float CompressionRatio = 1.f - Ctx.SuspensionExtensionRatio;
 	float MotionRatio = LUTs.MotionRatioCurve.FastEval(CompressionRatio).Value;
 
 	const float EquivSpringStiffness = SpringConfig.SpringStiffness * MotionRatio * MotionRatio;
-	const float MaxSpring = Ctx.EffectiveSprungMassNormal * DeltaTimeInv * DeltaTimeInv;
+	const float MaxSpring = 4.f * Ctx.EffectiveSprungMassNormal * DeltaTimeInv * DeltaTimeInv;
 	const float ActiveSpring = FMath::Min(MaxSpring, EquivSpringStiffness);
 	float SpringForce = ActiveSpring * (KineConfig.Stroke - Ctx.SuspensionCurrentLength);
 
@@ -1962,16 +1968,18 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	FVector SuspensionForceVector = Ctx.StrutWorldDirection * Ctx.SuspensionForce + SwaybarForceVector;
 	float SuspensionForceProj = FVector::DotProduct(SuspensionForceVector, Ctx.HitResult.Normal);
 
-	// if suspension is compeletly compressed
+	// some limits of constraint
 	const float ConstraintScale = 0.99f;
-	float ForceToHoldCar = 0.f;
 	float VelocityAlongNormal = FVector::DotProduct(Ctx.HitResult.Normal, FVector(Ctx.ImpactWorldVelocity));
 	float ImpulseAlongNormal = VelocityAlongNormal * Ctx.EffectiveSprungMassNormal;
+	float ForceToBringToStop = FMath::Max(0.f, -ImpulseAlongNormal * DeltaTimeInv);
+	float DynSprungMassGravity = Ctx.WorldGravityZ * Ctx.EffectiveSprungMassNormal;
+
+	// if suspension is compeletly compressed
 	if (Ctx.SuspensionCurrentLength < SMALL_NUMBER)
 	{
 		// try to stop the car immediately, only in the ray cast direction
-		float ForceToBringToStop = FMath::Max(0.f, -ImpulseAlongNormal * DeltaTimeInv);
-		ForceToHoldCar = ForceToBringToStop * ConstraintScale * SpringConfig.BottomOutStiffness;
+		float ForceToHoldCar = ForceToBringToStop * ConstraintScale * SpringConfig.BottomOutStiffness;
 
 		// the spring system in another direction (normal of impact surface)
 		FVector WheelCenterToImpactPoint = Ctx.HubWorldLocation - Ctx.HitResult.ImpactPoint;
@@ -1979,8 +1987,9 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 		SpringForce = (WheelRadius - DistanceToSurface) * ActiveSpring;
 		DampingForce = -VelocityAlongNormal * ActiveDamping;
 		ForceToHoldCar += SpringForce + DampingForce;
+		SuspensionForceProj += ForceToHoldCar;
 	}
-	Ctx.ForceAlongImpactNormal += SuspensionForceProj + ForceToHoldCar;
+	Ctx.ForceAlongImpactNormal += SuspensionForceProj;
 
 	// spring preload
 	float StrutProjOnNormal = FVector::DotProduct(Ctx.StrutWorldDirection, Ctx.HitResult.Normal);
@@ -1989,19 +1998,13 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	float RawPreloadAlongSpring = SpringConfig.SpringPreload * MotionRatio;
 	float RawPreloadAlongNormal = StrutProjOnNormal * RawPreloadAlongSpring;
 
-	float MaxStaticPreloadAlongNormal = UVehicleUtilities::SafeDivide(Ctx.WorldGravityZ * Ctx.EffectiveSprungMassNormal, NormalProjOnWorldUp);
+	float MaxStaticPreloadAlongNormal = UVehicleUtilities::SafeDivide(DynSprungMassGravity, NormalProjOnWorldUp);
 
 	float ImpulseScale = FMath::Clamp(FMath::Abs(CompressionRatio * 10.f), 0.f, 1.f);
 	float MaxPreloadAlongNormal = MaxStaticPreloadAlongNormal - ImpulseAlongNormal * DeltaTimeInv * ImpulseScale - Ctx.ForceAlongImpactNormal;
 	float ValidPreloadAlongNormal = FMath::Max(0.f, FMath::Min(MaxPreloadAlongNormal * ConstraintScale, RawPreloadAlongNormal));
 
 	Ctx.ForceAlongImpactNormal += ValidPreloadAlongNormal;
-
-	if (!Ctx.bHitGround)
-	{
-		Ctx.ForceAlongImpactNormal = 0.f;
-		Ctx.SuspensionForce = 0.f;
-	}
 
 	// get effective mass in other directions
 	const float ForceIntoSurface = FMath::Max(Ctx.ForceAlongImpactNormal, 0.f);

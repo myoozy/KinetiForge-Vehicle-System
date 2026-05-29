@@ -19,8 +19,60 @@ void FVehicleWheelSolver::Initialize(const FVehicleTireConfig& TireConfig)
 	UpdateCachedLUTs(TireConfig);
 }
 
-void FVehicleWheelSolver::UpdateWheel(
-	float InPhysicsDeltaTime,
+void FVehicleWheelSolver::PreStep(
+	float InMacroDeltaTime, 
+	const FVehicleSuspensionSimState& SuspensionState, 
+	const FVehicleWheelConfig& WheelConfig,
+	const FVehicleTireConfig& TireConfig)
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
+
+	FVehicleWheelSimContext& Context = CurrentContext;
+	FVehicleWheelSimState& LocalState = State;
+
+	Context.MacroDeltaTime = InMacroDeltaTime;
+	Context.MacroDeltaTimeInv = UVehicleUtilities::SafeDivide(1.f, InMacroDeltaTime);
+
+	Context.R = WheelConfig.Radius * 0.01f;
+	Context.RInv = UVehicleUtilities::SafeDivide(1.f, Context.R);
+
+	const FVector3f WheelRightVec = SuspensionState.WheelWorldRightVector;
+	const FVector3f ImpactNormal = SuspensionState.ImpactWorldNormal;
+
+	Context.LongForceDirUnNorm = FVector3f::CrossProduct(WheelRightVec, ImpactNormal);
+	Context.LatForceDirUnNorm = FVector3f::VectorPlaneProject(WheelRightVec, ImpactNormal);
+	Context.LongForceDir = Context.LongForceDirUnNorm.GetSafeNormal();
+	Context.LatForceDir = Context.LatForceDirUnNorm.GetSafeNormal();
+	Context.LongForceDirUnNormLength = Context.LongForceDirUnNorm.Length();
+
+	UpdateLinearVelocity(LocalState, Context.LongForceDir, Context.LatForceDir, SuspensionState.ImpactWorldVelocity);
+
+	UpdateDynamicFrictionMultiplier(LocalState, Context, TireConfig, SuspensionState.ImpactFriction);
+
+	Context.ForceIntoSurface = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
+
+	Context.GravityComp2D = CalculateGravityCompensationOnSlope(
+		LocalState, Context,
+		Context.ForceIntoSurface,
+		SuspensionState.bHitGround,
+		Context.LongForceDir,
+		Context.LatForceDir
+	);
+
+	// get wheel load
+	LocalState.WheelLoad = CalculateScaledWheelLoad(
+		SuspensionState.StaticSprungMass, 
+		Context.ForceIntoSurface,
+		TireConfig.WheelLoadInfluenceFactor
+	);
+	Context.AvailableGrip = LocalState.DynFrictionMultiplier * LocalState.WheelLoad;
+
+	// clear tire force
+	Context.AccumulateTireImpulse2D = FVector2f(0.f);
+}
+
+void FVehicleWheelSolver::Substep(
+	float InSubstepDeltaTime,
 	float InDriveTorque,
 	float InBrakeTorque,
 	float InHandbrakeTorque,
@@ -33,57 +85,60 @@ void FVehicleWheelSolver::UpdateWheel(
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
 
 	const FVehicleWheelConfig& Config = WheelConfig;
+	FVehicleWheelSimContext& Context = CurrentContext;
+	FVehicleWheelSimState& LocalState = State;
 
-	//divide something...	to avoid 0
-	State.PhysicsDeltaTime = InPhysicsDeltaTime;
-	State.PhysicsDeltaTimeInv = UVehicleUtilities::SafeDivide(1.f, State.PhysicsDeltaTime);
-	State.R = Config.Radius * 0.01;
-	State.RInv = UVehicleUtilities::SafeDivide(1.f, State.R);
-	State.TotalInertia = Config.Inertia + InReflectedInertia;
-	State.DriveTorque = InDriveTorque + State.P4MotorTorque;
+	Context.SubstepDeltaTime = InSubstepDeltaTime;
+	Context.SubstepDeltaTimeInv = UVehicleUtilities::SafeDivide(1.f, InSubstepDeltaTime);
 
-	// get the direction of longitudinal and lateral force in world space
-	// if the vectors are not normalized, the force can be affected by camber
-	const FVector3f WheelRightVec = SuspensionState.WheelWorldRightVector;
-	const FVector3f ImpactNormal = SuspensionState.ImpactWorldNormal;
-	FVector3f LongForceDirUnNorm = FVector3f::CrossProduct(WheelRightVec, ImpactNormal);
-	FVector3f LatForceDirUnNorm = FVector3f::VectorPlaneProject(WheelRightVec, ImpactNormal);
-	FVector3f LongForceDir = LongForceDirUnNorm.GetSafeNormal();
-	FVector3f LatForceDir = LatForceDirUnNorm.GetSafeNormal();
+	LocalState.EffectiveInertia = Config.Inertia + InReflectedInertia;
+	LocalState.DriveTorque = InDriveTorque + LocalState.P4MotorTorque;
 
-	UpdateLinearVelocity(LongForceDir, LatForceDir, SuspensionState.ImpactWorldVelocity);
+	float TargetBrakeTorque = FMath::Max(0.f, FMath::Abs(InBrakeTorque) + LocalState.BrakeTorqueFromESP);
+	PredictSlipAndUpdateABS(LocalState, Context, ABSConfig, TargetBrakeTorque, SuspensionState.bHitGround);
 
-	// get target brake torque
-	// brake torque from esp can be negative (which means to reduce brake torque)
-	// but the target total brake torque should not be negative (the brake should not accelerate the wheel)
-	float TargetBrakeTorque = FMath::Max(0.f, FMath::Abs(InBrakeTorque) + State.BrakeTorqueFromESP);	
-	
-	// update abs
-	PredictSlipAndUpdateABS(ABSConfig, TargetBrakeTorque, SuspensionState.bHitGround);
+	LocalState.BrakeTorqueFromHandbrake = FMath::Abs(InHandbrakeTorque);
+	LocalState.BrakeTorque = LocalState.BrakeTorqueFromBrake + Config.RollingRisistance + LocalState.BrakeTorqueFromHandbrake;
 
-	// get total brake torque
-	State.BrakeTorqueFromHandbrake = FMath::Abs(InHandbrakeTorque);
-	State.BrakeTorque = State.BrakeTorqueFromBrake + Config.RollingRisistance + State.BrakeTorqueFromHandbrake;
-
-	UpdateDynamicFrictionMultiplier(TireConfig, SuspensionState.ImpactFriction);
-
-	const float SlipVelocityTolerance = 0.1f;
-	WheelAcceleration(LongForceDir, SlipVelocityTolerance);
-
+	// =========================================================
+	// 1. Get tire force (using wheel speed from last frame)
+	// =========================================================
 	float ForceIntoSurface = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
-
-	UpdateTireForce(
+	FVector2f SubstepForce2D = SolveTireForce(
+		LocalState, Context,
 		SuspensionState.StaticSprungMass,
 		SuspensionState.EffectiveSprungMassLong,
 		SuspensionState.EffectiveSprungMassLat,
 		ForceIntoSurface,
 		SuspensionState.bHitGround,
-		LongForceDirUnNorm,
-		LatForceDirUnNorm,
-		LongForceDir,
-		LatForceDir,
-		TireConfig
+		Context.LongForceDirUnNorm,
+		Context.LatForceDirUnNorm,
+		Context.LongForceDir,
+		Context.LatForceDir,
+		TireConfig,
+		CachedLUTs
 	);
+
+	// =========================================================
+	// 2. Get wheel speed
+	// =========================================================
+	const float SlipVelocityTolerance = 0.1f;
+	const float ActualTireLongitudinalForce = SubstepForce2D.X * Context.LongForceDirUnNormLength;
+	WheelAcceleration(LocalState, Context, ActualTireLongitudinalForce, SlipVelocityTolerance);
+
+	Context.AccumulateTireImpulse2D += SubstepForce2D * Context.SubstepDeltaTime;
+}
+
+void FVehicleWheelSolver::PostStep()
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
+
+	FVehicleWheelSimContext& Context = CurrentContext;
+	FVehicleWheelSimState& LocalState = State;
+	LocalState.TireForce2D = Context.AccumulateTireImpulse2D * Context.MacroDeltaTimeInv;
+	LocalState.TireForce =
+		LocalState.TireForce2D.X * Context.LongForceDirUnNorm +
+		LocalState.TireForce2D.Y * Context.LatForceDirUnNorm;
 }
 
 void FVehicleWheelSolver::DrawWheelForce(
@@ -163,7 +218,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 	{
 		FColor InertiaColor = FColor(255, 255, 255);
 		FVector TempWheelLocation = WheelTrans.GetLocation();
-		FString TextInertia = FString(TEXT("Inertia = ")) + FString::SanitizeFloat(State.TotalInertia);
+		FString TextInertia = FString(TEXT("Inertia = ")) + FString::SanitizeFloat(State.EffectiveInertia);
 		DrawDebugString(CurrentWorld, TempWheelLocation, TextInertia, 0, InertiaColor, Duration, true, Length * 100);
 	}
 }
@@ -198,133 +253,142 @@ float FVehicleWheelSolver::GetTangentAtOrigin(const FRichCurve& Curve)
 }
 
 void FVehicleWheelSolver::PredictSlipAndUpdateABS(
+	FVehicleWheelSimState& LocalState,
+	const FVehicleWheelSimContext& Context,
 	const FVehicleABSConfig& ABSConfig,
 	const float TargetBrakeTorque, 
 	const bool bHitGround)
 {
 	// predict angular velocity
-	float PredictedOmega = State.AngularVelocity + State.AngularAcceleration * State.PhysicsDeltaTime;
-	float PredictedVSlip = PredictedOmega * State.R - State.LocalLinearVelocity.X;
+	float PredictedOmega = LocalState.AngularVelocity + LocalState.AngularAcceleration * Context.SubstepDeltaTime;
+	float PredictedVSlip = PredictedOmega * Context.R - LocalState.LocalLinearVelocity.X;
 	PredictedVSlip *= bHitGround;
-	float Denominator = FMath::Max(FMath::Max(FMath::Abs(State.LocalLinearVelocity.X), FMath::Abs(PredictedOmega * State.R)), 1.f);
-	State.PredictedSlipRatio = PredictedVSlip / Denominator;
+	float Denominator = FMath::Max(FMath::Max(FMath::Abs(LocalState.LocalLinearVelocity.X), FMath::Abs(PredictedOmega * Context.R)), 1.f);
+	LocalState.PredictedSlipRatio = PredictedVSlip / Denominator;
 
-	float AbsolutSlip = FMath::Abs(State.PredictedSlipRatio);
+	float AbsolutSlip = FMath::Abs(LocalState.PredictedSlipRatio);
 	// only activate abs when the sign of slip and the sign of velocity is different
-	bool bDifferentSign = State.PredictedSlipRatio * State.LocalLinearVelocity.X < 0.f;
+	bool bDifferentSign = LocalState.PredictedSlipRatio * LocalState.LocalLinearVelocity.X < 0.f;
 
-	State.bABSTriggered = 
+	LocalState.bABSTriggered = 
 		ABSConfig.bAntiBrakeSystemEnabled
 		&& TargetBrakeTorque > SMALL_NUMBER
 		&& bHitGround
-		&& FMath::Abs(State.LocalLinearVelocity.X) > ABSConfig.ActivationSpeed
+		&& FMath::Abs(LocalState.LocalLinearVelocity.X) > ABSConfig.ActivationSpeed
 		&& AbsolutSlip > ABSConfig.OptimalSlip
 		&& bDifferentSign;
 
-	if (State.bABSTriggered)
+	if (LocalState.bABSTriggered)
 	{
 		float Error = AbsolutSlip - ABSConfig.OptimalSlip;
 		float AbsFactor = 1.0f - (Error * ABSConfig.Sensitivity);
 		AbsFactor = FMath::Clamp(AbsFactor, 0.0f, 1.0f);
-		State.BrakeTorqueFromBrake = TargetBrakeTorque * AbsFactor;
+		LocalState.BrakeTorqueFromBrake = TargetBrakeTorque * AbsFactor;
 		
 		return;
 	}
 
-	State.BrakeTorqueFromBrake = TargetBrakeTorque;
+	LocalState.BrakeTorqueFromBrake = TargetBrakeTorque;
 }
 
 void FVehicleWheelSolver::UpdateDynamicFrictionMultiplier(
+	FVehicleWheelSimState& LocalState,
+	const FVehicleWheelSimContext& Context,
 	const FVehicleTireConfig& TireConfig,
 	const float ImpactFriction)
 {
 	switch (TireConfig.TireFrictionCombineMode)
 	{
 	case ETireFrictionCombineMode::Constant:
-		State.DynFrictionMultiplier = TireConfig.FrictionMultiplier;
+		LocalState.DynFrictionMultiplier = TireConfig.FrictionMultiplier;
 		break;
 	case ETireFrictionCombineMode::Average:
-		State.DynFrictionMultiplier = 0.5 * (TireConfig.FrictionMultiplier + ImpactFriction);
+		LocalState.DynFrictionMultiplier = 0.5 * (TireConfig.FrictionMultiplier + ImpactFriction);
 		break;
 	case ETireFrictionCombineMode::Multiply:
-		State.DynFrictionMultiplier = TireConfig.FrictionMultiplier * ImpactFriction;
+		LocalState.DynFrictionMultiplier = TireConfig.FrictionMultiplier * ImpactFriction;
 		break;
 	case ETireFrictionCombineMode::Min:
-		State.DynFrictionMultiplier = FMath::Min(TireConfig.FrictionMultiplier, ImpactFriction);
+		LocalState.DynFrictionMultiplier = FMath::Min(TireConfig.FrictionMultiplier, ImpactFriction);
 		break;
 	case ETireFrictionCombineMode::Max:
-		State.DynFrictionMultiplier = FMath::Max(TireConfig.FrictionMultiplier, ImpactFriction);
+		LocalState.DynFrictionMultiplier = FMath::Max(TireConfig.FrictionMultiplier, ImpactFriction);
 		break;
 	default:
-		State.DynFrictionMultiplier = 0.5 * (TireConfig.FrictionMultiplier + ImpactFriction);
+		LocalState.DynFrictionMultiplier = 0.5 * (TireConfig.FrictionMultiplier + ImpactFriction);
 		break;
 	}
 }
 
 void FVehicleWheelSolver::UpdateLinearVelocity(
+	FVehicleWheelSimState& LocalState,
 	const FVector3f& LongForceDir, 
 	const FVector3f& LatForceDir, 
 	const FVector3f& ImpactPointWorldVelocity)
 {
-	State.LocalLinearVelocity.X = FVector3f::DotProduct(LongForceDir, ImpactPointWorldVelocity);
-	State.LocalLinearVelocity.Y = FVector3f::DotProduct(LatForceDir, ImpactPointWorldVelocity);
+	LocalState.LocalLinearVelocity.X = FVector3f::DotProduct(LongForceDir, ImpactPointWorldVelocity);
+	LocalState.LocalLinearVelocity.Y = FVector3f::DotProduct(LatForceDir, ImpactPointWorldVelocity);
 }
 
 void FVehicleWheelSolver::WheelAcceleration(
-	const FVector3f& LongForceDir,
-	float SlipVelocityTolerance)
+	FVehicleWheelSimState& LocalState,
+	const FVehicleWheelSimContext& Context,
+	const float LastTireLongitudinalForce,
+	const float SlipVelocityTolerance)
 {
-	float LastAngularVelocity = State.AngularVelocity;
+	float LastAngularVelocity = LocalState.AngularVelocity;
 
 	//friction torque should not flip the sign of the relative rotation to the ground
 	//but there should be tolerance, because even when there is no drive torque or brake torque, the wheel should not always be completely sticked to the road
 	//allow small angular acceleration tolerance to prevent sticky behavior when slip ~ 0 (empirical value)
-	float ToleranceTorque = State.TotalInertia * SlipVelocityTolerance * State.PhysicsDeltaTimeInv;
+	float ToleranceTorque = LocalState.EffectiveInertia * SlipVelocityTolerance * Context.SubstepDeltaTimeInv;
 
 	//Get the torque required to flip the sign of relative rotation between ground and wheel
-	float AngularLongSlip = State.AngularVelocity - State.LocalLinearVelocity.X * State.RInv;
-	float MaxFrictionTorque = AngularLongSlip * State.TotalInertia * State.PhysicsDeltaTimeInv;
+	float AngularLongSlip = LocalState.AngularVelocity - LocalState.LocalLinearVelocity.X * Context.RInv;
+	float MaxFrictionTorque = AngularLongSlip * LocalState.EffectiveInertia * Context.SubstepDeltaTimeInv;
 
 	//drive torque must be considered, but till now we cannot define the direction of the brake torque, so just donot take brake torque into account
-	MaxFrictionTorque += State.DriveTorque;
+	MaxFrictionTorque += LocalState.DriveTorque;
 	MaxFrictionTorque = FMath::Abs(MaxFrictionTorque);
 
 	//if there is no tolerance, there will be a bug when braking: the brake force will not be released since the longsilpvelocity == 0 and the smoothing factor == 0, so the longitudinal force will not reduce even when brake is released
 	MaxFrictionTorque += ToleranceTorque;
 
 	//clamp the friction torque, friction torque should not flip the sign of the relative rotation to the ground
-	float FrictionTorque = FVector3f::DotProduct(State.TireForce, LongForceDir) * State.R;
+	float FrictionTorque = LastTireLongitudinalForce * Context.R;
 	float ClampedFrictionTorque = FMath::Clamp(FrictionTorque, -MaxFrictionTorque, MaxFrictionTorque);
 
 	//since the brake torque is not considered when calculating max friction torque, we have to get the excess friction torque to deal with brake torque
 	//if there is no excess friction torque, slip ratio will be very high when braking, since brake torque is not affected by friction
 	//and again, the excess friction torque should not be greater than brake torque, since the friction torque should not flip the sign of the relative rotation to the ground
-	float ExcessFrictionTorque = FMath::Clamp(FrictionTorque - ClampedFrictionTorque, -State.BrakeTorque, State.BrakeTorque);
+	float ExcessFrictionTorque = FMath::Clamp(FrictionTorque - ClampedFrictionTorque, -LocalState.BrakeTorque, LocalState.BrakeTorque);
 
 	// avoid divided by 0
-	float TotalInertiaInv = UVehicleUtilities::SafeDivide(1.f, State.TotalInertia);
+	float EffectiveInertiaInv = UVehicleUtilities::SafeDivide(1.f, LocalState.EffectiveInertia);
 
 	//get the angular velocity without braking
-	State.AngularVelocity += State.PhysicsDeltaTime * TotalInertiaInv * (State.DriveTorque - ClampedFrictionTorque);
-	float AngVelSignIfNotBraking = FMath::Sign(State.AngularVelocity);
+	LocalState.AngularVelocity += Context.SubstepDeltaTime * EffectiveInertiaInv * (LocalState.DriveTorque - ClampedFrictionTorque);
+	float AngVelSignIfNotBraking = FMath::Sign(LocalState.AngularVelocity);
 
 	//finally the sign of brake torque can be defined
-	float ActuralBrakingTorque = State.BrakeTorque * (-AngVelSignIfNotBraking);
-	State.AngularVelocity += State.PhysicsDeltaTime * TotalInertiaInv * (ActuralBrakingTorque - ExcessFrictionTorque);
+	float ActuralBrakingTorque = LocalState.BrakeTorque * (-AngVelSignIfNotBraking);
+	LocalState.AngularVelocity += Context.SubstepDeltaTime * EffectiveInertiaInv * (ActuralBrakingTorque - ExcessFrictionTorque);
 
 	//zero cross check
 	//if the wheel is locked, the angular velocity should be 0
-	State.bIsLocked = AngVelSignIfNotBraking * State.AngularVelocity <= 0.f && State.BrakeTorque > SMALL_NUMBER;
-	State.AngularVelocity *= !State.bIsLocked;
+	LocalState.bIsLocked = AngVelSignIfNotBraking * LocalState.AngularVelocity <= 0.f && LocalState.BrakeTorque > SMALL_NUMBER;
+	LocalState.AngularVelocity *= !LocalState.bIsLocked;
 
 	// get angular acceleration
-	State.AngularAcceleration = (State.AngularVelocity - LastAngularVelocity) * State.PhysicsDeltaTimeInv;
+	LocalState.AngularAcceleration = (LocalState.AngularVelocity - LastAngularVelocity) * Context.SubstepDeltaTimeInv;
 }
 
-void FVehicleWheelSolver::UpdateSlipAngle(bool bHitGround)
+void FVehicleWheelSolver::UpdateSlipAngle(
+	FVehicleWheelSimState& LocalState,
+	const bool bHitGround)
 {
 	//get velocity2d
-	FVector2f Velocity2DNormalized = State.LocalLinearVelocity.GetSafeNormal();
+	FVector2f Velocity2DNormalized = LocalState.LocalLinearVelocity.GetSafeNormal();
 
 	//calculate lateral slip
 	//get slip angle
@@ -333,90 +397,105 @@ void FVehicleWheelSolver::UpdateSlipAngle(bool bHitGround)
 
 	//approximate low speed slip angle
 	//-V.y = |V| * sin(SlipAngle) ¡Ö |V| * SlipAngle ¡Ö SlipAngle; when slip angle is small and |v| --> 1.f
-	float LowSpeedSlipAngle = -FMath::RadiansToDegrees(State.LocalLinearVelocity.Y);
+	float LowSpeedSlipAngle = -FMath::RadiansToDegrees(LocalState.LocalLinearVelocity.Y);
 
 	//get alpha for lerp, lerp between high speed and low speede
-	float Alpha = FMath::GetMappedRangeValueClamped(FVector2f(0.01f, 0.1f), FVector2f(0.f, 1.f), State.LocalLinearVelocity.SquaredLength());
+	float Alpha = FMath::GetMappedRangeValueClamped(FVector2f(0.01f, 0.1f), FVector2f(0.f, 1.f), LocalState.LocalLinearVelocity.SquaredLength());
 
 	//combine low speed and high speed
-	State.SlipAngle = FMath::Lerp(LowSpeedSlipAngle, SlipAngleRaw, Alpha) * bHitGround;
-	State.SlipAngle = FMath::Clamp(State.SlipAngle, -90.f, 90.f);
+	LocalState.SlipAngle = FMath::Lerp(LowSpeedSlipAngle, SlipAngleRaw, Alpha) * bHitGround;
+	LocalState.SlipAngle = FMath::Clamp(LocalState.SlipAngle, -90.f, 90.f);
 }
 
-void FVehicleWheelSolver::UpdateSlipRatio(bool bHitGround)
+void FVehicleWheelSolver::UpdateSlipRatio(
+	FVehicleWheelSimState& LocalState,
+	const FVehicleWheelSimContext& Context, 
+	const bool bHitGround)
 {
 	//Calculate longitudinal slip
-	State.LongSlipVelocity = State.AngularVelocity * State.R - State.LocalLinearVelocity.X;
-	State.LongSlipVelocity *= bHitGround;
+	LocalState.LongSlipVelocity = LocalState.AngularVelocity * Context.R - LocalState.LocalLinearVelocity.X;
+	LocalState.LongSlipVelocity *= bHitGround;
 
 	//calculate slip ratio
-	float Denominator = FMath::Max(FMath::Max(FMath::Abs(State.LocalLinearVelocity.X), FMath::Abs(State.AngularVelocity * State.R)), 1.f);
-	State.SlipRatio = State.LongSlipVelocity / Denominator;
+	float Denominator = FMath::Max(FMath::Max(FMath::Abs(LocalState.LocalLinearVelocity.X), FMath::Abs(LocalState.AngularVelocity * Context.R)), 1.f);
+	LocalState.SlipRatio = LocalState.LongSlipVelocity / Denominator;
 }
 
-FVector2f FVehicleWheelSolver::UpdateTransientSlip(const bool bHitGround, const FVector2f& RelaxationLength)
+FVector2f FVehicleWheelSolver::UpdateTransientSlip(
+	FVehicleWheelSimState& LocalState,
+	const FVehicleWheelSimContext& Context,
+	const bool bHitGround, 
+	const FVector2f& RelaxationLength)
 {
 	if (bHitGround)
 	{
 		const FVector2f SafeRelaxationLength = FVector2f::Max(RelaxationLength, FVector2f(SMALL_NUMBER));
 
-		FVector2f SlipVelocity = FVector2f(State.LongSlipVelocity, -State.LocalLinearVelocity.Y);
-		float AbsVx = FMath::Abs(State.LocalLinearVelocity.X);
-		float AbsOmegaR = FMath::Abs(State.AngularVelocity * State.R);
+		FVector2f SlipVelocity = FVector2f(LocalState.LongSlipVelocity, -LocalState.LocalLinearVelocity.Y);
+		float AbsVx = FMath::Abs(LocalState.LocalLinearVelocity.X);
+		float AbsOmegaR = FMath::Abs(LocalState.AngularVelocity * Context.R);
 		FVector2f AbsVx2D = FVector2f(FMath::Max(AbsVx, AbsOmegaR), AbsVx);
 		float MinVx = 0.1f;
 		AbsVx2D = FVector2f::Max(AbsVx2D, FVector2f(MinVx));
 
-		State.TransientSlip =
-			(State.TransientSlip + (SlipVelocity * State.PhysicsDeltaTime) / SafeRelaxationLength) /
-			(FVector2f(1.f, 1.f) + (AbsVx2D * State.PhysicsDeltaTime) / SafeRelaxationLength);
+		LocalState.TransientSlip =
+			(LocalState.TransientSlip + (SlipVelocity * Context.SubstepDeltaTime) / SafeRelaxationLength) /
+			(FVector2f(1.f, 1.f) + (AbsVx2D * Context.SubstepDeltaTime) / SafeRelaxationLength);
 
-		float TransientSlipRatio = State.TransientSlip.X;
-		float TransientSlipAngle = FMath::Atan(State.TransientSlip.Y) / (0.5f * PI);
+		float TransientSlipRatio = LocalState.TransientSlip.X;
+		float TransientSlipAngle = FMath::Atan(LocalState.TransientSlip.Y) / (0.5f * PI);
 
 		return FVector2f(TransientSlipRatio, TransientSlipAngle);
 	}
 	else
 	{
-		State.TransientSlip = FVector2f(0.f, 0.f);
+		LocalState.TransientSlip = FVector2f(0.f, 0.f);
 		return FVector2f(0.f, 0.f);
 	}
 }
 
-float FVehicleWheelSolver::CalculateConstraintLongForce(float EffectiveSprungMass)
+float FVehicleWheelSolver::CalculateConstraintLongForce(
+	FVehicleWheelSimState& LocalState,
+	const FVehicleWheelSimContext& Context,
+	const float EffectiveSprungMass)
 {
 	const float BodyInvMassLong = 1.0f / EffectiveSprungMass;
-	const float WheelInvMassLong = UVehicleUtilities::SafeDivide(State.R * State.R, State.TotalInertia);
+	const float WheelInvMassLong = UVehicleUtilities::SafeDivide(Context.R * Context.R, LocalState.EffectiveInertia);
 	const float ExactTotalLongMass = 1.0f / (BodyInvMassLong + WheelInvMassLong);
 
-	float Vx = FMath::Abs(State.LocalLinearVelocity.X) + SMALL_NUMBER;
+	float Vx = FMath::Abs(LocalState.LocalLinearVelocity.X) + SMALL_NUMBER;
 
-	float ForceRequiredToBringToStop = Vx * State.PhysicsDeltaTimeInv * ExactTotalLongMass;
-	ForceRequiredToBringToStop += FMath::Abs(State.DriveTorque * State.RInv);
+	float ForceRequiredToBringToStop = Vx * Context.MacroDeltaTimeInv * ExactTotalLongMass;
+	ForceRequiredToBringToStop += FMath::Abs(LocalState.DriveTorque * Context.RInv);
 
 	//get linear brake force
-	float SignedBrakeTorque = State.BrakeTorque * (-FMath::Sign(State.LocalLinearVelocity.X));
+	float SignedBrakeTorque = LocalState.BrakeTorque * (-FMath::Sign(LocalState.LocalLinearVelocity.X));
 	SignedBrakeTorque = FMath::Clamp(SignedBrakeTorque, -ForceRequiredToBringToStop, ForceRequiredToBringToStop);
 
 	//torque from ground interaction is the torque required to make angularvelocity == linearvelocity / radius
-	float GroundAngularVelocity = State.LocalLinearVelocity.X * State.RInv;
-	State.TorqueFromGroundInteraction = State.PhysicsDeltaTimeInv * State.TotalInertia * (State.AngularVelocity - GroundAngularVelocity);
+	float GroundAngularVelocity = LocalState.LocalLinearVelocity.X * Context.RInv;
+	LocalState.TorqueFromGroundInteraction = Context.SubstepDeltaTimeInv * LocalState.EffectiveInertia * (LocalState.AngularVelocity - GroundAngularVelocity);
 
 	//get longitudinal force
-	return (State.DriveTorque + SignedBrakeTorque + State.TorqueFromGroundInteraction) * State.RInv;
+	return (LocalState.DriveTorque + SignedBrakeTorque + LocalState.TorqueFromGroundInteraction) * Context.RInv;
 }
 
-float FVehicleWheelSolver::CalculateConstraintLatForce(float EffectiveSprungMass)
+float FVehicleWheelSolver::CalculateConstraintLatForce(
+	FVehicleWheelSimState& LocalState,
+	const FVehicleWheelSimContext& Context, 
+	const float EffectiveSprungMass)
 {
 	float ForceRequiredToBringToStop = 
-		-State.LocalLinearVelocity.Y * State.PhysicsDeltaTimeInv * EffectiveSprungMass;
+		-LocalState.LocalLinearVelocity.Y * Context.MacroDeltaTimeInv * EffectiveSprungMass;
 	
 	return ForceRequiredToBringToStop;
 }
 
 FVector2f FVehicleWheelSolver::CalculateGravityCompensationOnSlope(
-	float PositiveForceIntoSurface,
-	bool bHitGround,
+	FVehicleWheelSimState& LocalState,
+	FVehicleWheelSimContext& Context,
+	const float PositiveForceIntoSurface,
+	const bool bHitGround,
 	const FVector3f& LongForceDir, 
 	const FVector3f& LatForceDir)
 {
@@ -434,26 +513,30 @@ FVector2f FVehicleWheelSolver::CalculateGravityCompensationOnSlope(
 	// so there might be no need to calculate tan(theta)
 	   
 	//Lateral:
-	float SlipSign = FMath::Sign(-State.LocalLinearVelocity.Y);
+	float SlipSign = FMath::Sign(-LocalState.LocalLinearVelocity.Y);
 	GravityComp.Y = LatForceDir.Z * PositiveForceIntoSurface;
 
 	// longitudinal:
-	if (State.bIsLocked)
+	if (LocalState.bIsLocked)
 	{
-		SlipSign = FMath::Sign(State.LongSlipVelocity);
+		SlipSign = FMath::Sign(LocalState.LongSlipVelocity);
 		GravityComp.X = LongForceDir.Z * PositiveForceIntoSurface;
 
 		//consider brake force?
-		float BrakeForce = State.BrakeTorque * State.RInv;	//State.BrakeTorque is always positive
+		float BrakeForce = LocalState.BrakeTorque * Context.RInv;	//LocalState.BrakeTorque is always positive
 		GravityComp.X = FMath::Clamp(GravityComp.X, -BrakeForce, BrakeForce);
 	}
 
 	// in the lateral direction, the wheel can be treated as it is always braking
 
+	Context.GravityComp2D = GravityComp;
 	return GravityComp;
 }
 
-float FVehicleWheelSolver::CalculateScaledWheelLoad(float StaticSprungMass, float WheelLoad, float Saturation)
+float FVehicleWheelSolver::CalculateScaledWheelLoad(
+	float StaticSprungMass, 
+	float WheelLoad, 
+	float Saturation)
 {
 	float NormWheelLoad = StaticSprungMass * 9.8;
 	float LoadRatio = UVehicleUtilities::SafeDivide(WheelLoad, NormWheelLoad);
@@ -462,55 +545,47 @@ float FVehicleWheelSolver::CalculateScaledWheelLoad(float StaticSprungMass, floa
 	return LoadScale * NormWheelLoad;
 }
 
-void FVehicleWheelSolver::UpdateTireForce(
-	float StaticSprungMass,
-	float EffectiveSprungMassLong,
-	float EffectiveSprungMassLat,
-	float PositiveForceIntoSurface,
-	bool bHitGround,
+FVector2f FVehicleWheelSolver::SolveTireForce(
+	FVehicleWheelSimState& LocalState,
+	const FVehicleWheelSimContext& Context,
+	const float StaticSprungMass,
+	const float EffectiveSprungMassLong,
+	const float EffectiveSprungMassLat,
+	const float PositiveForceIntoSurface,
+	const bool bHitGround,
 	const FVector3f& LongForceDirUnNorm,
 	const FVector3f& LatForceDirUnNorm,
 	const FVector3f& LongForceDir,
 	const FVector3f& LatForceDir,
-	const FVehicleTireConfig& TireConfig)
+	const FVehicleTireConfig& TireConfig,
+	const FVehicleWheelCachedLUTs& TireLUTs)
 {
 	// not for tire force now but for abs and tc logic
-	UpdateSlipRatio(bHitGround);
-	UpdateSlipAngle(bHitGround);
+	UpdateSlipRatio(LocalState, Context, bHitGround);
+	UpdateSlipAngle(LocalState, bHitGround);
 
 	if (!bHitGround)
 	{
-		State.TireForce2D = FVector2f(0.f);
-		State.TireForce = FVector3f(0.f);
-		return;
+		return FVector2f(0.f);
 	}
 
 	const float GRAVITY = 9.81f;
 	// Constraint tire force
 	FVector2f ConstraintTireForce = FVector2f(
-		CalculateConstraintLongForce(EffectiveSprungMassLong),
-		CalculateConstraintLatForce(EffectiveSprungMassLat)
+		CalculateConstraintLongForce(LocalState, Context, EffectiveSprungMassLong),
+		CalculateConstraintLatForce(LocalState, Context, EffectiveSprungMassLat)
 	);
 
-	ConstraintTireForce += CalculateGravityCompensationOnSlope(
-		PositiveForceIntoSurface,
-		bHitGround,
-		LongForceDir,
-		LatForceDir
-	);
-
-	// get wheel load
-	State.WheelLoad = CalculateScaledWheelLoad(StaticSprungMass, PositiveForceIntoSurface, TireConfig.WheelLoadInfluenceFactor);
-	float AvailableGrip = State.DynFrictionMultiplier * State.WheelLoad;
+	ConstraintTireForce += Context.GravityComp2D;
 
 	// get stiffness(tangent) of linear region
 	FVector2f LinearRegionStiffness = FVector2f(
-		CachedLUTs.Fx.FastEval(0.f).RightTangent,
-		CachedLUTs.Fy.FastEval(0.f).RightTangent
+		TireLUTs.Fx.FastEval(0.f).RightTangent,
+		TireLUTs.Fy.FastEval(0.f).RightTangent
 	);
 
 	// get absolut slip ratio and slip angle
-	FVector2f TransientSlip = UpdateTransientSlip(bHitGround, TireConfig.RelaxationLength);
+	FVector2f TransientSlip = UpdateTransientSlip(LocalState, Context, bHitGround, TireConfig.RelaxationLength);
 	FVector2f AbsolutSlip = TransientSlip.GetAbs();
 
 	// normalize slip ratio and slip angle
@@ -526,7 +601,7 @@ void FVehicleWheelSolver::UpdateTireForce(
 	FVector2f ScDirection = (NormalizedSlip * WeightXY).GetSafeNormal();
 
 	// the tangent of the linear region should not be changed, if the vehicle is driving on a surface with high friction multiplier
-	float SlipInputScale = UVehicleUtilities::SafeDivide(TireConfig.FrictionMultiplier, State.DynFrictionMultiplier);
+	float SlipInputScale = UVehicleUtilities::SafeDivide(TireConfig.FrictionMultiplier, LocalState.DynFrictionMultiplier);
 	FVector2f SlipInput = SlipInputScale * ScalarNormSlip * OptimalSlip;
 	
 	// if the user has only setup one of the Fx or Fy curve, the Constraint force on the other direction should be cut, before computing combined slip
@@ -534,20 +609,20 @@ void FVehicleWheelSolver::UpdateTireForce(
 	bool bUseFyCurve = LinearRegionStiffness.Y != 0.f;
 
 	// magic formula
-	float MaxFx = TireConfig.MaxFx * AvailableGrip;
-	float MaxFy = TireConfig.MaxFy * AvailableGrip;
+	float MaxFx = TireConfig.MaxFx * Context.AvailableGrip;
+	float MaxFy = TireConfig.MaxFy * Context.AvailableGrip;
 	FVector2f MFTireForce = ConstraintTireForce;
 	if (bUseFxCurve)
 	{
-		float FxPure = CachedLUTs.Fx.FastEval(AbsolutSlip.X).Value;
-		float FxCoupled = CachedLUTs.Fx.FastEval(SlipInput.X).Value * ScDirection.X;
+		float FxPure = TireLUTs.Fx.FastEval(AbsolutSlip.X).Value;
+		float FxCoupled = TireLUTs.Fx.FastEval(SlipInput.X).Value * ScDirection.X;
 		float Fx = FMath::Abs(MaxFx * FMath::Lerp(FxPure, FxCoupled, TireConfig.LateralToLongitudinalInterference));
 		MFTireForce.X = FMath::Clamp(ConstraintTireForce.X, -Fx, Fx);
 	}
 	if (bUseFyCurve)
 	{
-		float FyPure = CachedLUTs.Fy.FastEval(AbsolutSlip.Y).Value;
-		float FyCoupled = CachedLUTs.Fy.FastEval(SlipInput.Y).Value * ScDirection.Y;
+		float FyPure = TireLUTs.Fy.FastEval(AbsolutSlip.Y).Value;
+		float FyCoupled = TireLUTs.Fy.FastEval(SlipInput.Y).Value * ScDirection.Y;
 		float Fy = FMath::Abs(MaxFy * FMath::Lerp(FyPure, FyCoupled, TireConfig.LongitudinalToLateralInterference));
 		MFTireForce.Y = FMath::Clamp(ConstraintTireForce.Y, -Fy, Fy);
 	}
@@ -569,7 +644,5 @@ void FVehicleWheelSolver::UpdateTireForce(
 		}
 	}
 
-	State.TireForce2D = MFTireForce;
-
-	State.TireForce = State.TireForce2D.X * LongForceDirUnNorm + State.TireForce2D.Y * LatForceDirUnNorm;
+	return MFTireForce;
 }

@@ -59,17 +59,16 @@ void UVehicleDifferentialComponent::UpdateInputShaft(float InLeftOutputShaftAngu
 	OutReflectedInertia = UVehicleUtilities::SafeDivide(InLeftWheelInertia + InRightWheelInertia, Config.GearRatio * Config.GearRatio);
 }
 
-int32 UVehicleDifferentialComponent::UpdateTransferCase(
-	const TArray<UVehicleAxleAssemblyComponent*>& InAxles, 
-	float InDeltaTime,
+int32 UVehicleDifferentialComponent::SubstepTransferCase(
+	const TArray<UVehicleAxleAssemblyComponent*>& InAxles,
+	float InSubstepDeltaTime, 
 	float InGearboxOutputTorque, 
-	float InReflectedInertia,
+	float InReflectedInertia, 
 	float InBrakeValue, 
-	float InHandbrakeValue, 
-	float InSteeringValue, 
-	bool bLineLockActive,
-	float& OutGearboxOutputShaftAngularVelocity,
-	float& OutTotalInertia)
+	float InHandbrakeValue,
+	bool bLineLockActive, 
+	float& OutTransmissionOutputShaftAngularVelocity, 
+	float& OutTransmissionOutputShaftEffectiveInertia)
 {
 	//First iterate over all axles to obtain the number of drive axles, torque weights, and average angular velocity
 	int32 NumOfDriveAxles = 0;
@@ -77,7 +76,7 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	float SumAngVel = 0.f;
 	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
-		if (!IsValid(Axle))continue;
+		if (Axle == nullptr)continue;
 
 		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > 0;
 		NumOfDriveAxles += IsDriveAxle;
@@ -97,7 +96,8 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	float SumDriveAxleInertia = 0.f;
 	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
-		if (!IsValid(Axle))continue;
+		if (Axle == nullptr)continue;
+
 		float AxleInertia = 0.f;
 		float AxleAngVel = 0.f;
 
@@ -106,7 +106,7 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 		{
 			//central diff
 			float AngVelDifference = AverageAxleAngularVelocity - Axle->GetAngularVelocity();
-			float TorqueBias = UVehicleUtilities::SafeDivide(AngVelDifference * Axle->GetTotalAxleInertia() * Config.LockRatio, InDeltaTime);
+			float TorqueBias = UVehicleUtilities::SafeDivide(AngVelDifference * Axle->GetTotalAxleInertia() * Config.LockRatio, InSubstepDeltaTime);
 			float NormTorqueWeight = UVehicleUtilities::SafeDivide(Axle->GetAxleConfig().TorqueWeight, SumTorqueWeight);
 			float AxleDriveTorque = DriveTorque * NormTorqueWeight + TorqueBias;
 
@@ -114,35 +114,73 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 			bool IsMainDriveAxle = NormTorqueWeight > 0.5;
 			bool ShouldReleaseBrake = IsMainDriveAxle && bLineLockActive;
 
-			Axle->UpdatePhysics(
-				InDeltaTime,
+			Axle->SubstepAxle(
+				InSubstepDeltaTime,
 				AxleDriveTorque,
 				InBrakeValue * !ShouldReleaseBrake,
 				InHandbrakeValue,
-				InSteeringValue,
 				ReflectedInertiaOnAxle,
-				AxleInertia, AxleAngVel);
+				AxleInertia, AxleAngVel
+			);
 
 			SumAngVel += AxleAngVel;
 			SumDriveAxleInertia += AxleInertia;
 		}
 		else
 		{
-			Axle->UpdatePhysics(
-				InDeltaTime,
+			Axle->SubstepAxle(
+				InSubstepDeltaTime,
 				0.f,
 				InBrakeValue,
 				InHandbrakeValue,
-				InSteeringValue,
 				0.f,
-				AxleInertia,
-				AxleAngVel);
+				AxleInertia, AxleAngVel
+			);
 		}
 	}
 
 	//get average angular velocity of all drive axles
-	OutGearboxOutputShaftAngularVelocity = UVehicleUtilities::SafeDivide(SumAngVel * Config.GearRatio, FloatNumOfDriveAxles);
-	OutTotalInertia = UVehicleUtilities::SafeDivide(SumDriveAxleInertia, Config.GearRatio * Config.GearRatio);
+	OutTransmissionOutputShaftAngularVelocity = UVehicleUtilities::SafeDivide(SumAngVel * Config.GearRatio, FloatNumOfDriveAxles);
+	OutTransmissionOutputShaftEffectiveInertia = UVehicleUtilities::SafeDivide(SumDriveAxleInertia, Config.GearRatio * Config.GearRatio);
+
+	//return the number of drive axles
+	return NumOfDriveAxles;
+}
+
+int32 UVehicleDifferentialComponent::UpdateTransferCase(
+	const TArray<UVehicleAxleAssemblyComponent*>& InAxles, 
+	float InDeltaTime,
+	float InGearboxOutputTorque, 
+	float InReflectedInertia,
+	float InBrakeValue, 
+	float InHandbrakeValue, 
+	float InSteeringValue, 
+	bool bLineLockActive,
+	float& OutTransmissionOutputShaftAngularVelocity,
+	float& OutTransmissionOutputShaftEffectiveInertia)
+{
+	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
+	{
+		if (IsValid(Axle))
+		{
+			Axle->PreStepAxle(InDeltaTime, InSteeringValue);
+		}
+	}
+
+	int32 NumOfDriveAxles = SubstepTransferCase(
+		InAxles, InDeltaTime, InGearboxOutputTorque, InReflectedInertia,
+		InBrakeValue, InHandbrakeValue, bLineLockActive,
+		OutTransmissionOutputShaftAngularVelocity,
+		OutTransmissionOutputShaftEffectiveInertia
+	);
+
+	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
+	{
+		if (IsValid(Axle))
+		{
+			Axle->PostStepAxle();
+		}
+	}
 
 	//return the number of drive axles
 	return NumOfDriveAxles;
