@@ -439,7 +439,8 @@ public:
 		float Thickness = 0,
 		bool bDrawSuspension = true, 
 		bool bDrawWheel = true,
-		bool bDrawRayCast = true);
+		bool bDrawRayCast = true,
+		UVehicleAxleAssemblyComponent* ParentAxle = nullptr);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void DrawSuspensionForce(

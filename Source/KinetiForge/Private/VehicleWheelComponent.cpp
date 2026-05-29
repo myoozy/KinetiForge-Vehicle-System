@@ -3,6 +3,7 @@
 
 #include "VehicleWheelComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
+#include "VehicleAxleAssemblyComponent.h"
 #include "VehicleUtilities.h"
 #include "AsyncTickFunctions.h"
 
@@ -830,9 +831,26 @@ FTransform UVehicleWheelComponent::GetChassisWorldTransform()
 	return Chassis.Get() ? Chassis->GetComponentTransform() : FTransform();
 }
 
-void UVehicleWheelComponent::DrawSuspension(float Duration, float Thickness, bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast)
+void UVehicleWheelComponent::DrawSuspension(
+	float Duration, float Thickness, 
+	bool bDrawSuspension, bool bDrawWheel, bool bDrawRayCast,
+	UVehicleAxleAssemblyComponent* ParentAxle)
 {
-	Suspension.DrawSuspension(this, Duration, Thickness, bDrawSuspension, bDrawWheel, bDrawRayCast);
+	bool bSolidAxle = false;
+	UVehicleWheelComponent* OtherWheel = nullptr;
+
+	if (IsValid(ParentAxle))
+	{
+		UVehicleWheelComponent* WheelL = nullptr;
+		UVehicleWheelComponent* WheelR = nullptr;
+		ParentAxle->GetWheels(WheelL, WheelR);
+		if (this == WheelL && this != WheelR)OtherWheel = WheelR;
+		if (this == WheelR && this != WheelL)OtherWheel = WheelL;
+
+		bSolidAxle = ParentAxle->GetAxleSuspensionType() == EVehicleAxleSuspensionType::Solid && IsValid(OtherWheel);
+	}
+
+	Suspension.DrawSuspension(this, Duration, Thickness, bDrawSuspension, bDrawWheel, bDrawRayCast, bSolidAxle, OtherWheel);
 }
 
 void UVehicleWheelComponent::DrawSuspensionForce(float Duration, float Thickness, float Length)
