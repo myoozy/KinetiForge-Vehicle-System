@@ -709,8 +709,6 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_UpdatePhysics);
 
-	UpdateInput(InDeltaTime);
-
 	PhysicsDeltaTime = InDeltaTime;
 
 	if (!(Engine.IsValid() && Clutch.IsValid() && Gearbox.IsValid() && TransferCase.IsValid()))
@@ -751,6 +749,8 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 	*/
 	for (int i = 0; i < SubSteps; i++)
 	{
+		UpdateInput(RealSubstepDeltaTime);
+
 		// update engine
 		float ClutchTorque = (NumOfDriveAxles > 0) ? Clutch->GetCluchTorque() : 0.f;
 		// sequential transmission disables spark when shifting up
