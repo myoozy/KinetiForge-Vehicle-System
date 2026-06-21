@@ -41,26 +41,6 @@ void UVehicleAxleAssemblyComponent::OnRegister()
 
 void UVehicleAxleAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
-	if (Differential.IsValid() && !Differential->IsBeingDestroyed())
-	{
-		Differential->DestroyComponent();
-	}
-	Differential = nullptr;
-
-	if (LeftWheel.IsValid() && !LeftWheel->IsBeingDestroyed())
-	{
-		LeftWheel->DestroyComponent();
-	}
-	LeftWheel = nullptr;
-
-	if (RightWheel.IsValid() && !RightWheel->IsBeingDestroyed())
-	{
-		RightWheel->DestroyComponent();
-	}
-	RightWheel = nullptr;
-
-	Chassis = nullptr;
-
 	//...
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }

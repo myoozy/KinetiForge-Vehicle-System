@@ -131,38 +131,10 @@ void UVehicleWheelComponent::OnRegister()
 
 void UVehicleWheelComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
-	if (WheelHubComponent.IsValid() && !WheelHubComponent->IsBeingDestroyed())
-	{
-		WheelHubComponent->DestroyComponent();
-	}
-	WheelHubComponent = nullptr;
-
-	if (WheelMeshComponent.IsValid() && !WheelMeshComponent->IsBeingDestroyed())
-	{
-		WheelMeshComponent->DestroyComponent();
-	}
-	WheelMeshComponent = nullptr;
-
-	if (BrakeMeshComponent.IsValid() && !BrakeMeshComponent->IsBeingDestroyed())
-	{
-		BrakeMeshComponent->DestroyComponent();
-	}
-	BrakeMeshComponent = nullptr;
-
 	if (WheelCoordinator.IsValid() && !WheelCoordinator->IsBeingDestroyed())
 	{ 
 		WheelCoordinator->NotifyWheelMoved(); 
 	}
-
-	Chassis = nullptr;
-	TireConfig.Fx = nullptr;
-	TireConfig.Fy = nullptr;
-	SuspensionKinematicsConfig.CamberCurve = nullptr;
-	SuspensionKinematicsConfig.ToeCurve = nullptr;
-	SuspensionKinematicsConfig.CasterCurve = nullptr;
-	SuspensionKinematicsConfig.AntiDiveCurve = nullptr;
-	SuspensionKinematicsConfig.AntiSquatCurve = nullptr;
-	SuspensionKinematicsConfig.AntiRollCurve = nullptr;
 
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
