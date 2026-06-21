@@ -226,21 +226,21 @@ struct KINETIFORGE_API FVehicleSuspensionHitResult
 {
 	GENERATED_BODY()
 
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TWeakObjectPtr<UPhysicalMaterial> PhysMaterial = nullptr;
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TWeakObjectPtr<UPrimitiveComponent> Component = nullptr;
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FName BoneName = NAME_None;
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	bool bBlockingHit = false;
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FVector TraceStart = FVector(0.f);
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FVector TraceEnd = FVector(0.f);
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FVector Location = FVector(0.f);
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FQuat4f TraceRot = FQuat4f(0.f);
 };
 
@@ -389,9 +389,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 
 	// [原 ImpactPointWorldVelocity]
 	FVector3f ImpactWorldVelocity = FVector3f(0.f);
-
-	// [原 LowerWishboneAxisRot] 明确它是相对于车轮组件的 Local 旋转
-	FQuat4f LowerWishboneLocalRotation = FQuat4f::Identity;
 
 	// [原 WheelRightVector]
 	FVector WheelWorldRightVector = FVector(0.f);

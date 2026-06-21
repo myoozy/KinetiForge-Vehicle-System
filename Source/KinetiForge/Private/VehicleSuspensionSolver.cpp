@@ -957,7 +957,7 @@ void FVehicleSuspensionSolver::ComputeStraightRayCastLocation(
 	Ctx.RayCastEndWorldLocation = Ctx.ChassisWorldTransform.TransformPositionNoScale((FVector)RayCastEndChassis);
 
 	FQuat SteeringRot = FQuat((FVector)RayDirChassis, FMath::DegreesToRadians(Ctx.SteeringAngle));
-	FQuat RayCastRot = Ctx.ChassisWorldTransform.GetRotation() * SteeringRot * (FQuat)Ctx.WheelCompToChassisTransform.GetRotation() * (FQuat)Ctx.LowerWishboneLocalRotation;
+	FQuat RayCastRot = Ctx.ChassisWorldTransform.GetRotation() * SteeringRot * (FQuat)Ctx.WheelCompToChassisTransform.GetRotation();
 
 	Ctx.RayCastWorldTransform = FTransform(RayCastRot, Ctx.RayCastEndWorldLocation, FVector(1.f));
 	Ctx.RayCastDirectionWorld = Ctx.ChassisWorldTransform.TransformVectorNoScale((FVector)RayDirChassis);
@@ -967,44 +967,36 @@ void FVehicleSuspensionSolver::ComputeWishboneRayCastLocation(
 	FVehicleSuspensionSimContext& Ctx,
 	const FVehicleSuspensionKinematicsConfig& Config)
 {
-	FVector3f BaseForward = FVector3f(1.f, 0.f, 0.f);
-	FVector3f LowerArmAxisLocal = Config.LowerWishbone.RotationLocalAxis.GetSafeNormal(); // Relative to the wheel component
-	LowerArmAxisLocal.Y *= Ctx.WheelSideSign;
-	Ctx.LowerWishboneLocalRotation = FQuat4f::FindBetweenNormals(BaseForward, LowerArmAxisLocal); // Relative to the wheel component
-
 	FVector3f BaseUp = FVector3f(0.f, 0.f, 1.f);
-	FVector3f BiasedUp = Ctx.LowerWishboneLocalRotation.RotateVector(BaseUp); // The direction to shoot the ray, relative to the wheel component
-
-	FVector3f RayDirChassis = Ctx.WheelCompToChassisTransform.TransformVectorNoScale(BiasedUp); // Relative to chassis
+	// Relative to chassis, sorry this is actually the opposite direction of the ray
+	FVector3f RayDirChassis = Ctx.WheelCompToChassisTransform.TransformVectorNoScale(BaseUp);
 
 	Ctx.HubOffsetFromLowerJointChassis = Ctx.HubChassisTransform.GetLocation() - Ctx.LowerBallJointChassisLocation;
 
-	Ctx.StrutChassisDirection = (Ctx.TopMountChassisLocation - Ctx.LowerBallJointChassisLocation).GetSafeNormal();
+	FVector3f TopMountToLowerBallJoint = Ctx.TopMountChassisLocation - Ctx.LowerBallJointChassisLocation;
+	Ctx.StrutChassisDirection = TopMountToLowerBallJoint.GetSafeNormal();
 
+	// parallel to ray
 	float StrutProjOnRay = FVector3f::DotProduct(Ctx.StrutChassisDirection, RayDirChassis);
+	float ReservedLength = FMath::Abs(StrutProjOnRay) * Config.MinStrutLength;
 	Ctx.RayCastLength = FMath::Abs(StrutProjOnRay) * Config.Stroke;
 
-	FVector3f LowerPivotLocationLocal = Config.LowerWishbone.MountLocalLocation;
-	LowerPivotLocationLocal.Y *= Ctx.WheelSideSign;
-	Ctx.LowerPivotChassisLocation = Ctx.WheelCompToChassisTransform.TransformPositionNoScale(LowerPivotLocationLocal);
-	FVector3f StrutStart = Ctx.TopMountChassisLocation - Ctx.StrutChassisDirection * Config.MinStrutLength; // The start of the compressible part of the strut
-	FVector3f StrutStartFromMount = StrutStart - Ctx.LowerPivotChassisLocation;
+	// vertical to ray
+	FVector3f StrutVerticalToRay = FVector3f::VectorPlaneProject(TopMountToLowerBallJoint, RayDirChassis);
 
-	Ctx.LowerWishboneChassisAxis = Ctx.WheelCompToChassisTransform.TransformVectorNoScale(LowerArmAxisLocal);
+	FVector3f RayOffset = ReservedLength * -RayDirChassis - StrutVerticalToRay + Ctx.HubOffsetFromLowerJointChassis;
 
-	FVector3f ProjectedFromMount = FVector3f::VectorPlaneProject(StrutStartFromMount, Ctx.LowerWishboneChassisAxis);
-	FVector3f StrutStartProjOnAxis = Ctx.LowerPivotChassisLocation + ProjectedFromMount; // The start of the compressible part of the strut, projected onto the plane of the ray
-
-	Ctx.RayCastStartChassisLocation = StrutStartProjOnAxis + Ctx.HubOffsetFromLowerJointChassis;
+	Ctx.RayCastStartChassisLocation = Ctx.TopMountChassisLocation + RayOffset;
 	Ctx.RayCastStartWorldLocation = Ctx.ChassisWorldTransform.TransformPositionNoScale((FVector)Ctx.RayCastStartChassisLocation);
 
 	FVector3f RayCastEndChassis = Ctx.RayCastStartChassisLocation - Ctx.RayCastLength * RayDirChassis;
 	Ctx.RayCastEndWorldLocation = Ctx.ChassisWorldTransform.TransformPositionNoScale((FVector)RayCastEndChassis);
 
 	FQuat SteeringRot = FQuat((FVector)RayDirChassis, FMath::DegreesToRadians(Ctx.SteeringAngle));
-	FQuat RayCastRot = Ctx.ChassisWorldTransform.GetRotation() * SteeringRot * (FQuat)Ctx.WheelCompToChassisTransform.GetRotation() * (FQuat)Ctx.LowerWishboneLocalRotation;
+	FQuat RayCastRot = Ctx.ChassisWorldTransform.GetRotation() * SteeringRot * (FQuat)Ctx.WheelCompToChassisTransform.GetRotation();
 
 	Ctx.RayCastWorldTransform = FTransform(RayCastRot, Ctx.RayCastEndWorldLocation, FVector(1.f));
+	// sorry this is actually the opposite direction of the ray
 	Ctx.RayCastDirectionWorld = Ctx.ChassisWorldTransform.TransformVectorNoScale((FVector)RayDirChassis);
 }
 
@@ -1481,28 +1473,88 @@ void FVehicleSuspensionSolver::SolveLowerWishbone(
 	const float WheelRadius,
 	const FVehicleSuspensionKinematicsConfig& Config)
 {
-	float LowerArmLength = Config.LowerWishbone.Length;
-
 	FVector3f LowerPivotLocationLocal = Config.LowerWishbone.MountLocalLocation;
 	LowerPivotLocationLocal.Y *= Ctx.WheelSideSign;
-	FTransform3f LowerWishboneLocalTransform = FTransform3f(Ctx.LowerWishboneLocalRotation, LowerPivotLocationLocal, FVector3f(1.f));
-	FTransform3f LowerWishboneToChassis = LowerWishboneLocalTransform * Ctx.WheelCompToChassisTransform;
+	Ctx.LowerPivotChassisLocation = Ctx.WheelCompToChassisTransform.TransformPositionNoScale(LowerPivotLocationLocal);
 
-	// get rid of hub offset
-	FVector3f RayCastStartLocal = LowerWishboneToChassis.InverseTransformPositionNoScale(Ctx.RayCastStartChassisLocation - Ctx.HubOffsetFromLowerJointChassis);
-	FVector2f RayCastStart2D = Coord3DTo2D(RayCastStartLocal, Ctx.WheelSideSign);
+	FVector3f LowerArmAxisLocal = Config.LowerWishbone.RotationLocalAxis; // Relative to the wheel component, unnormalized
+	LowerArmAxisLocal.Y *= Ctx.WheelSideSign;
+	Ctx.LowerWishboneChassisAxis = Ctx.WheelCompToChassisTransform.TransformVectorNoScale(LowerArmAxisLocal).GetSafeNormal();
 
-	// Compute the position of the lower wishbone on the suspension plane
-	FVector2f LowerWishboneEnd2D = FVector2f(0.f);
-	LowerWishboneEnd2D.X = RayCastStart2D.X - FMath::Max(0.f, Ctx.CurrentExtensionRatio * Ctx.RayCastLength);
-	float SqrDist = FMath::Square(LowerArmLength) - FMath::Square(LowerWishboneEnd2D.X);
-	LowerWishboneEnd2D.Y = FMath::Sqrt(FMath::Max(0.f, SqrDist));
-	FVector3f LowerWishboneEndLocal = Coord2DTo3D(LowerWishboneEnd2D, Ctx.WheelSideSign);
-	Ctx.LowerBallJointChassisLocation = LowerWishboneToChassis.TransformPositionNoScale(LowerWishboneEndLocal);
+	// 1. 获取目标减震器长度（球面半径 L_s）
+	float TargetStrutLength = Config.MinStrutLength + Ctx.StrutCurrentLength;
+	float StrutLenSq = TargetStrutLength * TargetStrutLength;
 
+	// 2. 获取摆臂参数（圆半径 R_arm）
+	float RArm = Config.LowerWishbone.Length;
+	float RArmSq = RArm * RArm;
+
+	// 3. 提取三个已知的三维坐标/向量
+	FVector3f Pivot = Ctx.LowerPivotChassisLocation;
+	FVector3f Axis = Ctx.LowerWishboneChassisAxis;
+	FVector3f TM = Ctx.TopMountChassisLocation;
+
+	// D 是从塔顶指向下摆臂转轴的向量
+	FVector3f D = Pivot - TM;
+	float DSq = D.SquaredLength();
+
+	// 4. 空间解析几何核心方程：(Ls^2 - R^2 - ||D||^2) / 2
+	float K = (StrutLenSq - RArmSq - DSq) * 0.5f;
+
+	// D 在垂直于摆臂旋转轴平面上的投影
+	FVector3f DProj = D - FVector3f::DotProduct(D, Axis) * Axis;
+	float DProjLenSq = DProj.SquaredLength();
+
+	bool bValidIntersection = false;
+
+	// 防止塔顶恰好在摆臂旋转轴上导致除以零（现实中减震器不可能这样安装）
+	if (DProjLenSq > SMALL_NUMBER)
+	{
+		float DProjLen = FMath::Sqrt(DProjLenSq);
+		FVector3f U = DProj / DProjLen; // 投影面上的局部基底 X 轴
+
+		float Du = K / DProjLen;
+
+		// 判别式：检查减震器是否能够触及摆臂的运动圆环
+		if (Du * Du <= RArmSq)
+		{
+			bValidIntersection = true;
+
+			// Dv 是正交方向的分量
+			float Dv = FMath::Sqrt(RArmSq - Du * Du);
+			FVector3f VDir = FVector3f::CrossProduct(Axis, U).GetSafeNormal(); // 投影面上的局部基底 Y 轴
+
+			// 得出两个绝对精确的解析解
+			FVector3f P1 = Pivot + Du * U + Dv * VDir;
+			FVector3f P2 = Pivot + Du * U - Dv * VDir;
+
+			// 对比上一帧的下球头位置，选择距离最近的解，保持空间运动的连续性
+			float Dist1Sq = (P1 - Ctx.LowerBallJointChassisLocation).SquaredLength();
+			float Dist2Sq = (P2 - Ctx.LowerBallJointChassisLocation).SquaredLength();
+
+			Ctx.LowerBallJointChassisLocation = (Dist1Sq < Dist2Sq) ? P1 : P2;
+		}
+		else
+		{
+			// 安全降级：当减震器过长或过短，导致球面和圆没有交点时。
+			// 我们将坐标钳制（Clamp）在摆臂圆周上距离减震器目标球体最近的那个物理极值点。
+			Ctx.LowerBallJointChassisLocation = Pivot + RArm * FMath::Sign(Du) * U;
+		}
+	}
+	else
+	{
+		// 极其罕见的奇异状态兜底：保持上一次的方向并限制在摆臂长度上
+		FVector3f OldV = Ctx.LowerBallJointChassisLocation - Pivot;
+		FVector3f OldVProj = OldV - FVector3f::DotProduct(OldV, Axis) * Axis;
+		if (OldVProj.SquaredLength() > SMALL_NUMBER)
+		{
+			Ctx.LowerBallJointChassisLocation = Pivot + OldVProj.GetSafeNormal() * RArm;
+		}
+	}
+
+	// 5. 更新上下文状态
 	Ctx.StrutChassisDirection = (Ctx.TopMountChassisLocation - Ctx.LowerBallJointChassisLocation).GetSafeNormal();
-
-	Ctx.bValidKinematicsConfig = Ctx.bValidKinematicsConfig && SqrDist >= 0.f;
+	Ctx.bValidKinematicsConfig = Ctx.bValidKinematicsConfig && bValidIntersection;
 }
 
 void FVehicleSuspensionSolver::ComputeStraightSuspension(
