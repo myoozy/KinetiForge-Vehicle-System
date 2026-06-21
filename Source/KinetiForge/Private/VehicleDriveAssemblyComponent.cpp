@@ -1499,18 +1499,11 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 		{
 			// generate new axle
 			FName Name = FName(ThisName + "_Axle_"+ FString::FromInt(n));
-
-			UVehicleAxleAssemblyComponent* Axle = FindObject<UVehicleAxleAssemblyComponent>(Owner, *Name.ToString());
-
-			if (!IsValid(Axle))
-			{
-				Axle = UVehicleUtilities::CreateComponentByClass<UVehicleAxleAssemblyComponent>(
+			UVehicleAxleAssemblyComponent* Axle = UVehicleUtilities::CreateComponentByClass<UVehicleAxleAssemblyComponent>(
 					Owner,
 					nullptr,
 					Name
 				);
-			}
-			
 			if (IsValid(Axle))
 			{
 				Axle->AttachToComponent(Chassis.Get(), FAttachmentTransformRules::KeepRelativeTransform);

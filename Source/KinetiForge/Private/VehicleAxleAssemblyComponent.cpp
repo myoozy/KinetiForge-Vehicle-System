@@ -876,30 +876,22 @@ bool UVehicleAxleAssemblyComponent::GenerateWheels()
 	if (!WheelL && AxleLayout != EVehicleAxleLayout::SingleRight)
 	{
 		FName Name = FName(ThisName + "_Wheel_L");
-		LeftWheel = FindObject<UVehicleWheelComponent>(Outer, *Name.ToString());
-		if (!LeftWheel.IsValid())
-		{
-			LeftWheel = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
-				Outer,
-				nullptr,
-				Name
-			);
-		}
+		LeftWheel = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
+			Outer,
+			nullptr,
+			Name
+		);
 	}
 
 	//Generate right wheel
 	if (!WheelR && AxleLayout != EVehicleAxleLayout::SingleLeft)
 	{
 		FName Name = FName(ThisName + "_Wheel_R");
-		RightWheel = FindObject<UVehicleWheelComponent>(Outer, *Name.ToString());
-		if (!RightWheel.IsValid())
-		{
-			RightWheel = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
-				Outer,
-				nullptr,
-				Name
-			);
-		}
+		RightWheel = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
+			Outer,
+			nullptr,
+			Name
+		);
 	}
 
 	switch (AxleLayout)
