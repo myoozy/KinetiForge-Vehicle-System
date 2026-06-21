@@ -180,29 +180,41 @@ bool UVehicleWheelComponent::InitializeMeshComponents()
 	if (!WheelHubComponent.IsValid())
 	{
 		FName Name = FName(ThisName + "_WheelHub");
-		WheelHubComponent = UVehicleUtilities::CreateComponentByClass<USceneComponent>(
-			Outer,
-			nullptr,
-			Name
-		);
+		WheelHubComponent = FindObject<USceneComponent>(Outer, *Name.ToString());
+		if (!WheelHubComponent.IsValid())
+		{
+			WheelHubComponent = UVehicleUtilities::CreateComponentByClass<USceneComponent>(
+				Outer,
+				nullptr,
+				Name
+			);
+		}
 	}
 	if (!WheelMeshComponent.IsValid())
 	{
 		FName Name = FName(ThisName + "_WheelMesh");
-		WheelMeshComponent = UVehicleUtilities::CreateComponentByClass<UStaticMeshComponent>(
-			Outer,
-			nullptr,
-			Name
-		);
+		WheelMeshComponent = FindObject<UStaticMeshComponent>(Outer, *Name.ToString());
+		if (!WheelMeshComponent.IsValid())
+		{
+			WheelMeshComponent = UVehicleUtilities::CreateComponentByClass<UStaticMeshComponent>(
+				Outer,
+				nullptr,
+				Name
+			);
+		}
 	}
 	if (!BrakeMeshComponent.IsValid())
 	{
 		FName Name = FName(ThisName + "_BrakeMesh");
-		BrakeMeshComponent = UVehicleUtilities::CreateComponentByClass<UStaticMeshComponent>(
-			Outer,
-			nullptr,
-			Name
-		);
+		BrakeMeshComponent = FindObject<UStaticMeshComponent>(Outer, *Name.ToString());
+		if (!BrakeMeshComponent.IsValid())
+		{
+			BrakeMeshComponent = UVehicleUtilities::CreateComponentByClass<UStaticMeshComponent>(
+				Outer,
+				nullptr,
+				Name
+			);
+		}
 	}
 
 	if (USceneComponent* Hub = WheelHubComponent.Get())
