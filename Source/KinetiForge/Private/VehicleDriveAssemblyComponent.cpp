@@ -111,11 +111,35 @@ void UVehicleDriveAssemblyComponent::OnRegister()
 
 void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
-	//Axles.Empty();
-	if (VehicleAsyncTickComponent.IsValid())
+	//destory all axles
+	if (Axles.Num())
 	{
-		VehicleAsyncTickComponent->UnRegisterDriveAssembly(this);
+		for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxleToDestroy : Axles)
+		{
+			if (AxleToDestroy.IsValid() && !AxleToDestroy->IsBeingDestroyed())AxleToDestroy->DestroyComponent();
+		}
+		Axles.Empty();
 	}
+
+	if (Engine.IsValid() && !Engine->IsBeingDestroyed())Engine->DestroyComponent();
+
+	if (Clutch.IsValid() && !Clutch->IsBeingDestroyed())Clutch->DestroyComponent();
+
+	if (Gearbox.IsValid() && !Gearbox->IsBeingDestroyed())Gearbox->DestroyComponent();
+
+	if (TransferCase.IsValid() && !TransferCase->IsBeingDestroyed())TransferCase->DestroyComponent();
+
+	if (VehicleAsyncTickComponent.IsValid())VehicleAsyncTickComponent->UnRegisterDriveAssembly(this);
+
+	Chassis = nullptr;
+
+	InputConfig.Throttle.ResponseCurve = nullptr;
+	InputConfig.Brake.ResponseCurve = nullptr;
+	InputConfig.Clutch.ResponseCurve = nullptr;
+	InputConfig.Handbrake.ResponseCurve = nullptr;
+	InputConfig.Steering.ResponseCurve = nullptr;
+	InputConfig.HighSpeedSteeringScale = nullptr;
+
 	//...
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
@@ -1450,6 +1474,16 @@ int UVehicleDriveAssemblyComponent::GenerateAxles()
 		{
 			return -1;
 		}
+	}
+
+	//if there are axles, destroy them
+	if (Axles.Num() > 0)
+	{
+		for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> Axle : Axles)
+		{
+			if (Axle.IsValid())Axle->DestroyComponent();
+		}
+		Axles.Empty();
 	}
 
 	AActor* Owner = GetOwner();
