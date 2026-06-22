@@ -108,7 +108,7 @@ public:
 	float GetP1MotorTorque() { return State.P1MotorTorque; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
-	void UpdateCachedLUT();
+	void UpdateCachedLookUpTables();
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleEngine")
 	EVehicleEngineOperationMode StartVehicleEngine();

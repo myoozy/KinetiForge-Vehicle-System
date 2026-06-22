@@ -227,7 +227,7 @@ void FVehicleWheelSolver::UpdateCachedLUTs(const FVehicleTireConfig& Config)
 {
 	if (IsValid(Config.Fx))
 	{
-		CachedLUTs.Fx.CopyFromRichCurve(Config.Fx->FloatCurve);
+		CachedLUTs.Fx.BuildFromCurve(Config.Fx->FloatCurve);
 	}
 	else
 	{
@@ -235,7 +235,7 @@ void FVehicleWheelSolver::UpdateCachedLUTs(const FVehicleTireConfig& Config)
 	}
 	if (IsValid(Config.Fy))
 	{
-		CachedLUTs.Fy.CopyFromRichCurve(Config.Fy->FloatCurve, FVector2f(0.f, 90.f));
+		CachedLUTs.Fy.BuildFromCurve(Config.Fy->FloatCurve, FVector2f(0.f, 90.f));
 	}
 	else
 	{
@@ -580,8 +580,8 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 
 	// get stiffness(tangent) of linear region
 	FVector2f LinearRegionStiffness = FVector2f(
-		TireLUTs.Fx.FastEval(0.f).RightTangent,
-		TireLUTs.Fy.FastEval(0.f).RightTangent
+		TireLUTs.Fx.LinearStiffness,
+		TireLUTs.Fy.LinearStiffness
 	);
 
 	// get absolut slip ratio and slip angle
@@ -605,8 +605,8 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	FVector2f SlipInput = SlipInputScale * ScalarNormSlip * OptimalSlip;
 	
 	// if the user has only setup one of the Fx or Fy curve, the Constraint force on the other direction should be cut, before computing combined slip
-	bool bUseFxCurve = LinearRegionStiffness.X != 0.f;
-	bool bUseFyCurve = LinearRegionStiffness.Y != 0.f;
+	bool bUseFxCurve = TireLUTs.Fx.bHasValidStiffness;
+	bool bUseFyCurve = TireLUTs.Fy.bHasValidStiffness;
 
 	// magic formula
 	float MaxFx = TireConfig.MaxFx * Context.AvailableGrip;

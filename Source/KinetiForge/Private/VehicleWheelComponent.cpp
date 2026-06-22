@@ -424,14 +424,8 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			TimeSinceLastConfigSync -= ConfigSyncInterval;
 
 			// update cached curves
-			Suspension.UpdateCachedLUTs(SuspensionKinematicsConfig);
-			Wheel.UpdateCachedLUTs(TireConfig);
+			UpdateCachedLookUpTables();
 		}
-	}
-	else
-	{
-		Suspension.UpdateCachedLUTs(SuspensionKinematicsConfig);
-		Wheel.UpdateCachedLUTs(TireConfig);
 	}
 #endif
 	
@@ -1264,4 +1258,10 @@ void UVehicleWheelComponent::AttachComponentToWheelHub(
 			bKeepWorldTransform ? FAttachmentTransformRules::KeepWorldTransform : FAttachmentTransformRules::KeepRelativeTransform
 		);
 	}
+}
+
+void UVehicleWheelComponent::UpdateCachedLookUpTables()
+{
+	Suspension.UpdateCachedLUTs(SuspensionKinematicsConfig);
+	Wheel.UpdateCachedLUTs(TireConfig);
 }

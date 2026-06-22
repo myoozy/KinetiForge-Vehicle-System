@@ -316,7 +316,7 @@ struct FVehicleLUT_EvalResult
 template <int32 NumSamples>
 struct KINETIFORGE_API FVehicleLUT
 {
-private:
+protected:
     /**
     * Data array
     */

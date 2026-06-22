@@ -33,7 +33,7 @@ void UVehicleEngineComponent::BeginPlay()
 
 	// ...
 
-	UpdateCachedLUT();
+	UpdateCachedLookUpTables();
 
 	// reset rev-limiter
 	State.RevLimiterTimer = NAConfig.RevLimiterTime;
@@ -323,12 +323,8 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		if (TimeSinceLastConfigSync > ConfigSyncInterval)
 		{
 			TimeSinceLastConfigSync -= ConfigSyncInterval;
-			UpdateCachedLUT();
+			UpdateCachedLookUpTables();
 		}
-	}
-	else
-	{
-		UpdateCachedLUT();
 	}
 #endif
 	
@@ -483,7 +479,7 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 void UVehicleEngineComponent::SetNaturallyAspiratedEngineConfig(const FVehicleNaturallyAspiratedEngineConfig& NewConfig)
 {
 	NAConfig = NewConfig;
-	UpdateCachedLUT();
+	UpdateCachedLookUpTables();
 }
 
 void UVehicleEngineComponent::SetTurboConfig(const FVehicleEngineTurboConfig& NewConfig)
@@ -502,7 +498,7 @@ float UVehicleEngineComponent::GetMaxEngineTorque()
 	return NAConfig.MaxEngineTorque * (1.f + TurboBoost);
 }
 
-void UVehicleEngineComponent::UpdateCachedLUT()
+void UVehicleEngineComponent::UpdateCachedLookUpTables()
 {
 	if (IsValid(NAConfig.EngineTorqueCurve))
 	{

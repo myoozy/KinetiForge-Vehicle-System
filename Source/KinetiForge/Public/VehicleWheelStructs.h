@@ -141,13 +141,113 @@ struct KINETIFORGE_API FVehicleABSConfig
 	float Sensitivity = 5.f;
 };
 
+template <int32 NumSamples>
+struct KINETIFORGE_API FVehicleTireLUT : public FVehicleLUT<NumSamples>
+{
+public:
+	// True, if can be used for combined slip
+	bool bHasValidStiffness = false;
+
+	int32 OptimalSlipIndex = 0;
+	float LinearStiffness = 0.f;
+	float PeakFriction = 0.f;
+
+	FVehicleTireLUT(const float InitValue = 0.f) : FVehicleLUT<NumSamples>(InitValue)
+	{
+	}
+
+	FVehicleTireLUT(const FRichCurve& RichCurve, const FVector2f SelectedTimeInterval = FVector2f(0.f, 1.f))
+	{
+		BuildFromCurve(RichCurve, SelectedTimeInterval);
+	}
+
+	void BuildFromCurve(const FRichCurve& RichCurve, const FVector2f SelectedTimeInterval = FVector2f(0.f, 1.f))
+	{
+		// Call the superclass method to copy the data and populate the `Samples` array
+		this->CopyFromRichCurve(RichCurve, SelectedTimeInterval);
+
+		bHasValidStiffness = false;
+		LinearStiffness = 0.f;
+		PeakFriction = 0.f;
+
+		if (RichCurve.Keys.Num() == 0) return;
+
+		const float TimeMin = SelectedTimeInterval.X;
+		const float TimeMax = SelectedTimeInterval.Y;
+		const float IntervalLength = TimeMax - TimeMin;
+
+		if (IntervalLength <= SMALL_NUMBER) return;
+
+		// Constrain the negative force and find the global maximum grip force
+		for (int32 i = 0; i < NumSamples; i++)
+		{
+			if (this->Samples[i] < 0.f)
+			{
+				this->Samples[i] = 0.f; // Forcefully Compensate for Negative Grip
+			}
+
+			if (this->Samples[i] > PeakFriction)
+			{
+				PeakFriction = this->Samples[i];
+			}
+		}
+
+		const float StartValue = this->Samples[0];
+		const float EndValue = this->Samples[NumSamples - 1];
+
+		// Finding the Optimal Slip Using the Maximum Deviation Method
+		const float SecantSlope = (EndValue - StartValue) / (float)(NumSamples - 1);
+
+		float MaxDeviation = -1.f;
+		int32 OptimalLocalIndex = 0;
+
+		for (int32 i = 0; i < NumSamples; i++)
+		{
+			float CurrentY = this->Samples[i];
+			float SecantY = StartValue + SecantSlope * i;
+			float Deviation = CurrentY - SecantY;
+
+			if (Deviation > MaxDeviation)
+			{
+				MaxDeviation = Deviation;
+				OptimalLocalIndex = i;
+			}
+		}
+
+		// cache optimal slip
+		OptimalSlipIndex = OptimalLocalIndex;
+
+		// try to find stiffness of linear region
+		float MaxLocalStiffness = 0.f;
+		for (int32 i = 0; i < OptimalSlipIndex; i++)
+		{
+			float CurrentY = this->Samples[i];
+			float NextY = this->Samples[i + 1];
+			float LocalStiffness = (NextY - CurrentY) * (float)(NumSamples - 1);
+
+			if (LocalStiffness > MaxLocalStiffness)
+			{
+				MaxLocalStiffness = LocalStiffness;
+			}
+		}
+
+		LinearStiffness = MaxLocalStiffness;
+
+		// Check if stiffness is valid
+		if (LinearStiffness > SMALL_NUMBER)
+		{
+			bHasValidStiffness = true;
+		}
+	}
+};
+
 USTRUCT()
 struct KINETIFORGE_API FVehicleWheelCachedLUTs
 {
 	GENERATED_BODY()
 
-	FVehicleLUT<64> Fx = FVehicleLUT<64>(1.f);
-	FVehicleLUT<64> Fy = FVehicleLUT<64>(1.f);
+	FVehicleTireLUT<64> Fx = FVehicleTireLUT<64>(1.f);
+	FVehicleTireLUT<64> Fy = FVehicleTireLUT<64>(1.f);
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "wheel state in simulation"))

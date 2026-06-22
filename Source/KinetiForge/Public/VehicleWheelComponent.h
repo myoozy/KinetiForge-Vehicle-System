@@ -586,4 +586,6 @@ public:
 		bool bKeepWorldTransform = false
 	);
 
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void UpdateCachedLookUpTables();
 };
