@@ -583,6 +583,10 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 		TireLUTs.Fx.LinearStiffness,
 		TireLUTs.Fy.LinearStiffness
 	);
+	FVector2f LinearRegionStiffnessInv = FVector2f(
+		UVehicleUtilities::SafeDivide(1.f, LinearRegionStiffness.X, 1.f),
+		UVehicleUtilities::SafeDivide(1.f, LinearRegionStiffness.Y, 1.f)
+	);
 
 	// get absolut slip ratio and slip angle
 	FVector2f TransientSlip = UpdateTransientSlip(LocalState, Context, bOnGround, TireConfig.RelaxationLength);
@@ -592,9 +596,6 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	FVector2f NormalizedSlip = AbsolutSlip * LinearRegionStiffness;
 	float ScalarNormSlip = NormalizedSlip.Length();
 
-	// get optimal slip
-	FVector2f OptimalSlip = LinearRegionStiffness.SquaredLength() > SMALL_NUMBER ? FVector2f(1.f) / LinearRegionStiffness : FVector2f(1.f);
-	
 	// get combined slip direction
 	FVector2f WeightXY = FVector2f(1.f - TireConfig.CombinedSlipBias, TireConfig.CombinedSlipBias);
 	WeightXY *= FVector2f(UVehicleUtilities::SafeDivide(1.f, TireConfig.MaxFx), UVehicleUtilities::SafeDivide(1.f, TireConfig.MaxFy));
@@ -602,7 +603,7 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 
 	// the tangent of the linear region should not be changed, if the vehicle is driving on a surface with high friction multiplier
 	float SlipInputScale = UVehicleUtilities::SafeDivide(TireConfig.FrictionMultiplier, LocalState.DynFrictionMultiplier);
-	FVector2f SlipInput = SlipInputScale * ScalarNormSlip * OptimalSlip;
+	FVector2f SlipInput = SlipInputScale * ScalarNormSlip * LinearRegionStiffnessInv;
 	
 	// if the user has only setup one of the Fx or Fy curve, the Constraint force on the other direction should be cut, before computing combined slip
 	bool bUseFxCurve = TireLUTs.Fx.bHasValidStiffness;
