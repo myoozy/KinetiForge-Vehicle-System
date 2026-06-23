@@ -49,23 +49,23 @@ void FVehicleWheelSolver::PreStep(
 
 	UpdateDynamicFrictionMultiplier(LocalState, Context, TireConfig, SuspensionState.ImpactFriction);
 
-	Context.ForceIntoSurface = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
+	LocalState.WheelLoad = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
 
 	Context.GravityComp2D = CalculateGravityCompensationOnSlope(
 		LocalState, Context,
-		Context.ForceIntoSurface,
+		LocalState.WheelLoad,
 		SuspensionState.bWheelOnGround,
 		Context.LongForceDir,
 		Context.LatForceDir
 	);
 
 	// get wheel load
-	LocalState.WheelLoad = CalculateScaledWheelLoad(
-		SuspensionState.StaticSprungMass, 
-		Context.ForceIntoSurface,
+	Context.AvailableGrip = CalculateAvailableGrip(
+		LocalState.DynFrictionMultiplier,
+		SuspensionState.StaticSprungMass,
+		LocalState.WheelLoad,
 		TireConfig.WheelLoadInfluenceFactor
 	);
-	Context.AvailableGrip = LocalState.DynFrictionMultiplier * LocalState.WheelLoad;
 
 	// clear tire force
 	Context.AccumulateTireImpulse2D = FVector2f(0.f);
@@ -169,8 +169,12 @@ void FVehicleWheelSolver::DrawWheelForce(
 	FTransform TempTrans = FTransform(TempRot, TempImpactPoint, TempScale);
 
 	Length *= 0.01;
-	float ForceIntoSurface = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
-	float AvailableGrip = Length * State.DynFrictionMultiplier * State.WheelLoad;
+	float AvailableGrip = Length * CalculateAvailableGrip(
+		State.DynFrictionMultiplier,
+		SuspensionState.StaticSprungMass,
+		State.WheelLoad,
+		TireConfig.WheelLoadInfluenceFactor
+	);
 
 	//draw grip circle
 	FColor GripCircleColor = FColor(0, 191, 255);
@@ -533,16 +537,18 @@ FVector2f FVehicleWheelSolver::CalculateGravityCompensationOnSlope(
 	return GravityComp;
 }
 
-float FVehicleWheelSolver::CalculateScaledWheelLoad(
-	float StaticSprungMass, 
-	float WheelLoad, 
-	float Saturation)
+float FVehicleWheelSolver::CalculateAvailableGrip(
+	const float FrictionMultiplier,
+	const float StaticSprungMass,
+	const float WheelLoad,
+	const float Saturation)
 {
-	float NormWheelLoad = StaticSprungMass * 9.8;
+	const float G = 9.81f;
+	float NormWheelLoad = StaticSprungMass * G;
 	float LoadRatio = UVehicleUtilities::SafeDivide(WheelLoad, NormWheelLoad);
 	float b = (1.f - Saturation) / (2.f + 2.f * Saturation);
 	float LoadScale = LoadRatio / (1.f + b * LoadRatio);
-	return LoadScale * NormWheelLoad;
+	return FrictionMultiplier * LoadScale * NormWheelLoad;
 }
 
 FVector2f FVehicleWheelSolver::SolveTireForce(

@@ -45,7 +45,7 @@ void UVehicleEngineComponent::BeginPlay()
 }
 
 
-void UVehicleEngineComponent::EngineAcceleration()
+void UVehicleEngineComponent::EngineAcceleration(const float DeltaTime)
 {
 	// absolut engine rpm
 	float AbsolutRPM = FMath::Abs(State.EngineRPM);
@@ -154,7 +154,7 @@ void UVehicleEngineComponent::EngineAcceleration()
 		State.TurboSpool = FMath::FInterpTo(
 			State.TurboSpool, 
 			TargetSpool, 
-			State.PhysicsDeltaTime, 
+			DeltaTime, 
 			SpoolInterpSpeed
 		);
 
@@ -173,7 +173,7 @@ void UVehicleEngineComponent::EngineAcceleration()
 		State.TurboPressure = FMath::FInterpTo(
 			State.TurboPressure,
 			TargetPressure,
-			State.PhysicsDeltaTime,
+			DeltaTime,
 			PressureBuildSpeed
 		);
 
@@ -196,12 +196,12 @@ void UVehicleEngineComponent::EngineAcceleration()
 	IndicatedTorque += State.P1MotorTorque;
 
 	// accelerate engine
-	State.EngineAngularVelocity += UVehicleUtilities::SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * (IndicatedTorque - State.LoadTorque + State.StarterMotorTorque);
+	State.EngineAngularVelocity += UVehicleUtilities::SafeDivide(DeltaTime, NAConfig.EngineInertia) * (IndicatedTorque - State.LoadTorque + State.StarterMotorTorque);
 	
 	// get the direction of friction torque
 	float AngVelSignWithoutFriction = FMath::Sign(State.EngineAngularVelocity);
 	FrictionTorque = FrictionTorque * AngVelSignWithoutFriction;
-	State.EngineAngularVelocity -= UVehicleUtilities::SafeDivide(State.PhysicsDeltaTime, NAConfig.EngineInertia) * FrictionTorque;
+	State.EngineAngularVelocity -= UVehicleUtilities::SafeDivide(DeltaTime, NAConfig.EngineInertia) * FrictionTorque;
 	
 	// zero cross check
 	bool bCrossZero = FMath::Sign(State.EngineAngularVelocity) != AngVelSignWithoutFriction;
@@ -214,7 +214,7 @@ void UVehicleEngineComponent::EngineAcceleration()
 	State.EffectiveTorque = IndicatedTorque - FrictionTorque;
 }
 
-void UVehicleEngineComponent::UpdateExhaust()
+void UVehicleEngineComponent::UpdateExhaust(const float DeltaTime)
 {
 	// absolut engine rpm
 	float AbsolutRPM = FMath::Abs(State.EngineRPM);
@@ -252,14 +252,14 @@ void UVehicleEngineComponent::UpdateExhaust()
 			BaseFuelFlow : BaseFuelFlow * FMath::Max(0.f, 1.f - TargetLamda);
 
 		// accumulate unburnt fuel
-		State.UnburntFuelBuffer += NAConfig.UnburntFuelAccumulationRate * UnburntFuel * State.PhysicsDeltaTime;
+		State.UnburntFuelBuffer += NAConfig.UnburntFuelAccumulationRate * UnburntFuel * DeltaTime;
 	}
 
 	// higher lambda or higher rpm causes the unburnt fuel decay faster
 	float UnBurntFuelDecayAmount = ExhaustConfig.ExhaustScavengingStrength * State.UnburntFuelBuffer * TargetLamda * NormalizedRPM;
 
 	// update unburnt fuel
-	State.UnburntFuelBuffer -= UnBurntFuelDecayAmount * State.PhysicsDeltaTime;
+	State.UnburntFuelBuffer -= UnBurntFuelDecayAmount * DeltaTime;
 
 	// get target exhaust heat
 	// high rpm & lot of throttle = heat
@@ -273,7 +273,7 @@ void UVehicleEngineComponent::UpdateExhaust()
 	State.ExhaustHeat = FMath::FInterpTo(
 		State.ExhaustHeat,
 		TargetHeat,
-		State.PhysicsDeltaTime,
+		DeltaTime,
 		HeatInterpSpeed
 	);
 
@@ -365,7 +365,6 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Engine_UpdatePhysics);
 
-	State.PhysicsDeltaTime = InDeltaTime;
 	State.RawThrottleInput = FMath::Clamp(InThrottle, 0.f, 1.f);
 	State.LoadTorque = InLoadTorque;
 
@@ -400,7 +399,7 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 		State.bFuelInjection = State.RawThrottleInput > SMALL_NUMBER;
 
 		// update revlimit timer
-		State.RevLimiterTimer = bRevLimit ? 0.f : State.RevLimiterTimer + State.PhysicsDeltaTime;
+		State.RevLimiterTimer = bRevLimit ? 0.f : State.RevLimiterTimer + InDeltaTime;
 		// avoid overflow
 		// avoid rapid toggling due to RevLimiterTime being too short (not unit conversion)
 		State.RevLimiterTimer = FMath::Min(State.RevLimiterTimer, NAConfig.RevLimiterTime * 10.f);
@@ -418,7 +417,7 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 			State.RealThrottle = FMath::FInterpTo(
 				State.RealThrottle, 
 				1.f, 
-				State.PhysicsDeltaTime, 
+				InDeltaTime, 
 				NAConfig.IdleThrottleInterpSpeed);
 
 			State.bFuelInjection = State.bSpark = true;
@@ -456,7 +455,7 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 		}
 		else
 		{
-			State.StarterMotorTorque += State.PhysicsDeltaTime * State.TorqueRequiredToStartEngine * 10;
+			State.StarterMotorTorque += InDeltaTime * State.TorqueRequiredToStartEngine * 10;
 		}
 		break;
 	case EVehicleEngineOperationMode::Shutting:
@@ -472,8 +471,8 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 		break;
 	}
 
-	EngineAcceleration();
-	UpdateExhaust();
+	EngineAcceleration(InDeltaTime);
+	UpdateExhaust(InDeltaTime);
 }
 
 void UVehicleEngineComponent::SetNaturallyAspiratedEngineConfig(const FVehicleNaturallyAspiratedEngineConfig& NewConfig)

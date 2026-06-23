@@ -113,7 +113,8 @@ private:
 		const bool bOnGround,
 		const FVector3f& LongForceDir,
 		const FVector3f& LatForceDir);
-	static float CalculateScaledWheelLoad(
+	static float CalculateAvailableGrip(
+		const float FrictionMultiplier,
 		const float StaticSprungMass,
 		const float WheelLoad,
 		const float Saturation);

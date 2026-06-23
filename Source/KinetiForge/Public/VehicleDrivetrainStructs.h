@@ -180,8 +180,6 @@ struct KINETIFORGE_API FVehicleEngineSimState
 	bool bSpark = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fuel")
 	bool bFuelInjection = false;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeltaTime")
-	float PhysicsDeltaTime = 0.00833333;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float EngineAngularVelocity = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")

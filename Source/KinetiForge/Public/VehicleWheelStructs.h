@@ -274,7 +274,6 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	FVector2f LocalLinearVelocity = FVector2f(0.f, 0.f);
 
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Force")
 	float WheelLoad = 0.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Force")
@@ -320,7 +319,6 @@ struct KINETIFORGE_API FVehicleWheelSimContext
 
 	float LongForceDirUnNormLength = 1.f; // scaling of tire force due to camber
 
-	float ForceIntoSurface = 0.f;
 	float AvailableGrip = 0.f;
 	FVector2f GravityComp2D = FVector2f(0.f);
 	FVector2f AccumulateTireImpulse2D = FVector2f(0.f);

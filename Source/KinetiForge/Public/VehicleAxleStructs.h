@@ -138,8 +138,6 @@ struct FVehicleAxleSimState
 	FVector3f WorldLinearVelocity = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	FVector3f LocalLinearVelocity = FVector3f(0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	FVector3f CachedAxleCenter = FVector3f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "TractionControl")
 	bool bTCSTriggered = false;
 };

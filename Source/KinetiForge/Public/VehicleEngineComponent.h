@@ -55,8 +55,8 @@ protected:
 	float TimeSinceLastConfigSync = 0.f;
 #endif
 
-	void EngineAcceleration();
-	void UpdateExhaust();
+	void EngineAcceleration(const float DeltaTime);
+	void UpdateExhaust(const float DeltaTime);
 
 public:	
 	// Called every frame
