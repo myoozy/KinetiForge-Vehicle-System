@@ -60,7 +60,7 @@ void UVehicleDifferentialComponent::UpdateInputShaft(float InLeftOutputShaftAngu
 }
 
 int32 UVehicleDifferentialComponent::SubstepTransferCase(
-	const TArray<UVehicleAxleAssemblyComponent*>& InAxles, 
+	TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
 	float InSubstepDeltaTime,
 	float InGearboxOutputTorque,
 	float InReflectedInertia,
@@ -70,69 +70,70 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 	float& OutTransmissionOutputShaftAngularVelocity,
 	float& OutTransmissionOutputShaftEffectiveInertia)
 {
-	return SubstepTransferCase_Internal(
-		InAxles, InSubstepDeltaTime, InGearboxOutputTorque, 
-		InReflectedInertia, InBrakeValue, InHandbrakeValue, 
-		bLineLockActive, 
-		OutTransmissionOutputShaftAngularVelocity, 
-		OutTransmissionOutputShaftEffectiveInertia);
-}
-
-int32 UVehicleDifferentialComponent::SubstepTransferCase_Internal(
-	TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
-	float InSubstepDeltaTime, 
-	float InGearboxOutputTorque, 
-	float InReflectedInertia, 
-	float InBrakeValue, 
-	float InHandbrakeValue,
-	bool bLineLockActive, 
-	float& OutTransmissionOutputShaftAngularVelocity, 
-	float& OutTransmissionOutputShaftEffectiveInertia)
-{
-	//First iterate over all axles to obtain the number of drive axles, torque weights, and average angular velocity
+	// 1. First iterate over all axles to gather Total Inertia, Total Angular Momentum, and Base Weights
 	int32 NumOfDriveAxles = 0;
 	float SumTorqueWeight = 0.f;
-	float SumAngVel = 0.f;
+
+	float TotalDriveAxleInertia = 0.f;
+	float TotalAngularMomentum = 0.f;
+
 	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
-		if (Axle == nullptr)continue;
+		if (Axle == nullptr) continue;
 
-		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > 0;
-		NumOfDriveAxles += IsDriveAxle;
-		SumTorqueWeight += IsDriveAxle * FMath::Abs(Axle->GetAxleConfig().TorqueWeight);
-		SumAngVel += IsDriveAxle * Axle->GetAngularVelocity();
+		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > SMALL_NUMBER;
+		if (IsDriveAxle)
+		{
+			NumOfDriveAxles++;
+			SumTorqueWeight += FMath::Abs(Axle->GetAxleConfig().TorqueWeight);
+
+			float AxleTotalInertia = Axle->GetTotalAxleInertia();
+			float AxleAngVel = Axle->GetAngularVelocity();
+
+			TotalDriveAxleInertia += AxleTotalInertia;
+			TotalAngularMomentum += AxleTotalInertia * AxleAngVel;
+		}
 	}
 	float FloatNumOfDriveAxles = (float)NumOfDriveAxles;
-	float AverageAxleAngularVelocity = UVehicleUtilities::SafeDivide(SumAngVel, FloatNumOfDriveAxles);
 
-	//update axles
+	// Calculate the physically correct locked angular velocity (momentum-weighted average)
+	float TargetLockedAngVel = UVehicleUtilities::SafeDivide(TotalAngularMomentum, TotalDriveAxleInertia);
+
+	// update axles
 	float DriveTorque = Config.GearRatio * InGearboxOutputTorque;
 	float ReflInertia = Config.GearRatio * Config.GearRatio * InReflectedInertia;
-	//reflected inertia
+	// reflected inertia (Note: For absolute perfection, this could also be weighted by TorqueWeight, but equal split is an acceptable approximation)
 	float ReflectedInertiaOnAxle = UVehicleUtilities::SafeDivide(ReflInertia, FloatNumOfDriveAxles);
 
-	SumAngVel = 0.f;
+	float SumAngVel = 0.f;
 	float SumDriveAxleInertia = 0.f;
+
 	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
-		if (Axle == nullptr)continue;
+		if (Axle == nullptr) continue;
 
 		float AxleInertia = 0.f;
 		float AxleAngVel = 0.f;
 
-		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > 0;
+		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > SMALL_NUMBER;
 		if (IsDriveAxle)
 		{
-			//central diff
-			float AngVelDifference = AverageAxleAngularVelocity - Axle->GetAngularVelocity();
-			bool bIsDrive = (DriveTorque * AverageAxleAngularVelocity) >= 0.f;
+			// central diff locking logic
+			// Use TargetLockedAngVel instead of simple arithmetic average
+			float AngVelDifference = TargetLockedAngVel - Axle->GetAngularVelocity();
+
+			bool bIsDrive = (DriveTorque * TargetLockedAngVel) >= 0.f;
 			float CurrentLockRatio = bIsDrive ? Config.DriveLockRatio : Config.CoastLockRatio;
+
+			// The calculated TorqueBias is now guaranteed to sum to exactly 0 across all axles
 			float TorqueBias = UVehicleUtilities::SafeDivide(AngVelDifference * Axle->GetTotalAxleInertia() * CurrentLockRatio, InSubstepDeltaTime);
 			float NormTorqueWeight = UVehicleUtilities::SafeDivide(Axle->GetAxleConfig().TorqueWeight, SumTorqueWeight);
+
+			// Combine mechanical static split + LSD clutch pack transfer
 			float AxleDriveTorque = DriveTorque * NormTorqueWeight + TorqueBias;
 
-			//burnout assist
-			bool IsMainDriveAxle = NormTorqueWeight > 0.5;
+			// burnout assist
+			bool IsMainDriveAxle = NormTorqueWeight > 0.5f;
 			bool ShouldReleaseBrake = IsMainDriveAxle && bLineLockActive;
 
 			Axle->SubstepAxle(
@@ -160,11 +161,11 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase_Internal(
 		}
 	}
 
-	//get average angular velocity of all drive axles
+	// For the output shaft, arithmetic mean is generally fine for RPM display/feedback, 
+	// though TargetLockedAngVel * Config.GearRatio is also physically valid if fully locked.
 	OutTransmissionOutputShaftAngularVelocity = UVehicleUtilities::SafeDivide(SumAngVel * Config.GearRatio, FloatNumOfDriveAxles);
 	OutTransmissionOutputShaftEffectiveInertia = UVehicleUtilities::SafeDivide(SumDriveAxleInertia, Config.GearRatio * Config.GearRatio);
 
-	//return the number of drive axles
 	return NumOfDriveAxles;
 }
 

@@ -807,7 +807,7 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		// update transfercase
 		float SumAxleInertia;
 		float GearboxOutputShaftAngularVelocity;
-		NumOfDriveAxles = TransferCaseRaw->SubstepTransferCase_Internal(
+		NumOfDriveAxles = TransferCaseRaw->SubstepTransferCase(
 			AxlesRaw,
 			RealSubstepDeltaTime,
 			GearboxOutputTorque,

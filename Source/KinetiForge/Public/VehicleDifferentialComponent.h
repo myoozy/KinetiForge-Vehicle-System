@@ -61,18 +61,7 @@ public:
 		float& OutInputShaftVelocity,
 		float& OutReflectedInertia
 	);
-	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	int32 SubstepTransferCase(
-		const TArray<UVehicleAxleAssemblyComponent*>& InAxles,
-		float InSubstepDeltaTime,
-		float InGearboxOutputTorque,
-		float InReflectedInertia,
-		float InBrakeValue,
-		float InHandbrakeValue,
-		bool bLineLockActive,
-		float& OutTransmissionOutputShaftAngularVelocity,
-		float& OutTransmissionOutputShaftEffectiveInertia);
-	int32 SubstepTransferCase_Internal(
 		TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
 		float InSubstepDeltaTime,
 		float InGearboxOutputTorque,
