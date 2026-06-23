@@ -129,6 +129,7 @@ protected:
 	float TimeSinceLastPhysicsTick = 0.0f;
 
 	//cache
+	float WorldGravityZ = 9.81;
 	FVector3f CachedRelativeLocation;
 	FQuat4f CachedRelativeRotation;
 

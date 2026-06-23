@@ -31,6 +31,7 @@ public:
 		const FTransform& AsyncChassisWorldTransform,
 		const FVehicleChassisSimState& ChassisState,
 		const UWorld* CurrentWorld,
+		const float WorldGravityZ,
 		const float InDeltaTime,
 		const float InSteeringAngle,
 		const float ActiveSwaybarStiffness,
@@ -46,6 +47,7 @@ public:
 		const FTransform& AsyncChassisWorldTransform,
 		const FVehicleChassisSimState& ChassisState,
 		const UWorld* CurrentWorld,
+		const float WorldGravityZ,
 		const float InSteeringAngle,
 		const float ActiveSwaybarStiffness,
 		const float OtherHubChassisZ,
@@ -57,7 +59,8 @@ public:
 		const FVehicleSuspensionSpringConfig& SpringConfig,
 		const FTransform& AsyncChassisWorldTransform,
 		const FVehicleChassisSimState& ChassisState,
-		float InDeltaTime,
+		const float WorldGravityZ,
+		const float InDeltaTime,
 		const float ActiveSwaybarStiffness,
 		const float OtherHubChassisZ,
 		const float AxleHalfWidth,
@@ -221,6 +224,7 @@ private:
 	static void UpdateStrutLength(
 		FVehicleSuspensionSimContext& Ctx,
 		const FVehicleChassisSimState& ChassisState,
+		const float WorldGravityZ,
 		const float WheelRadius,
 		const float WheelInertia,
 		const FVehicleSuspensionKinematicsConfig& KineConfig,
@@ -385,6 +389,7 @@ private:
 	);
 	static void ComputeSuspensionForce(
 		FVehicleSuspensionSimContext& Ctx,
+		const float WorldGravityZ,
 		const float WheelRadius,
 		const FVehicleChassisSimState& ChassisState,
 		const FVehicleSuspensionSpringConfig& SpringConfig,

@@ -69,6 +69,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	const FTransform& AsyncChassisWorldTransform,
 	const FVehicleChassisSimState& ChassisState,
 	const UWorld* CurrentWorld,
+	const float WorldGravityZ,
 	const float InDeltaTime,
 	const float InSteeringAngle,
 	const float ActiveSwaybarStiffness,
@@ -108,7 +109,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 		ChassisState
 	);
 
-	UpdateStrutLength(Ctx, ChassisState, 
+	UpdateStrutLength(Ctx, ChassisState, WorldGravityZ,
 		WheelRadius, WheelInertia, 
 		KineConfig, SpringConfig, CachedLUTs,
 		ActiveSwaybarStiffness, OtherHubChassisZ);
@@ -140,6 +141,7 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 
 	ComputeSuspensionForce(
 		Ctx, 
+		WorldGravityZ,
 		WheelRadius,
 		ChassisState,
 		SpringConfig, 
@@ -163,6 +165,7 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 	const FTransform& AsyncChassisWorldTransform,
 	const FVehicleChassisSimState& ChassisState,
 	const UWorld* CurrentWorld,
+	const float WorldGravityZ,
 	const float InSteeringAngle,
 	const float ActiveSwaybarStiffness,
 	const float OtherHubChassisZ,
@@ -189,7 +192,7 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 		ChassisState
 	);
 
-	UpdateStrutLength(Ctx, ChassisState, 
+	UpdateStrutLength(Ctx, ChassisState, WorldGravityZ,
 		WheelRadius, WheelInertia,
 		KineConfig, SpringConfig, CachedLUTs, 
 		ActiveSwaybarStiffness, OtherHubChassisZ);
@@ -201,7 +204,8 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	const FVehicleSuspensionSpringConfig& SpringConfig,
 	const FTransform& AsyncChassisWorldTransform,
 	const FVehicleChassisSimState& ChassisState,
-	float InDeltaTime,
+	const float WorldGravityZ,
+	const float InDeltaTime,
 	const float ActiveSwaybarStiffness,
 	const float OtherHubChassisZ,
 	const float AxleHalfWidth,
@@ -237,6 +241,7 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	// get suspension force
 	ComputeSuspensionForce(
 		Ctx, 
+		WorldGravityZ,
 		WheelRadius, 
 		ChassisState,
 		SpringConfig, 
@@ -1039,6 +1044,7 @@ void FVehicleSuspensionSolver::ComputeHitDistance(
 void FVehicleSuspensionSolver::UpdateStrutLength(
 	FVehicleSuspensionSimContext& Ctx,
 	const FVehicleChassisSimState& ChassisState,
+	const float WorldGravityZ,
 	const float WheelRadius,
 	const float WheelInertia,
 	const FVehicleSuspensionKinematicsConfig& KineConfig,
@@ -1069,7 +1075,7 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 		Ctx.VirtualUnsprungMass = EstimatedWheelMass + KineConfig.SuspensionAndBrakeMass;
 		const float VirtualUnsprungMassInv = UVehicleUtilities::SafeDivide(1.f, Ctx.VirtualUnsprungMass);
 		Ctx.StrutWorldDirection = Ctx.ChassisWorldTransform.TransformVectorNoScale((FVector)Ctx.StrutChassisDirection);
-		const float GravityForce = Ctx.VirtualUnsprungMass * FMath::Abs(Ctx.WorldGravityZ) * FMath::Abs(Ctx.StrutWorldDirection.Z);
+		const float GravityForce = Ctx.VirtualUnsprungMass * WorldGravityZ * Ctx.StrutWorldDirection.Z;
 
 		const float CompressionRatio = 1.f - Ctx.CurrentExtensionRatio;
 		float MotionRatio = LUTs.MotionRatioCurve.FastEval(CompressionRatio).Value;
@@ -2196,6 +2202,7 @@ float FVehicleSuspensionSolver::GetCriticalDamping(
 
 void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	FVehicleSuspensionSimContext& Ctx,
+	const float WorldGravityZ,
 	const float WheelRadius,
 	const FVehicleChassisSimState& ChassisState,
 	const FVehicleSuspensionSpringConfig& SpringConfig,
@@ -2261,7 +2268,7 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 	float VelocityAlongNormal = FVector::DotProduct(Ctx.HitResult.Normal, FVector(Ctx.ImpactWorldVelocity));
 	float ImpulseAlongNormal = VelocityAlongNormal * Ctx.EffectiveSprungMassNormal;
 	float NormalProjOnWorldUp = FVector::DotProduct(FVector::UpVector, Ctx.HitResult.Normal);
-	float DynSprungMassGravity = Ctx.WorldGravityZ * Ctx.EffectiveSprungMassNormal;
+	float DynSprungMassGravity = WorldGravityZ * Ctx.EffectiveSprungMassNormal;
 	float ForceToCancelOutSprungWeight = UVehicleUtilities::SafeDivide(DynSprungMassGravity, NormalProjOnWorldUp);
 	float ForceToStopSprungMass = -ImpulseAlongNormal * DeltaTimeInv;
 	float NormalForceToHoldCar = ForceToCancelOutSprungWeight + ForceToStopSprungMass * ImpulseConstraintScale;
@@ -2292,7 +2299,7 @@ void FVehicleSuspensionSolver::ComputeSuspensionForce(
 
 	// get effective mass in other directions
 	const float ForceIntoSurface = FMath::Max(Ctx.ForceAlongImpactNormal, 0.f);
-	const float DynLoadMass = ForceIntoSurface / Ctx.WorldGravityZ;
+	const float DynLoadMass = UVehicleUtilities::SafeDivide(ForceIntoSurface, WorldGravityZ, ChassisState.Mass);
 	const float LoadFactor = UVehicleUtilities::SafeDivide(DynLoadMass, ChassisState.Mass);
 	Ctx.EffectiveSprungMassLong = EffectiveMass.X * LoadFactor;
 	Ctx.EffectiveSprungMassLat = EffectiveMass.Y * LoadFactor;

@@ -314,6 +314,7 @@ void UVehicleWheelComponent::PreStepIndependentSuspension(
 		ChassisAsyncWorldTransform,
 		ChassisState,
 		GetWorld(),
+		WorldGravityZ,
 		InMacroDeltaTime,
 		InSteeringAngle,
 		ActiveSwaybarStiffness,
@@ -351,6 +352,7 @@ void UVehicleWheelComponent::StartPreStepSolidAxleSuspension(
 		ChassisAsyncWorldTransform,
 		ChassisState,
 		GetWorld(),
+		WorldGravityZ,
 		InSteeringAngle,
 		ActiveSwaybarStiffness,
 		OtherHubChassisZ,
@@ -372,6 +374,7 @@ void UVehicleWheelComponent::FinalizePreStepSolidAxleSuspension(
 		SuspensionSpringConfig,
 		ChassisAsyncWorldTransform,
 		ChassisState,
+		WorldGravityZ,
 		InMacroDeltaTime,
 		ActiveSwaybarStiffness,
 		OtherHubChassisZ, 
@@ -433,6 +436,17 @@ void UVehicleWheelComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	if (bUpdateAnimAutomatically)
 	{
 		UpdateWheelAnim(DeltaTime, AnimWheelMaxRotationSpeed);
+	}
+
+	// cache gravity
+	if (UWorld* World = GetWorld())
+	{
+		// cm to m and flip sign
+		WorldGravityZ = World->GetGravityZ() * -0.01f;
+	}
+	else
+	{
+		WorldGravityZ = 9.81f;
 	}
 }
 

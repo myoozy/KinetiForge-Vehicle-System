@@ -542,8 +542,8 @@ float FVehicleWheelSolver::CalculateAvailableGrip(
 	const float WheelLoad,
 	const float Saturation)
 {
-	const float G = 9.81f;
-	float NormWheelLoad = StaticSprungMass * G;
+	const float DefaultGravity = 9.81f;
+	float NormWheelLoad = StaticSprungMass * DefaultGravity;
 	float LoadRatio = UVehicleUtilities::SafeDivide(WheelLoad, NormWheelLoad);
 	float b = (1.f - Saturation) / (2.f + 2.f * Saturation);
 	float LoadScale = LoadRatio / (1.f + b * LoadRatio);
@@ -570,7 +570,6 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 		return FVector2f(0.f);
 	}
 
-	const float GRAVITY = 9.81f;
 	// Constraint tire force
 	FVector2f ConstraintTireForce = FVector2f(
 		CalculateConstraintLongForce(LocalState, Context, EffectiveSprungMassLong),

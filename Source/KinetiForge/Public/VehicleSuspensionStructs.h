@@ -348,8 +348,6 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 
 	float VirtualUnsprungMass = 40.f;
 
-	float WorldGravityZ = 9.8f;
-
 	float ImpactFriction = 1.f;
 
 	float AntiPitchScale = 0.f;
