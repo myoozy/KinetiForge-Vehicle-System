@@ -648,11 +648,33 @@ float UVehicleWheelComponent::GetSlipAngle(bool bTransientSlip)
 	}
 }
 
+float UVehicleWheelComponent::GetSkidIntensity(float LongitudinalScale, float LateralScale, float MaxSkidPowerThreshold)
+{
+	// Get actuall tire force
+	float ForceX = Wheel.State.TireForce.X;
+	float ForceY = Wheel.State.TireForce.Y;
+
+	// Get kinematics slip velocity
+	float SlipVelX = Wheel.State.LongSlipVelocity;
+	float SlipVelY = Wheel.State.LocalLinearVelocity.Y;
+
+	// Get friction power
+	float PowerX = FMath::Abs(ForceX * SlipVelX * LongitudinalScale);
+	float PowerY = FMath::Abs(ForceY * SlipVelY * LateralScale);
+
+	// Get total power
+	const float Bias = TireConfig.CombinedSlipBias;
+	float TotalPower = (1.f - Bias) * PowerX + Bias * PowerY;
+
+	float NormalizedSkid = TotalPower / FMath::Max(MaxSkidPowerThreshold, SMALL_NUMBER);
+	return FMath::Clamp(NormalizedSkid, 0.f, 1.f);
+}
+
 float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float LateralScale)
 {
 	// get tire stiffness
-	float Cx = Wheel.CachedLUTs.Fx.FastEval(0.f).RightTangent;
-	float Cy = Wheel.CachedLUTs.Fy.FastEval(0.f).RightTangent;
+	float Cx = Wheel.CachedLUTs.Fx.LinearStiffness;
+	float Cy = Wheel.CachedLUTs.Fy.LinearStiffness;
 
 	Cx = Cx > SMALL_NUMBER ? Cx : 1.f;
 	Cy = Cy > SMALL_NUMBER ? Cy : 1.f;

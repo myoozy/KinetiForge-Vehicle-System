@@ -126,10 +126,6 @@ private:
 		const float EffectiveSprungMassLat,
 		const float PositiveForceIntoSurface,
 		const bool bOnGround,
-		const FVector3f& LongForceDirUnNorm,
-		const FVector3f& LatForceDirUnNorm,
-		const FVector3f& LongForceDir,
-		const FVector3f& LatForceDir,
 		const FVehicleTireConfig& TireConfig,
 		const FVehicleWheelCachedLUTs& TireLUTs);
 };

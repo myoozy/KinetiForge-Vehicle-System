@@ -280,7 +280,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetIntrinsicInertia() { return WheelConfig.Inertia; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel", meta = (DeprecatedFunction, DeprecationMessage = "Use GetIntrinsicInertia instead."))
 	float GetWheelInertia() { return GetIntrinsicInertia(); }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
@@ -293,8 +293,27 @@ public:
 	float GetPredictedSlipRatio() { return Wheel.State.PredictedSlipRatio; }
 
 	/**
-	* Obtain a normalized tire combination slip value. 
+	* Get the actual velocity difference between ground and wheel
+	*/
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	FVector2f GetSlipVelocity() { return FVector2f(Wheel.State.LongSlipVelocity, Wheel.State.LocalLinearVelocity.Y); }
+
+	/**
+	* Get the intensity of tire skid.
+	* The Power (power = slipVelocity * tireForce) is calculated, and then scaled by MaxSkidPowerThreshold.
+	* The output will be Clamp(Power/MaxSkidPowerThreshold, 0.0, 1.0).
+	* This function is more robust than GetNormalizedSlip.
+	* 
+	* Try GetNormalizedSlip if you don't like this function.
+	*/
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	float GetSkidIntensity(float LongitudinalScale = 1.f, float LateralScale = 1.f, float MaxSkidPowerThreshold = 50000.f);
+
+	/**
+	* Obtain a normalized tire combination slip value. Only works when there's proper tire setup.
 	* This function can be used for tire skid particles or tire sound effects.
+	* 
+	* Try GetSkidIntensity if you don't like this function.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	float GetNormalizedSlip(float LongitudinalScale = 1.f, float LateralScale = 1.f);
@@ -308,8 +327,11 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	float GetEffectiveInertia() { return Wheel.State.EffectiveInertia; }
 	
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel", meta = (DeprecatedFunction, DeprecationMessage = "Use GetEffectiveInertia instead."))
 	float GetTotalInertia() { return GetEffectiveInertia(); }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	FVector2f GetLocalLinearVelocity2D() { return Wheel.State.LocalLinearVelocity; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	FVector3f GetWorldLinearVelocity() { return Suspension.State.ImpactWorldVelocity; }

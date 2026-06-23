@@ -312,12 +312,10 @@ struct KINETIFORGE_API FVehicleWheelSimContext
 	float SubstepDeltaTime = 1 / 120.f;
 	float SubstepDeltaTimeInv = 120.f;
 
-	FVector3f LongForceDirUnNorm = FVector3f(0.f);
-	FVector3f LatForceDirUnNorm = FVector3f(0.f);
+	float LongForceScale = 1.f;
+	float LatForceScale = 1.f;
 	FVector3f LongForceDir = FVector3f(0.f);
 	FVector3f LatForceDir = FVector3f(0.f);
-
-	float LongForceDirUnNormLength = 1.f; // scaling of tire force due to camber
 
 	float AvailableGrip = 0.f;
 	FVector2f GravityComp2D = FVector2f(0.f);

@@ -39,11 +39,15 @@ void FVehicleWheelSolver::PreStep(
 	const FVector3f WheelRightVec = SuspensionState.WheelWorldRightVector;
 	const FVector3f ImpactNormal = SuspensionState.ImpactWorldNormal;
 
-	Context.LongForceDirUnNorm = FVector3f::CrossProduct(WheelRightVec, ImpactNormal);
-	Context.LatForceDirUnNorm = FVector3f::VectorPlaneProject(WheelRightVec, ImpactNormal);
-	Context.LongForceDir = Context.LongForceDirUnNorm.GetSafeNormal();
-	Context.LatForceDir = Context.LatForceDirUnNorm.GetSafeNormal();
-	Context.LongForceDirUnNormLength = Context.LongForceDirUnNorm.Length();
+	const FVector3f LongForceDirUnNorm = FVector3f::CrossProduct(WheelRightVec, ImpactNormal);
+	const FVector3f LatForceDirUnNorm = FVector3f::VectorPlaneProject(WheelRightVec, ImpactNormal);
+	Context.LongForceDir = LongForceDirUnNorm.GetSafeNormal();
+	Context.LatForceDir = LatForceDirUnNorm.GetSafeNormal();
+
+	// 这里的点乘其实就是获取向量长度
+	// 我使用点乘只是为了提醒自己，我在用车轮转轴方向在地面上的投影长度来近似模拟camber造成的抓地力变化
+	Context.LongForceScale = FVector3f::DotProduct(LongForceDirUnNorm, Context.LongForceDir);
+	Context.LatForceScale = FVector3f::DotProduct(LatForceDirUnNorm, Context.LatForceDir);
 
 	UpdateLinearVelocity(LocalState, Context.LongForceDir, Context.LatForceDir, SuspensionState.ImpactWorldVelocity);
 
@@ -111,10 +115,6 @@ void FVehicleWheelSolver::Substep(
 		SuspensionState.EffectiveSprungMassLat,
 		ForceIntoSurface,
 		SuspensionState.bWheelOnGround,
-		Context.LongForceDirUnNorm,
-		Context.LatForceDirUnNorm,
-		Context.LongForceDir,
-		Context.LatForceDir,
 		TireConfig,
 		CachedLUTs
 	);
@@ -123,8 +123,7 @@ void FVehicleWheelSolver::Substep(
 	// 2. Get wheel speed
 	// =========================================================
 	const float SlipVelocityTolerance = 0.1f;
-	const float ActualTireLongitudinalForce = SubstepForce2D.X * Context.LongForceDirUnNormLength;
-	WheelAcceleration(LocalState, Context, ActualTireLongitudinalForce, SlipVelocityTolerance);
+	WheelAcceleration(LocalState, Context, SubstepForce2D.X, SlipVelocityTolerance);
 
 	Context.AccumulateTireImpulse2D += SubstepForce2D * Context.SubstepDeltaTime;
 }
@@ -137,8 +136,8 @@ void FVehicleWheelSolver::PostStep()
 	FVehicleWheelSimState& LocalState = State;
 	LocalState.TireForce2D = Context.AccumulateTireImpulse2D * Context.MacroDeltaTimeInv;
 	LocalState.TireForce =
-		LocalState.TireForce2D.X * Context.LongForceDirUnNorm +
-		LocalState.TireForce2D.Y * Context.LatForceDirUnNorm;
+		LocalState.TireForce2D.X * Context.LongForceDir +
+		LocalState.TireForce2D.Y * Context.LatForceDir;
 }
 
 void FVehicleWheelSolver::DrawWheelForce(
@@ -559,10 +558,6 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	const float EffectiveSprungMassLat,
 	const float PositiveForceIntoSurface,
 	const bool bOnGround,
-	const FVector3f& LongForceDirUnNorm,
-	const FVector3f& LatForceDirUnNorm,
-	const FVector3f& LongForceDir,
-	const FVector3f& LatForceDir,
 	const FVehicleTireConfig& TireConfig,
 	const FVehicleWheelCachedLUTs& TireLUTs)
 {
@@ -651,5 +646,5 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 		}
 	}
 
-	return MFTireForce;
+	return FVector2f(MFTireForce.X * Context.LongForceScale, MFTireForce.Y * Context.LatForceScale);
 }
