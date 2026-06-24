@@ -725,7 +725,7 @@ void UVehicleAxleAssemblyComponent::ApplySolidAxleStateDirect(float InExtensionR
 	LeftWheel->RoughlyInitializeSuspensionState(LeftState);
 	RightWheel->RoughlyInitializeSuspensionState(RightState);
 
-	const int32 Iteration = 2;
+	const int32 Iteration = 1;
 	for (int32 i = 0; i < Iteration; i++)
 	{
 		FVehicleSuspensionSimContext Ctx_L;

@@ -33,7 +33,7 @@ bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* WheelComponent
 			WheelComponent->GetRelativeTransform(),
 			1.f,
 			0.f,
-			2
+			1
 		);
 
 		return true;
@@ -324,7 +324,6 @@ FVehicleSuspensionSimState FVehicleSuspensionSolver::SolveKinematicsAtExtension(
 			ChassisWorldTransform,
 			KineConfig
 		);
-		ComputeRayCastLocation(Ctx, KineConfig);
 
 		Ctx.HitDistance = InExtensionRatio * Ctx.RayCastLength + WheelRadius;
 		
@@ -384,7 +383,6 @@ void FVehicleSuspensionSolver::StartSolveSolidAxleAtExtension(
 		ChassisWorldTransform,
 		KineConfig
 	);
-	ComputeRayCastLocation(Ctx, KineConfig);
 }
 
 FVehicleSuspensionSimState FVehicleSuspensionSolver::FinalizeSolveSolidAxleAtExtension(
@@ -944,6 +942,11 @@ void FVehicleSuspensionSolver::PrepareSimulation(
 	FVector3f TopMountLocalPos = Config.TopMountLocalLocation;
 	TopMountLocalPos.Y *= Ctx.WheelSideSign;
 	Ctx.TopMountChassisLocation = Ctx.WheelCompToChassisTransform.TransformPositionNoScale(TopMountLocalPos);
+
+	FVector3f TopMountToLowerBallJoint = Ctx.TopMountChassisLocation - Ctx.LowerBallJointChassisLocation;
+	Ctx.StrutChassisDirection = TopMountToLowerBallJoint.GetSafeNormal();
+
+	Ctx.HubOffsetFromLowerJointChassis = Ctx.HubChassisTransform.GetLocation() - Ctx.LowerBallJointChassisLocation;
 }
 
 void FVehicleSuspensionSolver::ComputeStraightRayCastLocation(
@@ -951,10 +954,8 @@ void FVehicleSuspensionSolver::ComputeStraightRayCastLocation(
 	const FVehicleSuspensionKinematicsConfig& Config)
 {
 	FVector3f RayDirChassis = Ctx.WheelCompToChassisTransform.GetRotation().GetUpVector();
-	Ctx.StrutChassisDirection = Ctx.WheelCompToChassisTransform.GetRotation().GetUpVector();
 	Ctx.RayCastLength = Config.Stroke;
 
-	Ctx.HubOffsetFromLowerJointChassis = Ctx.HubChassisTransform.GetLocation() - Ctx.LowerBallJointChassisLocation;
 	Ctx.RayCastStartChassisLocation = Ctx.TopMountChassisLocation - RayDirChassis * Config.MinStrutLength + Ctx.HubOffsetFromLowerJointChassis;
 	Ctx.RayCastStartWorldLocation = Ctx.ChassisWorldTransform.TransformPositionNoScale((FVector)Ctx.RayCastStartChassisLocation);
 
@@ -976,17 +977,13 @@ void FVehicleSuspensionSolver::ComputeWishboneRayCastLocation(
 	// Relative to chassis, sorry this is actually the opposite direction of the ray
 	FVector3f RayDirChassis = Ctx.WheelCompToChassisTransform.TransformVectorNoScale(BaseUp);
 
-	Ctx.HubOffsetFromLowerJointChassis = Ctx.HubChassisTransform.GetLocation() - Ctx.LowerBallJointChassisLocation;
-
-	FVector3f TopMountToLowerBallJoint = Ctx.TopMountChassisLocation - Ctx.LowerBallJointChassisLocation;
-	Ctx.StrutChassisDirection = TopMountToLowerBallJoint.GetSafeNormal();
-
 	// parallel to ray
 	float StrutProjOnRay = FVector3f::DotProduct(Ctx.StrutChassisDirection, RayDirChassis);
 	float ReservedLength = FMath::Abs(StrutProjOnRay) * Config.MinStrutLength;
 	Ctx.RayCastLength = FMath::Abs(StrutProjOnRay) * Config.Stroke;
 
 	// vertical to ray
+	FVector3f TopMountToLowerBallJoint = Ctx.TopMountChassisLocation - Ctx.LowerBallJointChassisLocation;
 	FVector3f StrutVerticalToRay = FVector3f::VectorPlaneProject(TopMountToLowerBallJoint, RayDirChassis);
 
 	FVector3f RayOffset = ReservedLength * -RayDirChassis - StrutVerticalToRay + Ctx.HubOffsetFromLowerJointChassis;

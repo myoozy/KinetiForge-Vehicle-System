@@ -507,7 +507,7 @@ void UVehicleWheelComponent::CacheDesignedHubTransform(const float DesignedExten
 		GetRelativeTransform(),
 		DesignedExtensionRatio,
 		0.f,
-		2,
+		1,
 		&TempLUTs
 	);
 
@@ -833,17 +833,14 @@ void UVehicleWheelComponent::FinalizeUpdateSolidAxlePhysics(
 
 void UVehicleWheelComponent::ApplySuspensionStateDirect(float InExtensionRatio, float InSteeringAngle)
 {
-	const int32 Iteration = 2;
-	for (int32 i = 0; i < Iteration; i++)
-	{
-		Suspension.State = Suspension.SolveKinematicsAtExtension(
-			WheelConfig.Radius,
-			SuspensionKinematicsConfig,
-			GetRelativeTransform(),
-			InExtensionRatio, 
-			InSteeringAngle);
-		UpdateWheelAnim();
-	}
+	Suspension.State = Suspension.SolveKinematicsAtExtension(
+		WheelConfig.Radius,
+		SuspensionKinematicsConfig,
+		GetRelativeTransform(),
+		InExtensionRatio, 
+		InSteeringAngle,
+		1);
+	UpdateWheelAnim();
 }
 
 void UVehicleWheelComponent::RoughlyInitializeSuspensionState(FVehicleSuspensionSimState& InState)
