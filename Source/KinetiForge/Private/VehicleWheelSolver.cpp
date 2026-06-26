@@ -610,8 +610,8 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	bool bUseFyCurve = TireLUTs.Fy.bHasValidStiffness;
 
 	// magic formula
-	float MaxFx = TireConfig.MaxFx * Context.AvailableGrip;
-	float MaxFy = TireConfig.MaxFy * Context.AvailableGrip;
+	float MaxFx = TireConfig.MaxFx * Context.AvailableGrip * Context.LongForceScale;
+	float MaxFy = TireConfig.MaxFy * Context.AvailableGrip * Context.LatForceScale;
 	FVector2f MFTireForce = ConstraintTireForce;
 	if (bUseFxCurve)
 	{
@@ -645,5 +645,5 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 		}
 	}
 
-	return FVector2f(MFTireForce.X * Context.LongForceScale, MFTireForce.Y * Context.LatForceScale);
+	return MFTireForce;
 }
