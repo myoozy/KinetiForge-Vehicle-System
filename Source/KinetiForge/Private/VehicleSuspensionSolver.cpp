@@ -1020,11 +1020,12 @@ void FVehicleSuspensionSolver::ComputeRayCastLocation(
 }
 
 bool FVehicleSuspensionSolver::ShouldDoRefinedTrace(
-	FVehicleSuspensionSimContext& Ctx,
+	const FTransform& RayCastTransform,
+	const FHitResult& HitResult,
 	const float HalfWheelWidth,
 	const FVehicleSuspensionKinematicsConfig& Config)
 {
-	FVector LocalImpactPoint = Ctx.RayCastWorldTransform.InverseTransformPositionNoScale(Ctx.HitResult.ImpactPoint);
+	FVector LocalImpactPoint = RayCastTransform.InverseTransformPositionNoScale(HitResult.ImpactPoint);
 
 	return FMath::Abs(LocalImpactPoint.Y) > HalfWheelWidth || LocalImpactPoint.Z > Config.Stroke;
 }
@@ -1252,7 +1253,7 @@ float FVehicleSuspensionSolver::SuspensionSphereTrace(
 
 	if (Ctx.bHitGround)
 	{
-		Ctx.bRayCastRefined = ShouldDoRefinedTrace(Ctx, HalfWheelWidth, Config);
+		Ctx.bRayCastRefined = ShouldDoRefinedTrace(Ctx.RayCastWorldTransform, Ctx.HitResult, HalfWheelWidth, Config);
 
 		if (Ctx.bRayCastRefined)
 		{
@@ -1345,66 +1346,326 @@ float FVehicleSuspensionSolver::SuspensionMultiSphereTrace(
 	const FVehicleSuspensionKinematicsConfig& Config)
 {
 	Ctx.bRayCastRefined = false;
-	Ctx.bHitGround = FPhysicsInterface::GeomSweepSingle(
-		World, FCollisionShape::MakeSphere(WheelRadius), FQuat::Identity, Ctx.HitResult,
-		Ctx.RayCastStartWorldLocation, Ctx.RayCastEndWorldLocation, Config.TraceChannel, QueryParams,
-		ResponseParams, FCollisionObjectQueryParams::DefaultObjectQueryParam);
+	Ctx.bHitGround = false;
 
-	if (Ctx.bHitGround)
+	const FQuat TraceRot = Ctx.RayCastWorldTransform.GetRotation();
+	const FVector TraceDir = Ctx.RayCastDirectionWorld.GetSafeNormal();
+
+	const FVector WheelWorldRightVector =
+		Ctx.ChassisWorldTransform.TransformRotation(
+			FQuat(Ctx.HubChassisTransform.GetRotation())
+		).GetRightVector().GetSafeNormal();
+
+	const FVector ProbeOffsets[2] =
 	{
-		Ctx.bRayCastRefined = ShouldDoRefinedTrace(Ctx, HalfWheelWidth, Config);
+		WheelWorldRightVector * HalfWheelWidth * Ctx.WheelSideSign,
+		-WheelWorldRightVector * HalfWheelWidth * Ctx.WheelSideSign
+	};
 
-		if (Ctx.bRayCastRefined)
+	auto SphereSweepSingleAtOffset =
+		[&](const FVector& Offset, FHitResult& OutHit) -> bool
 		{
-			// first test with a bigger box
-			FVector HalfSize = FVector(WheelRadius, HalfWheelWidth, WheelRadius);
-			FHitResult BoxTraceResult;
-			bool bShouldMultiSphereTrace = FPhysicsInterface::GeomSweepSingle(
+			return FPhysicsInterface::GeomSweepSingle(
 				World,
-				FCollisionShape::MakeBox(HalfSize),
-				Ctx.RayCastWorldTransform.GetRotation(),
-				BoxTraceResult,
-				Ctx.RayCastStartWorldLocation,
-				Ctx.RayCastEndWorldLocation,
+				FCollisionShape::MakeSphere(WheelRadius),
+				FQuat::Identity,
+				OutHit,
+				Ctx.RayCastStartWorldLocation + Offset,
+				Ctx.RayCastEndWorldLocation + Offset,
 				Config.TraceChannel,
 				QueryParams,
 				ResponseParams,
-				FCollisionObjectQueryParams::DefaultObjectQueryParam);
+				FCollisionObjectQueryParams::DefaultObjectQueryParam
+			);
+		};
 
-			// then if there is someting inside the box, we do multi-sphere trace
-			if (bShouldMultiSphereTrace)
+	auto SphereSweepMultiAtOffset =
+		[&](const FVector& Offset, TArray<FHitResult>& OutHits) -> bool
+		{
+			return FPhysicsInterface::GeomSweepMulti(
+				World,
+				FCollisionShape::MakeSphere(WheelRadius),
+				FQuat::Identity,
+				OutHits,
+				Ctx.RayCastStartWorldLocation + Offset,
+				Ctx.RayCastEndWorldLocation + Offset,
+				Config.TraceChannel,
+				QueryParams,
+				ResponseParams,
+				FCollisionObjectQueryParams::DefaultObjectQueryParam
+			);
+		};
+
+	auto BoxSweep =
+		[&](const FVector& HalfSize, const FQuat& Orientation, const FVector& StartOffset, FHitResult& OutHit) -> bool
+		{
+			// box sweep 的 Start/End 是 box center。
+			// 让 box 最上端不要高过 RayCastStart。
+			const FVector Start = Ctx.RayCastStartWorldLocation + StartOffset;
+			const FVector End = Ctx.RayCastEndWorldLocation;
+
+			return FPhysicsInterface::GeomSweepSingle(
+				World,
+				FCollisionShape::MakeBox(HalfSize),
+				Orientation,
+				OutHit,
+				Start,
+				End,
+				Config.TraceChannel,
+				QueryParams,
+				ResponseParams,
+				FCollisionObjectQueryParams::DefaultObjectQueryParam
+			);
+		};
+
+	auto IsSideSphereHitValid =
+		[&](const FHitResult& Hit) -> bool
+		{
+			if (!Hit.bBlockingHit)
 			{
-				TArray<FHitResult> MultiHitResults;
-				Ctx.bHitGround = FPhysicsInterface::GeomSweepMulti(
-					World,
-					FCollisionShape::MakeSphere(WheelRadius),
-					FQuat::Identity,
-					MultiHitResults,
-					Ctx.RayCastStartWorldLocation,
-					Ctx.RayCastEndWorldLocation,
-					Config.TraceChannel,
-					QueryParams,
-					ResponseParams,
-					FCollisionObjectQueryParams::DefaultObjectQueryParam
-				);
+				return false;
+			}
 
-				for (FHitResult HitResult : MultiHitResults)
+			return !ShouldDoRefinedTrace(Ctx.RayCastWorldTransform, Hit, HalfWheelWidth, Config);
+		};
+
+	auto PickFirstBlockingHitBetweenBoxes =
+		[&](
+			const TArray<FHitResult>& Hits,
+			const bool bOuterBoxHit,
+			const FHitResult& OuterBoxHit,
+			const bool bInnerBoxHit,
+			const FHitResult& InnerBoxHit,
+			FHitResult& OutHit) -> bool
+		{
+			if (Hits.Num() <= 0 || !bOuterBoxHit)
+			{
+				return false;
+			}
+
+			float DistMin = OuterBoxHit.Distance + WheelRadius;
+			float DistMax = bInnerBoxHit ? InnerBoxHit.Distance : Ctx.RayCastLength;
+
+			if (DistMin > DistMax)
+			{
+				Swap(DistMin, DistMax);
+			}
+
+			bool bFound = false;
+			float BestHitDist = TNumericLimits<float>::Max();
+
+			for (const FHitResult& Hit : Hits)
+			{
+				if (!Hit.bBlockingHit)
 				{
-					if (HitResult.Time > BoxTraceResult.Time)
-					{
-						Ctx.HitResult = HitResult;
-						break;
-					}
-					else if (HitResult.Time == BoxTraceResult.Time)
-					{
-						Ctx.HitResult = BoxTraceResult;
-						break;
-					}
+					continue;
+				}
+
+				// 这里不使用 multi sphere 的 ImpactPoint 位置过滤。
+				// 只使用两个 box 的 Time 窗口。
+				if (Hit.Distance < DistMin || Hit.Distance > DistMax)
+				{
+					continue;
+				}
+
+				if (Hit.Distance < BestHitDist)
+				{
+					BestHitDist = Hit.Time;
+					OutHit = Hit;
+					bFound = true;
 				}
 			}
+
+			return bFound;
+		};
+
+	auto BlendSideHitsByDepth =
+		[&](const FHitResult& Hit0, const FHitResult& Hit1) -> FHitResult
+		{
+			const float Dist0 = FMath::Clamp(Hit0.Distance, 0.f, Ctx.RayCastLength);
+			const float Dist1 = FMath::Clamp(Hit1.Distance, 0.f, Ctx.RayCastLength);
+
+			const float Depth0 = FMath::Max(0.f, Ctx.RayCastLength - Dist0);
+			const float Depth1 = FMath::Max(0.f, Ctx.RayCastLength - Dist1);
+			const float TotalDepth = Depth0 + Depth1;
+
+			float Weight0 = 0.5f;
+			float Weight1 = 0.5f;
+
+			if (TotalDepth > SMALL_NUMBER)
+			{
+				Weight0 = Depth0 / TotalDepth;
+				Weight1 = Depth1 / TotalDepth;
+			}
+
+			const FHitResult& Primary = Dist0 <= Dist1 ? Hit0 : Hit1;
+
+			FHitResult Result = Primary;
+
+			Result.TraceStart =
+				Hit0.TraceStart * Weight0 +
+				Hit1.TraceStart * Weight1;
+
+			Result.TraceEnd =
+				Hit0.TraceEnd * Weight0 +
+				Hit1.TraceEnd * Weight1;
+
+			Result.ImpactPoint =
+				Hit0.ImpactPoint * Weight0 +
+				Hit1.ImpactPoint * Weight1;
+
+			Result.Location =
+				Hit0.Location * Weight0 +
+				Hit1.Location * Weight1;
+
+			Result.Normal =
+				(Hit0.Normal * Weight0 +
+					Hit1.Normal * Weight1).GetSafeNormal();
+
+			Result.ImpactNormal =
+				(Hit0.ImpactNormal * Weight0 +
+					Hit1.ImpactNormal * Weight1).GetSafeNormal();
+
+			Result.Distance =
+				Dist0 * Weight0 +
+				Dist1 * Weight1;
+
+			Result.Time =
+				Hit0.Time * Weight0 +
+				Hit1.Time * Weight1;
+
+			Result.bBlockingHit = true;
+			return Result;
+		};
+
+	// ------------------------------------------------------------
+	// 1. 左右两个普通 sphere sweep。
+	// ------------------------------------------------------------
+
+	FHitResult FinalHits[2];
+	bool bValid[2] = { false, false };
+
+	for (int32 i = 0; i < 2; ++i)
+	{
+		FHitResult Hit;
+		const bool bHit = SphereSweepSingleAtOffset(ProbeOffsets[i], Hit);
+
+		if (bHit && IsSideSphereHitValid(Hit))
+		{
+			FinalHits[i] = Hit;
+			bValid[i] = true;
 		}
 	}
 
+	// 两边都合法，直接按 depth 混合。
+	if (bValid[0] && bValid[1])
+	{
+		Ctx.HitResult = BlendSideHitsByDepth(FinalHits[0], FinalHits[1]);
+		Ctx.bHitGround = true;
+
+		return WheelRadius;
+	}
+
+	// ------------------------------------------------------------
+	// 2. 至少一边不合法，进入 box bracket。
+	// ------------------------------------------------------------
+
+	Ctx.bRayCastRefined = true;
+
+	const FVector OuterBoxHalfSize =
+		FVector(WheelRadius, HalfWheelWidth, WheelRadius);
+
+	FHitResult OuterBoxHit;
+	const bool bOuterBoxHit = BoxSweep(
+		OuterBoxHalfSize,
+		TraceRot,
+		-Ctx.RayCastDirectionWorld * WheelRadius,
+		OuterBoxHit
+	);
+
+	if (!bOuterBoxHit)
+	{
+		// 外接 box 都没命中，就不认为有有效轮胎接触。
+		Ctx.bHitGround = false;
+		Ctx.HitResult = FHitResult();
+		return WheelRadius;
+	}
+
+	const FVector InnerBoxHalfSize =
+		FVector(WheelRadius, HalfWheelWidth, WheelRadius) * 0.70710678f;
+
+	const FQuat InnerBoxRot =
+		TraceRot * FQuat(0.0f, 0.38268343f, 0.0f, 0.92387953f);
+
+	FHitResult InnerBoxHit;
+	const bool bInnerBoxHit = BoxSweep(
+		InnerBoxHalfSize,
+		InnerBoxRot,
+		FVector::ZeroVector,
+		InnerBoxHit
+	);
+
+	// ------------------------------------------------------------
+	// 3. 哪边不合法，就只 refine 哪边。
+	// ------------------------------------------------------------
+
+	for (int32 i = 0; i < 2; ++i)
+	{
+		if (bValid[i])
+		{
+			continue;
+		}
+
+		TArray<FHitResult> MultiHits;
+		const bool bMultiHit = SphereSweepMultiAtOffset(ProbeOffsets[i], MultiHits);
+
+		if (!bMultiHit)
+		{
+			continue;
+		}
+
+		FHitResult RefinedHit;
+		if (PickFirstBlockingHitBetweenBoxes(
+			MultiHits,
+			bOuterBoxHit,
+			OuterBoxHit,
+			bInnerBoxHit,
+			InnerBoxHit,
+			RefinedHit))
+		{
+			FinalHits[i] = RefinedHit;
+			bValid[i] = true;
+		}
+	}
+
+	// ------------------------------------------------------------
+	// 4. 输出结果。
+	// ------------------------------------------------------------
+
+	if (bValid[0] && bValid[1])
+	{
+		Ctx.HitResult = BlendSideHitsByDepth(FinalHits[0], FinalHits[1]);
+		Ctx.bHitGround = true;
+	}
+	else if (bValid[0])
+	{
+		Ctx.HitResult = FinalHits[0];
+		Ctx.bHitGround = true;
+	}
+	else if (bValid[1])
+	{
+		Ctx.HitResult = FinalHits[1];
+		Ctx.bHitGround = true;
+	}
+	else
+	{
+		// 不用 OuterBoxHit 兜底。
+		// 否则 box hit distance 不是轮胎最终接触距离，很容易再次造成高度错误。
+		Ctx.HitResult = FHitResult();
+		Ctx.bHitGround = false;
+	}
+
+	// 重要：本函数内部已经把 HitResult.Distance 变成最终 HitDistance。
 	return WheelRadius;
 }
 

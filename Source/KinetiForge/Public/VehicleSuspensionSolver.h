@@ -212,7 +212,8 @@ private:
 		const FVehicleSuspensionKinematicsConfig& Config
 	);
 	static bool ShouldDoRefinedTrace(
-		FVehicleSuspensionSimContext& Ctx,
+		const FTransform& RayCastTransform,
+		const FHitResult& HitResult,
 		const float HalfWheelWidth,
 		const FVehicleSuspensionKinematicsConfig& Config
 	);
