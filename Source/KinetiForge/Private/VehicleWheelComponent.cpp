@@ -52,6 +52,17 @@ UVehicleWheelComponent::UVehicleWheelComponent()
 		}
 	}
 
+	if (!TireConfig.CamberToLateralDrift)
+	{
+		static ConstructorHelpers::FObjectFinder<UCurveFloat> CurveObj(
+			TEXT("/Script/Engine.CurveFloat'/KinetiForge/DefaultConfigs/Curves/DefaultCamberToLateralDrift.DefaultCamberToLateralDrift'")
+		);
+		if (CurveObj.Succeeded())
+		{
+			TireConfig.CamberToLateralDrift = CurveObj.Object;
+		}
+	}
+
 #if 0
 	if (!SuspensionKinematicsConfig.CamberCurve)
 	{

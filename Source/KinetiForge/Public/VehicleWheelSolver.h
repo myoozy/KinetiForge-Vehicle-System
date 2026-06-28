@@ -84,14 +84,18 @@ private:
 		FVehicleWheelSimState& LocalState,
 		const FVehicleWheelSimContext& Context,
 		const float LastTireLongitudinalForce,
+		const bool bOnGround,
 		const float SlipVelocityTolerance = 0.1f);
 	static void UpdateSlipAngle(
 		FVehicleWheelSimState& LocalState,
 		const bool bOnGround);
 	static void UpdateSlipRatio(
 		FVehicleWheelSimState& LocalState,
-		const FVehicleWheelSimContext& Context,
-		const bool bOnGround);
+		const FVehicleWheelSimContext& Context);
+	static float CalculateCamberLateralDrift(
+		const FVehicleSuspensionSimState& SuspensionState,
+		const FVehicleWheelCachedLUTs& TireLUTs,
+		float& OutSignedCamberDeg);
 	/**Returns transient slip ratio and slip angle (normalized)*/
 	static FVector2f UpdateTransientSlip(
 		FVehicleWheelSimState& LocalState,

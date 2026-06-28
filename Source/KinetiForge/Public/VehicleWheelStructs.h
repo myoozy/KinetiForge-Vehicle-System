@@ -113,6 +113,25 @@ struct KINETIFORGE_API FVehicleTireConfig
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "Curve: Fy (Lateral)"))
 	UCurveFloat* Fy = nullptr;
+
+	/**
+	* Input: abs camber angle in degrees.
+	* Output: lateral drift per rolling distance, dy / dx.
+	*
+	* This is not a force scale.
+	* This is not a constant lateral velocity.
+	*
+	* The solver converts it to lateral slip velocity:
+	*
+	*     CamberSlipVelocityY = RollSpeed * CamberLateralDrift
+	*
+	* Example:
+	*     Camber = 5 deg
+	*     Curve output = 0.01
+	*     means the contact patch tends to drift 1 cm laterally per 1 m rolling distance.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "Curve: Camber To Lateral Drift"))
+	UCurveFloat* CamberToLateralDrift = nullptr;
 };
 
 USTRUCT(BlueprintType)
@@ -248,6 +267,7 @@ struct KINETIFORGE_API FVehicleWheelCachedLUTs
 
 	FVehicleTireLUT<64> Fx = FVehicleTireLUT<64>(1.f);
 	FVehicleTireLUT<64> Fy = FVehicleTireLUT<64>(1.f);
+	FVehicleLUT<64> CamberToLateralDrift = FVehicleLUT<64>(0.f);
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "wheel state in simulation"))
@@ -270,6 +290,8 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Slip")
 	float PredictedSlipRatio = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	float SignedCamberDegree = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float DynFrictionMultiplier = 1.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	FVector2f LocalLinearVelocity = FVector2f(0.f, 0.f);
@@ -290,7 +312,7 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	float BrakeTorqueFromESP = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	float TorqueFromGroundInteraction = 0.f;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Slip")
 	FVector2f TransientSlip = FVector2f(0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Force")
 	FVector2f TireForce2D = FVector2f(0.f);
@@ -298,7 +320,7 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	FVector3f TireForce = FVector3f(0.f, 0.f, 0.f);
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	bool bIsLocked = false;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AntiBrake")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Electronics")
 	bool bABSTriggered = false;
 };
 
@@ -316,6 +338,8 @@ struct KINETIFORGE_API FVehicleWheelSimContext
 	float LatForceScale = 1.f;
 	FVector3f LongForceDir = FVector3f(0.f);
 	FVector3f LatForceDir = FVector3f(0.f);
+
+	float CamberLateralDrift = 0.f;
 
 	float AvailableGrip = 0.f;
 	FVector2f GravityComp2D = FVector2f(0.f);

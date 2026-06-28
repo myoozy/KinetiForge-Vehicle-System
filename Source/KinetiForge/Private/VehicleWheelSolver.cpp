@@ -71,6 +71,13 @@ void FVehicleWheelSolver::PreStep(
 		TireConfig.WheelLoadInfluenceFactor
 	);
 
+	// get camber
+	Context.CamberLateralDrift = CalculateCamberLateralDrift(
+		SuspensionState,
+		CachedLUTs,
+		LocalState.SignedCamberDegree
+	);
+
 	// clear tire force
 	Context.AccumulateTireImpulse2D = FVector2f(0.f);
 }
@@ -123,7 +130,7 @@ void FVehicleWheelSolver::Substep(
 	// 2. Get wheel speed
 	// =========================================================
 	const float SlipVelocityTolerance = 0.1f;
-	WheelAcceleration(LocalState, Context, SubstepForce2D.X, SlipVelocityTolerance);
+	WheelAcceleration(LocalState, Context, SubstepForce2D.X, SuspensionState.bWheelOnGround, SlipVelocityTolerance);
 
 	Context.AccumulateTireImpulse2D += SubstepForce2D * Context.SubstepDeltaTime;
 }
@@ -244,6 +251,14 @@ void FVehicleWheelSolver::UpdateCachedLUTs(const FVehicleTireConfig& Config)
 	{
 		CachedLUTs.Fy.SetAllTo(1.f);
 	}
+	if (IsValid(Config.CamberToLateralDrift))
+	{
+		CachedLUTs.CamberToLateralDrift.CopyFromRichCurve(Config.CamberToLateralDrift->FloatCurve, FVector2f(0.f, 90.f));
+	}
+	else
+	{
+		CachedLUTs.CamberToLateralDrift.SetAllTo(0.f);
+	}
 }
 
 float FVehicleWheelSolver::GetTangentAtOrigin(const FRichCurve& Curve)
@@ -337,6 +352,7 @@ void FVehicleWheelSolver::WheelAcceleration(
 	FVehicleWheelSimState& LocalState,
 	const FVehicleWheelSimContext& Context,
 	const float LastTireLongitudinalForce,
+	const bool bOnGround,
 	const float SlipVelocityTolerance)
 {
 	float LastAngularVelocity = LocalState.AngularVelocity;
@@ -382,6 +398,10 @@ void FVehicleWheelSolver::WheelAcceleration(
 	LocalState.bIsLocked = AngVelSignIfNotBraking * LocalState.AngularVelocity <= 0.f && LocalState.BrakeTorque > SMALL_NUMBER;
 	LocalState.AngularVelocity *= !LocalState.bIsLocked;
 
+	//Calculate longitudinal slip
+	LocalState.LongSlipVelocity = LocalState.AngularVelocity * Context.R - LocalState.LocalLinearVelocity.X;
+	LocalState.LongSlipVelocity *= bOnGround;
+
 	// get angular acceleration
 	LocalState.AngularAcceleration = (LocalState.AngularVelocity - LastAngularVelocity) * Context.SubstepDeltaTimeInv;
 }
@@ -412,16 +432,44 @@ void FVehicleWheelSolver::UpdateSlipAngle(
 
 void FVehicleWheelSolver::UpdateSlipRatio(
 	FVehicleWheelSimState& LocalState,
-	const FVehicleWheelSimContext& Context, 
-	const bool bOnGround)
+	const FVehicleWheelSimContext& Context)
 {
-	//Calculate longitudinal slip
-	LocalState.LongSlipVelocity = LocalState.AngularVelocity * Context.R - LocalState.LocalLinearVelocity.X;
-	LocalState.LongSlipVelocity *= bOnGround;
-
 	//calculate slip ratio
 	float Denominator = FMath::Max(FMath::Max(FMath::Abs(LocalState.LocalLinearVelocity.X), FMath::Abs(LocalState.AngularVelocity * Context.R)), 1.f);
 	LocalState.SlipRatio = LocalState.LongSlipVelocity / Denominator;
+}
+
+float FVehicleWheelSolver::CalculateCamberLateralDrift(
+	const FVehicleSuspensionSimState& SuspensionState,
+	const FVehicleWheelCachedLUTs& TireLUTs,
+	float& OutSignedCamberDeg)
+{
+	const FVector3f WheelRight =
+		SuspensionState.WheelWorldRightVector.GetSafeNormal();
+
+	const FVector3f GroundNormal =
+		SuspensionState.ImpactWorldNormal.GetSafeNormal();
+
+	float SinCamber = FVector3f::DotProduct(WheelRight, GroundNormal);
+	SinCamber = FMath::Clamp(SinCamber, -1.f, 1.f);
+
+	float CamberRad = FMath::Asin(SinCamber);
+	float CamberDeg = FMath::RadiansToDegrees(CamberRad);
+
+	OutSignedCamberDeg = SuspensionState.bIsRightWheel ? -CamberDeg : CamberDeg;
+	const float AbsCamberDeg = FMath::Abs(CamberDeg);
+
+	// Curve input:
+	//     abs camber angle in degrees
+	//
+	// Curve output:
+	//     q_gamma = dy / dx
+	float Drift = TireLUTs.CamberToLateralDrift.FastEval(AbsCamberDeg / 90.f).Value;
+
+	// Just in case the user draws a negative curve by accident.
+	Drift = FMath::Max(0.f, Drift);
+
+	return CamberDeg > 0.f ? -Drift : Drift;
 }
 
 FVector2f FVehicleWheelSolver::UpdateTransientSlip(
@@ -437,7 +485,37 @@ FVector2f FVehicleWheelSolver::UpdateTransientSlip(
 		FVector2f SlipVelocity = FVector2f(LocalState.LongSlipVelocity, -LocalState.LocalLinearVelocity.Y);
 		float AbsVx = FMath::Abs(LocalState.LocalLinearVelocity.X);
 		float AbsOmegaR = FMath::Abs(LocalState.AngularVelocity * Context.R);
-		FVector2f AbsVx2D = FVector2f(FMath::Max(AbsVx, AbsOmegaR), AbsVx);
+		
+		// Real rolling / transport speed.
+		//
+		// IMPORTANT:
+		// This one is NOT clamped to MinVx.
+		// If the vehicle is parked and the wheel is not rotating,
+		// RollSpeed = 0, so camber does not inject slip.
+		const float RollSpeed = FMath::Max(AbsVx, AbsOmegaR);
+
+		// Camber-induced lateral transport.
+		//
+		// Context.CamberLateralDrift = q_gamma = dy / dx
+		//
+		// CamberSlipVelocityY = v_roll * q_gamma
+		//
+		// If the wheel is stationary:
+		//     RollSpeed = 0
+		//     CamberSlipVelocityY = 0
+		//
+		// So camber does not make a parked car crawl sideways.
+		const float CamberSlipVelocityY =
+			RollSpeed * Context.CamberLateralDrift;
+		SlipVelocity.Y += CamberSlipVelocityY;
+
+		// This is only for the relaxation denominator.
+		// It is a numerical regularization, not a real transport speed.
+		FVector2f AbsVx2D = FVector2f(
+			FMath::Max(AbsVx, AbsOmegaR),
+			AbsVx
+		);
+
 		float MinVx = 0.1f;
 		AbsVx2D = FVector2f::Max(AbsVx2D, FVector2f(MinVx));
 
@@ -562,7 +640,7 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	const FVehicleWheelCachedLUTs& TireLUTs)
 {
 	// not for tire force now but for abs and tc logic
-	UpdateSlipRatio(LocalState, Context, bOnGround);
+	UpdateSlipRatio(LocalState, Context);
 	UpdateSlipAngle(LocalState, bOnGround);
 
 	if (!bOnGround)
