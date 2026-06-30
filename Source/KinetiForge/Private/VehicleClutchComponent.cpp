@@ -44,16 +44,15 @@ float UVehicleClutchComponent::GetTorqueSpringModel(
 
 	// to simulate torson spring on clutch
 	float K_Clutch = Config.Stiffness * 1000.f;
+	float D_Clutch = Config.Damping * 1000.f;
 
-	float SpringStiffness = UVehicleUtilities::SafeDivide(K_Shaft * K_Clutch, K_Shaft + K_Clutch);
-	float CriticalDamping = 2.0f * FMath::Sqrt(SpringStiffness * J_Total);
-	float SpringDamping = CriticalDamping * Config.Damping;
+	float K_Series = UVehicleUtilities::SafeDivide(K_Shaft * K_Clutch, K_Shaft + K_Clutch);
 	
 	float ClutchSlipScaled = ClutchSlip * State.ClutchLock;//ClutchSlip * ClutchLock
 	float CurrentAngleDiff = State.AngleDiff;
 
-	float DontKnowWhatItIs = SpringStiffness * DeltaTime + SpringDamping;
-	float TorqueNumerator = SpringStiffness * CurrentAngleDiff + DontKnowWhatItIs * ClutchSlipScaled;
+	float DontKnowWhatItIs = K_Series * DeltaTime + D_Clutch;
+	float TorqueNumerator = K_Series * CurrentAngleDiff + DontKnowWhatItIs * ClutchSlipScaled;
 	float TorqueDenominator = 1.0f + UVehicleUtilities::SafeDivide(DontKnowWhatItIs * DeltaTime, J_Total);
 
 	float SpringModelTorque = TorqueNumerator / TorqueDenominator;

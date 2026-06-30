@@ -239,13 +239,13 @@ struct KINETIFORGE_API FVehicleClutchConfig
 	* Unit: kNm/Rad
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float Stiffness = 100.f;
+	float Stiffness = 500.f;
 
 	/**
-	* If SimMode is FrictionClutch, then Damping refers to damping ratio of the spring. 
+	* Unit: kNmSec/Rad
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float Damping = 0.01f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
+	float Damping = 0.001f;
 
 	/**
 	* Determines how much torque the clutch can take.
