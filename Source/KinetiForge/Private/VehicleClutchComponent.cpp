@@ -32,25 +32,18 @@ float UVehicleClutchComponent::GetTorqueSpringModel(
 	const float ClutchSlip,
 	const float EngineInertia,
 	const float GearboxReflectedInertia,
-	const float GearboxInputShaftInertia,
-	const float GearboxReflectedInertia_HighestGear)
+	const float DriveShaftStiffness)
 {
-	float J_Gearbox = GearboxReflectedInertia + GearboxInputShaftInertia;
+	float J_Gearbox = GearboxReflectedInertia;
 	float J_Engine = EngineInertia;
 	float J_Total = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
 	float J_ToGetStiffness = 0.f;
 
 	// to simulate torson spring on drive shaft
-	J_Gearbox = GearboxReflectedInertia;
-	J_Engine = EngineInertia + GearboxInputShaftInertia;
-	J_ToGetStiffness = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
-	float K_Shaft = CalculateStiffness(Config.NaturalFrequency, J_ToGetStiffness);
+	float K_Shaft = DriveShaftStiffness;
 
 	// to simulate torson spring on clutch
-	J_Gearbox = GearboxInputShaftInertia + GearboxReflectedInertia_HighestGear;
-	J_Engine = EngineInertia;
-	J_ToGetStiffness = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
-	float K_Clutch = CalculateStiffness(Config.NaturalFrequency, J_ToGetStiffness);
+	float K_Clutch = Config.Stiffness * 1000.f;
 
 	float SpringStiffness = UVehicleUtilities::SafeDivide(K_Shaft * K_Clutch, K_Shaft + K_Clutch);
 	float CriticalDamping = 2.0f * FMath::Sqrt(SpringStiffness * J_Total);
@@ -65,30 +58,29 @@ float UVehicleClutchComponent::GetTorqueSpringModel(
 
 	float SpringModelTorque = TorqueNumerator / TorqueDenominator;
 
-	float DampingModelTorque = State.ClutchLock * FMath::Clamp(CriticalDamping * ClutchSlip, -State.MaxClutchTorque, State.MaxClutchTorque);
-	
-	if (FMath::Abs(SpringModelTorque) > State.MaxClutchTorque)
+	float MaxTorque = State.MaxClutchTorque * State.ClutchLock;
+
+	if (FMath::Abs(SpringModelTorque) > MaxTorque)
 	{
-		SpringModelTorque = FMath::Sign(SpringModelTorque) * State.MaxClutchTorque;
+		SpringModelTorque = FMath::Sign(SpringModelTorque) * MaxTorque;
 	}
 	else
 	{
 		State.AngleDiff = State.ClutchLock * (State.AngleDiff + ClutchSlipScaled * DeltaTime);
 	}
 
-	return State.ClutchTorque = FMath::Lerp(DampingModelTorque, SpringModelTorque, State.ClutchLock);
+	return State.ClutchTorque = SpringModelTorque;
 }
 
 float UVehicleClutchComponent::GetTorqueDampingModel(
 	const float DeltaTime,
 	const float ClutchSlip,
 	const float EngineInertia,
-	const float GearboxReflectedInertia,
-	const float GearboxInputShaftInertia)
+	const float GearboxReflectedInertia)
 {
 	State.AngleDiff = 0.f;
 
-	float J_Gearbox = GearboxReflectedInertia + GearboxInputShaftInertia;
+	float J_Gearbox = GearboxReflectedInertia;
 	float J_Engine = EngineInertia;
 
 	float J = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
@@ -143,9 +135,8 @@ void UVehicleClutchComponent::UpdatePhysics(
 	const float InClutchValue,
 	const float InGearboxInputShaftVelocity,
 	const float InGearboxReflectedInertia,
-	const float InGearboxInputShaftInertia,
 	const float InCurrentGearRatio,
-	const float GearboxReflectedInertia_HighestGear,
+	const float InDriveShaftStiffness,
 	const float InEngineAngularVelocity,
 	const float InEngineInertia,
 	const float InEngineMaxTorque)
@@ -168,32 +159,21 @@ void UVehicleClutchComponent::UpdatePhysics(
 	switch (Config.SimMode)
 	{
 	default:
-	case EClutchSimMode::ConstraintModel:
-		State.ClutchTorque = GetTorqueConstraintModel(
-			InDeltaTime,
-			ClutchSlip,
-			EngineInertia,
-			InGearboxReflectedInertia,
-			InGearboxInputShaftInertia
-		);
-		break;
-	case EClutchSimMode::SpringModel:
+	case EClutchSimMode::FrictionClutch:
 		GetTorqueSpringModel(
 			InDeltaTime,
 			ClutchSlip,
 			EngineInertia,
 			InGearboxReflectedInertia,
-			InGearboxInputShaftInertia,
-			GearboxReflectedInertia_HighestGear
+			InDriveShaftStiffness
 		);
 		break;
-	case EClutchSimMode::DampingModel:
+	case EClutchSimMode::FluidCoupling:
 		GetTorqueDampingModel(
 			InDeltaTime,
 			ClutchSlip,
 			EngineInertia,
-			InGearboxReflectedInertia,
-			InGearboxInputShaftInertia
+			InGearboxReflectedInertia
 		);
 		break;
 	}

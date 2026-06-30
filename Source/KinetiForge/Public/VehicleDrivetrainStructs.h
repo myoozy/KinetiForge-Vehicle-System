@@ -226,9 +226,8 @@ struct KINETIFORGE_API FVehicleEngineSimState
 UENUM(BlueprintType)
 enum class EClutchSimMode : uint8
 {
-	SpringModel     UMETA(ToolTip = "more realistic, but not recommended for Arcade/EVs/Large physics time step"),
-	DampingModel    UMETA(ToolTip = "behaves like AT-gearbox"),
-	ConstraintModel UMETA(ToolTip = "more fps tolerant")
+	FrictionClutch,
+	FluidCoupling
 };
 
 USTRUCT(BlueprintType)
@@ -237,19 +236,16 @@ struct KINETIFORGE_API FVehicleClutchConfig
 	GENERATED_USTRUCT_BODY()
 
 	/**
-	* This is for calculating the stiffness of the clutch structure and the stiffness of the drive shaft.
-	* Higher value makes the drive train response faster, but may diverge. Set this lower to prevent divergent.
-	* Unit: rad/s
+	* Unit: kNm/Rad
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float NaturalFrequency = 120;
+	float Stiffness = 100.f;
 
 	/**
-	* If SimMode is SpringModel, then Damping refers to damping ratio of the spring. 
-	* If SimMode is DampingModel, then Damping refers to smoothing factor!
+	* If SimMode is FrictionClutch, then Damping refers to damping ratio of the spring. 
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float Damping = 0.1;
+	float Damping = 0.01f;
 
 	/**
 	* Determines how much torque the clutch can take.
@@ -265,21 +261,9 @@ struct KINETIFORGE_API FVehicleClutchConfig
 	float Capacity = 1.5;
 
 	/**
-	* SpringModel: 
-	* Using a spring to transmit torque. Using this model will cause engine speed fluctuations 
-	* (especially when shifting gears with a sequential transmission and low damping ratio). 
-	* It is recommended to use this model when the physical step size is short 
-	* (because the natural angular frequency of the spring cannot exceed the game's physical simulation frequency). 
-	* If the physical step size is large, stiffness can be increased by increasing damping ratio; 
-	* 
-	* DampingModel: 
-	* Use critical damping to transfer torque. Critical damping is calculated based on the current rotational inertia and game physics frequency. 
-	* The torque is then smoothed to avoid numerical jitter. 
-	* The torque values are very smooth and do not cause speed jitter during gear changes. 
-	* This model is recommended for electric vehicles (because it is smoother).
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup")
-	EClutchSimMode SimMode = EClutchSimMode::SpringModel;
+	EClutchSimMode SimMode = EClutchSimMode::FrictionClutch;
 };
 
 USTRUCT(BlueprintType)
@@ -305,8 +289,6 @@ struct KINETIFORGE_API FVehicleGearboxConfig
 {
 	GENERATED_USTRUCT_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
-	float InputShaftInertia = 0.05;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
 	float ShiftDelay = 0.2;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))

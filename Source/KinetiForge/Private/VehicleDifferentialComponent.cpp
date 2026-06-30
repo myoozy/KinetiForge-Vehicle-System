@@ -63,12 +63,12 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 	TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
 	float InSubstepDeltaTime,
 	float InGearboxOutputTorque,
-	float InReflectedInertia,
 	float InBrakeValue,
 	float InHandbrakeValue,
 	bool bLineLockActive,
 	float& OutTransmissionOutputShaftAngularVelocity,
-	float& OutTransmissionOutputShaftEffectiveInertia)
+	float& OutTransmissionOutputShaftEffectiveInertia,
+	float& OutEffectiveDriveShaftStiffness)
 {
 	// 1. First iterate over all axles to gather Total Inertia, Total Angular Momentum, and Base Weights
 	int32 NumOfDriveAxles = 0;
@@ -101,12 +101,10 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 
 	// update axles
 	float DriveTorque = Config.GearRatio * InGearboxOutputTorque;
-	float ReflInertia = Config.GearRatio * Config.GearRatio * InReflectedInertia;
-	// reflected inertia (Note: For absolute perfection, this could also be weighted by TorqueWeight, but equal split is an acceptable approximation)
-	float ReflectedInertiaOnAxle = UVehicleUtilities::SafeDivide(ReflInertia, FloatNumOfDriveAxles);
-
+	
 	float SumAngVel = 0.f;
 	float SumDriveAxleInertia = 0.f;
+	float SumStiffness = 0.f;
 
 	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
@@ -114,6 +112,7 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 
 		float AxleInertia = 0.f;
 		float AxleAngVel = 0.f;
+		float AxleStiffness = 0.f;
 
 		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > SMALL_NUMBER;
 		if (IsDriveAxle)
@@ -141,12 +140,12 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 				AxleDriveTorque,
 				InBrakeValue * !ShouldReleaseBrake,
 				InHandbrakeValue,
-				ReflectedInertiaOnAxle,
-				AxleInertia, AxleAngVel
+				AxleInertia, AxleAngVel, AxleStiffness
 			);
 
 			SumAngVel += AxleAngVel;
 			SumDriveAxleInertia += AxleInertia;
+			SumStiffness += AxleStiffness;
 		}
 		else
 		{
@@ -155,8 +154,7 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 				0.f,
 				InBrakeValue,
 				InHandbrakeValue,
-				0.f,
-				AxleInertia, AxleAngVel
+				AxleInertia, AxleAngVel, AxleStiffness
 			);
 		}
 	}
@@ -164,7 +162,10 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 	// For the output shaft, arithmetic mean is generally fine for RPM display/feedback, 
 	// though TargetLockedAngVel * Config.GearRatio is also physically valid if fully locked.
 	OutTransmissionOutputShaftAngularVelocity = UVehicleUtilities::SafeDivide(SumAngVel * Config.GearRatio, FloatNumOfDriveAxles);
-	OutTransmissionOutputShaftEffectiveInertia = UVehicleUtilities::SafeDivide(SumDriveAxleInertia, Config.GearRatio * Config.GearRatio);
+	
+	const float GearRatioSquareInv = UVehicleUtilities::SafeDivide(1.f, Config.GearRatio * Config.GearRatio);
+	OutTransmissionOutputShaftEffectiveInertia = SumDriveAxleInertia * GearRatioSquareInv;
+	OutEffectiveDriveShaftStiffness = SumStiffness * GearRatioSquareInv;
 
 	return NumOfDriveAxles;
 }
@@ -179,7 +180,8 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	float InSteeringValue, 
 	bool bLineLockActive,
 	float& OutTransmissionOutputShaftAngularVelocity,
-	float& OutTransmissionOutputShaftEffectiveInertia)
+	float& OutTransmissionOutputShaftEffectiveInertia,
+	float& OutEffectiveDriveShaftStiffness)
 {
 	for (UVehicleAxleAssemblyComponent* Axle : InAxles)
 	{
@@ -190,10 +192,11 @@ int32 UVehicleDifferentialComponent::UpdateTransferCase(
 	}
 
 	int32 NumOfDriveAxles = SubstepTransferCase(
-		InAxles, InDeltaTime, InGearboxOutputTorque, InReflectedInertia,
+		InAxles, InDeltaTime, InGearboxOutputTorque,
 		InBrakeValue, InHandbrakeValue, bLineLockActive,
 		OutTransmissionOutputShaftAngularVelocity,
-		OutTransmissionOutputShaftEffectiveInertia
+		OutTransmissionOutputShaftEffectiveInertia,
+		OutEffectiveDriveShaftStiffness
 	);
 
 	for (UVehicleAxleAssemblyComponent* Axle : InAxles)

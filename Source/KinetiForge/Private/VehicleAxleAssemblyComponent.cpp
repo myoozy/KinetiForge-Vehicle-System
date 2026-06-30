@@ -409,9 +409,9 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 	float InDriveTorque,
 	float InBrakeInput,
 	float InHandbrakeInput,
-	float InReflectedInertia,
 	float& OutAxleEffectiveInertia,
-	float& OutAngularVelocity)
+	float& OutAngularVelocity,
+	float& OutDriveShaftStiffness)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_PhysicsSubstep);
 
@@ -427,8 +427,8 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 	State.HandbrakeTorque = AxleConfig.bAffectedByHandbrake ?
 		AxleConfig.MaxHandbrakeTorque * FMath::Clamp(InHandbrakeInput, 0.f, 1.f) : 0.f;
 
-	const bool bNoDriveTorque = AxleConfig.TorqueWeight <= SMALL_NUMBER && FMath::IsNearlyZero(State.P3MotorTorque);
-	const bool bWheelNotDriven = bNoDriveTorque || (Diff == nullptr) || (State.NumOfWheels == 0);
+	const bool bNotPowerAxle = AxleConfig.TorqueWeight <= SMALL_NUMBER && FMath::IsNearlyZero(State.P3MotorTorque);
+	const bool bWheelNotDriven = bNotPowerAxle || (Diff == nullptr) || (State.NumOfWheels == 0);
 
 	// 1. data preparation
 	State.LeftDriveTorque = 0.f;
@@ -439,7 +439,7 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 	if (bWheelNotDriven)
 	{
 		// losing power or differential broken
-		State.AxleDriveTorque = bNoDriveTorque ? 0.f : InDriveTorque;
+		State.AxleDriveTorque = bNotPowerAxle ? 0.f : InDriveTorque;
 		State.AxleEffectiveInertia = AxleConfig.DriveShaftInertia;
 		float AngAcc = UVehicleUtilities::SafeDivide(State.AxleDriveTorque, State.AxleEffectiveInertia);
 		State.AxleAngularVelocity += AngAcc * InSubstepDeltaTime;
@@ -455,14 +455,14 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 				State.AxleDriveTorque,
 				WheelL->GetAngularVelocity(), WheelR->GetAngularVelocity(),
 				WheelL->GetEffectiveInertia(), WheelR->GetEffectiveInertia(),
-				InSubstepDeltaTime, InReflectedInertia + AxleConfig.DriveShaftInertia,
+				InSubstepDeltaTime, AxleConfig.DriveShaftInertia,
 				State.LeftDriveTorque, State.RightDriveTorque, State.ReflectedInertiaOnWheel
 			);
 		}
 		else // single wheel
 		{
 			const float DiffGearRatio = Diff->GetConfig().GearRatio;
-			State.ReflectedInertiaOnWheel = InReflectedInertia * DiffGearRatio * DiffGearRatio;
+			State.ReflectedInertiaOnWheel = AxleConfig.DriveShaftInertia * DiffGearRatio * DiffGearRatio;
 
 			if (AxleLayout == EVehicleAxleLayout::TwoWheels)
 			{
@@ -509,6 +509,7 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 	// 5. output effective inertia and angular velocity
 	OutAxleEffectiveInertia = State.AxleEffectiveInertia;
 	OutAngularVelocity = State.AxleAngularVelocity;
+	OutDriveShaftStiffness = bWheelNotDriven ? 0.f : AxleConfig.DriveShaftStiffness * 1000.f;
 }
 
 void UVehicleAxleAssemblyComponent::PostStepAxle()
@@ -570,9 +571,9 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 	float InBrakeInput,
 	float InHandbrakeInput,
 	float InSteeringInput,
-	float InReflectedInertia,
 	float& OutAxleEffectiveInertia,
-	float& OutAngularVelocity)
+	float& OutAngularVelocity,
+	float& OutDriveShaftStiffness)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_UpdatePhysics);
 
@@ -585,7 +586,7 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 	PreStepAxle(InPhysicsDeltaTime, InSteeringInput);
 	SubstepAxle(InPhysicsDeltaTime,
 		InDriveTorque, InBrakeInput, InHandbrakeInput,
-		InReflectedInertia, OutAxleEffectiveInertia, OutAngularVelocity);
+		OutAxleEffectiveInertia, OutAngularVelocity, OutDriveShaftStiffness);
 	PostStepAxle();
 }
 

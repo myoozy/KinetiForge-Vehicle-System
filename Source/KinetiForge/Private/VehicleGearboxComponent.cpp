@@ -110,33 +110,28 @@ void UVehicleGearboxComponent::ShiftToTargetGearWithDelegate(FOnShiftFinishedDel
 
 void UVehicleGearboxComponent::UpdateOutputShaft(
 	float InClutchTorque, 
-	float& OutTorque, 
-	float& OutReflectedInertia
+	float& OutTorque
 )
 {
 	OutTorque = (InClutchTorque + P2MotorTorque) * CurrentGearRatio * Config.Efficiency;
-	OutReflectedInertia = Config.InputShaftInertia * CurrentGearRatio * CurrentGearRatio;
+	//OutReflectedInertia = Config.InputShaftInertia * CurrentGearRatio * CurrentGearRatio;
 }
 
 void UVehicleGearboxComponent::UpdateInputShaft(
 	float InAxleVelocity, 
 	float InAxleInertia, 
+	float InDriveShaftStiffness,
 	float& OutClutchVelocity, 
 	float& OutReflectedInertia,
-	float& OutInputShaftInertia,
-	float& OutCurrentGearRatio,
-	float& GearboxReflectedInertia_HighestGear
+	float& OutReflectedDriveShaftStiffness,
+	float& OutCurrentGearRatio
 )
 {
 	OutClutchVelocity = InAxleVelocity * CurrentGearRatio;
-	OutReflectedInertia = UVehicleUtilities::SafeDivide(InAxleInertia, CurrentGearRatio * CurrentGearRatio);
-	OutInputShaftInertia = Config.InputShaftInertia;
-	OutCurrentGearRatio = CurrentGearRatio;
-	int32 ForwardGearAmount = GearRatios.Num();
-	int32 BackWardGearAmount = ReverseGearRatios.Num();
-	float HighestGearRatio = ForwardGearAmount > BackWardGearAmount ? 
-		GearRatios[ForwardGearAmount - 1] : ReverseGearRatios[BackWardGearAmount - 1];
-	GearboxReflectedInertia_HighestGear = UVehicleUtilities::SafeDivide(InAxleInertia, FMath::Square(HighestGearRatio));	
+	const float GearRatioSquareInv = UVehicleUtilities::SafeDivide(1.f, CurrentGearRatio * CurrentGearRatio);
+	OutReflectedInertia = InAxleInertia * GearRatioSquareInv;
+	OutReflectedDriveShaftStiffness = InDriveShaftStiffness * GearRatioSquareInv;
+	OutCurrentGearRatio = CurrentGearRatio;		
 }
 
 float UVehicleGearboxComponent::GetGearRatio(int InTarget)
