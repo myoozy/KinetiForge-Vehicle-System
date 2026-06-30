@@ -309,6 +309,61 @@ void UVehicleEngineComponent::UpdateExhaust(const float DeltaTime)
 	State.ExhaustHeat = FMath::Clamp(State.ExhaustHeat, 0.f, 1.f);
 }
 
+float UVehicleEngineComponent::EstimateThrottleForTorque(float TargetEffectiveTorque)
+{
+	const float RPM = FMath::Abs(State.EngineRPM);
+
+	const float MechFriction =
+		NAConfig.StartFriction +
+		NAConfig.FrictionCoefficient * RPM;
+
+	const float PumpingLossAtClosedThrottle =
+		NAConfig.PumpingLossCoefficient * RPM;
+
+	const float TorqueCurveValue = CachedTorqueLUT.FastEval(
+		RPM,
+		FVector2f(NAConfig.EngineIdleRPM, NAConfig.EngineMaxRPM)
+	).Value;
+
+	const float CurveTorque =
+		NAConfig.MaxEngineTorque * TorqueCurveValue;
+
+	// We want:
+	// EffectiveTorque = IndicatedTorque - FrictionTorque = TargetEffectiveTorque
+	//
+	// FrictionTorque(t) = MechFriction + PumpingLossAtClosedThrottle * (1 - t)
+	// IndicatedTorque(t) = t * (FrictionTorque(t) + CurveTorque)
+	//
+	// Solve:
+	// t * (MechFriction + PumpingLossAtClosedThrottle * (1 - t) + CurveTorque)
+	// - (MechFriction + PumpingLossAtClosedThrottle * (1 - t))
+	// = TargetEffectiveTorque
+
+	const float P = PumpingLossAtClosedThrottle;
+	const float B = MechFriction + CurveTorque + 2.f * P;
+	const float C = TargetEffectiveTorque + MechFriction + P;
+
+	float RequiredThrottle = 1.f;
+
+	if (P > SMALL_NUMBER)
+	{
+		const float Discriminant = B * B - 4.f * P * C;
+
+		if (Discriminant > 0.f)
+		{
+			// smaller root is the physically useful one in [0, 1]
+			RequiredThrottle = (B - FMath::Sqrt(Discriminant)) / (2.f * P);
+		}
+	}
+	else
+	{
+		// no pumping-loss dependency on throttle
+		RequiredThrottle = UVehicleUtilities::SafeDivide(C, MechFriction + CurveTorque, 1.f);
+	}
+
+	return FMath::Clamp(RequiredThrottle, 0.f, 1.f);
+}
+
 // Called every frame
 void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
@@ -374,7 +429,8 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 	//check if idle rpm is valid
 	if (NAConfig.EngineIdleRPM > 0)
 	{
-		State.EngineOffRPM = 0.7 * NAConfig.EngineIdleRPM;
+		// 0.7 is a magic number
+		State.EngineOffRPM = 0.7f * NAConfig.EngineIdleRPM;
 
 		//get idle throttle
 		State.IdleThrottle = FMath::Clamp(
@@ -419,6 +475,11 @@ void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle,
 				1.f, 
 				InDeltaTime, 
 				NAConfig.IdleThrottleInterpSpeed);
+
+			const float PositiveLoadTorque = FMath::Max(0.f, State.LoadTorque);
+			const float RequiredThrottleByLoad = EstimateThrottleForTorque(PositiveLoadTorque);
+
+			State.RealThrottle = FMath::Max(RequiredThrottleByLoad, State.RealThrottle);
 
 			State.bFuelInjection = State.bSpark = true;
 		}
