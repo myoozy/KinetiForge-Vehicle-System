@@ -236,16 +236,16 @@ struct KINETIFORGE_API FVehicleClutchConfig
 	GENERATED_USTRUCT_BODY()
 
 	/**
-	* Unit: kNm/Rad
+	* Unit: Nm/Rad
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float Stiffness = 500.f;
+	float Stiffness = 100000.f;
 
 	/**
-	* Unit: kNmSec/Rad
+	* Unit: NmSec/Rad
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float Damping = 0.001f;
+	float Damping = 0.1f;
 
 	/**
 	* Determines how much torque the clutch can take.

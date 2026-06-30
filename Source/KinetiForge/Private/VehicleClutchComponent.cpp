@@ -43,8 +43,8 @@ float UVehicleClutchComponent::GetTorqueSpringModel(
 	float K_Shaft = DriveShaftStiffness;
 
 	// to simulate torson spring on clutch
-	float K_Clutch = Config.Stiffness * 1000.f;
-	float D_Clutch = Config.Damping * 1000.f;
+	float K_Clutch = Config.Stiffness;
+	float D_Clutch = Config.Damping;
 
 	float K_Series = UVehicleUtilities::SafeDivide(K_Shaft * K_Clutch, K_Shaft + K_Clutch);
 	

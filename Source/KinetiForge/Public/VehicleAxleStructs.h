@@ -35,9 +35,9 @@ struct FVehicleAxleConfig
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AxleSetup", meta = (ClampMin = "0.0"))
 	float DriveShaftInertia = 0.1;
-	/*Unit: kNm/Rad*/
+	/*Unit: Nm/Rad*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AxleSetup", meta = (ClampMin = "0.0"))
-	float DriveShaftStiffness = 100.f;
+	float DriveShaftStiffness = 10000.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AxleSetup", meta = (ClampMin = "0.0"))
 	float TrackWidth = 160.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AxleSetup", meta = (ClampMin = "0.0", ToolTip = "Raw weight before normalization, can be negative. Used to assign torque proportionally."))
