@@ -681,7 +681,7 @@ float UVehicleWheelComponent::GetSkidIntensity(float LongitudinalScale, float La
 
 	// Get kinematics slip velocity
 	float SlipVelX = Wheel.State.LongSlipVelocity;
-	float SlipVelY = Wheel.State.LocalLinearVelocity.Y;
+	float SlipVelY = Wheel.State.LatSlipVelocity;
 
 	// Get friction power
 	float PowerX = FMath::Abs(ForceX * SlipVelX * LongitudinalScale);
@@ -716,7 +716,7 @@ float UVehicleWheelComponent::GetNormalizedSlip(float LongitudinalScale, float L
 	float NormalizedSx = Wheel.State.TransientSlip.X * LongitudinalScale * SpeedScaleX * Wx * NormFactor;
 
 	// also if the lateral velocity is too low, should scale the affection of slip angle
-	float SpeedScaleY = FMath::Clamp(0.5f * Wheel.State.LocalLinearVelocity.Y, -1.f, 1.f);
+	float SpeedScaleY = FMath::Clamp(0.5f * Wheel.State.LatSlipVelocity, -1.f, 1.f);
 	float NormalizedSy = FMath::Atan(Wheel.State.TransientSlip.Y) / (0.5f * PI) * LateralScale * SpeedScaleY * Wy * NormFactor;
 
 	// combined slip

@@ -398,10 +398,6 @@ void FVehicleWheelSolver::WheelAcceleration(
 	LocalState.bIsLocked = AngVelSignIfNotBraking * LocalState.AngularVelocity <= 0.f && LocalState.BrakeTorque > SMALL_NUMBER;
 	LocalState.AngularVelocity *= !LocalState.bIsLocked;
 
-	//Calculate longitudinal slip
-	LocalState.LongSlipVelocity = LocalState.AngularVelocity * Context.R - LocalState.LocalLinearVelocity.X;
-	LocalState.LongSlipVelocity *= bOnGround;
-
 	// get angular acceleration
 	LocalState.AngularAcceleration = (LocalState.AngularVelocity - LastAngularVelocity) * Context.SubstepDeltaTimeInv;
 }
@@ -482,7 +478,6 @@ FVector2f FVehicleWheelSolver::UpdateTransientSlip(
 	{
 		const FVector2f SafeRelaxationLength = FVector2f::Max(RelaxationLength, FVector2f(SMALL_NUMBER));
 
-		FVector2f SlipVelocity = FVector2f(LocalState.LongSlipVelocity, -LocalState.LocalLinearVelocity.Y);
 		float AbsVx = FMath::Abs(LocalState.LocalLinearVelocity.X);
 		float AbsOmegaR = FMath::Abs(LocalState.AngularVelocity * Context.R);
 		
@@ -507,7 +502,15 @@ FVector2f FVehicleWheelSolver::UpdateTransientSlip(
 		// So camber does not make a parked car crawl sideways.
 		const float CamberSlipVelocityY =
 			RollSpeed * Context.CamberLateralDrift;
-		SlipVelocity.Y += CamberSlipVelocityY;
+
+		//Calculate longitudinal slip
+		LocalState.LongSlipVelocity = LocalState.AngularVelocity * Context.R - LocalState.LocalLinearVelocity.X;
+		LocalState.LongSlipVelocity *= bOnGround;
+
+		// lateral slip
+		LocalState.LatSlipVelocity = -LocalState.LocalLinearVelocity.Y + CamberSlipVelocityY;
+
+		FVector2f SlipVelocity = FVector2f(LocalState.LongSlipVelocity, LocalState.LatSlipVelocity);
 
 		// This is only for the relaxation denominator.
 		// It is a numerical regularization, not a real transport speed.
@@ -567,7 +570,7 @@ float FVehicleWheelSolver::CalculateConstraintLatForce(
 	const float EffectiveSprungMass)
 {
 	float ForceRequiredToBringToStop = 
-		-LocalState.LocalLinearVelocity.Y * Context.MacroDeltaTimeInv * EffectiveSprungMass;
+		LocalState.LatSlipVelocity * Context.MacroDeltaTimeInv * EffectiveSprungMass;
 	
 	return ForceRequiredToBringToStop;
 }
@@ -594,7 +597,7 @@ FVector2f FVehicleWheelSolver::CalculateGravityCompensationOnSlope(
 	// so there might be no need to calculate tan(theta)
 	   
 	//Lateral:
-	float SlipSign = FMath::Sign(-LocalState.LocalLinearVelocity.Y);
+	float SlipSign = FMath::Sign(LocalState.LatSlipVelocity);
 	GravityComp.Y = LatForceDir.Z * PositiveForceIntoSurface;
 
 	// longitudinal:
@@ -639,6 +642,9 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	const FVehicleTireConfig& TireConfig,
 	const FVehicleWheelCachedLUTs& TireLUTs)
 {
+	// transient slip for tire force
+	FVector2f TransientSlip = UpdateTransientSlip(LocalState, Context, bOnGround, TireConfig.RelaxationLength);
+	
 	// not for tire force now but for abs and tc logic
 	UpdateSlipRatio(LocalState, Context);
 	UpdateSlipAngle(LocalState, bOnGround);
@@ -667,7 +673,6 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	);
 
 	// get absolut slip ratio and slip angle
-	FVector2f TransientSlip = UpdateTransientSlip(LocalState, Context, bOnGround, TireConfig.RelaxationLength);
 	FVector2f AbsolutSlip = TransientSlip.GetAbs();
 
 	// normalize slip ratio and slip angle
@@ -696,14 +701,16 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 		float FxPure = TireLUTs.Fx.FastEval(AbsolutSlip.X).Value;
 		float FxCoupled = TireLUTs.Fx.FastEval(SlipInput.X).Value * ScDirection.X;
 		float Fx = FMath::Abs(MaxFx * FMath::Lerp(FxPure, FxCoupled, TireConfig.LateralToLongitudinalInterference));
-		MFTireForce.X = FMath::Clamp(ConstraintTireForce.X, -Fx, Fx);
+		MFTireForce.X = TransientSlip.X * ConstraintTireForce.X > 0.f ? 
+			FMath::Clamp(ConstraintTireForce.X, -Fx, Fx) : 0.f;
 	}
 	if (bUseFyCurve)
 	{
 		float FyPure = TireLUTs.Fy.FastEval(AbsolutSlip.Y).Value;
 		float FyCoupled = TireLUTs.Fy.FastEval(SlipInput.Y).Value * ScDirection.Y;
 		float Fy = FMath::Abs(MaxFy * FMath::Lerp(FyPure, FyCoupled, TireConfig.LongitudinalToLateralInterference));
-		MFTireForce.Y = FMath::Clamp(ConstraintTireForce.Y, -Fy, Fy);
+		MFTireForce.Y = TransientSlip.Y * ConstraintTireForce.Y > 0.f ? 
+			FMath::Clamp(ConstraintTireForce.Y, -Fy, Fy) : 0.f;
 	}
 	if (!bUseFxCurve || !bUseFyCurve)
 	{

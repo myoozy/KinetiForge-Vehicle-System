@@ -288,6 +288,8 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Slip")
 	float LongSlipVelocity = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Slip")
+	float LatSlipVelocity = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Slip")
 	float SlipRatio = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Slip")
 	float SlipAngle = 0.f;
