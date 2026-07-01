@@ -414,13 +414,14 @@ void FVehicleWheelSolver::UpdateSlipVelocity(
 	const float Vx = LocalState.LocalLinearVelocity.X;
 	const float Vy = LocalState.LocalLinearVelocity.Y;
 	const float OmegaR = LocalState.AngularVelocity * Context.R;
+	const float AbsOmegaR = FMath::Abs(OmegaR);
 
 	const float q = bOnGround ? Context.CamberLateralDrift : 0.f;
 	const float Norm = FMath::Sqrt(1.f + q * q);
 
 	// Soft patch target. This does not mean rim direction changes.
 	const float PatchVx = OmegaR / Norm;
-	const float PatchVy = OmegaR * q / Norm;
+	const float PatchVy = AbsOmegaR * q / Norm;
 
 	LocalState.LongSlipVelocity = (PatchVx - Vx) * bOnGround;
 	LocalState.LatSlipVelocity = (PatchVy - Vy) * bOnGround;
@@ -488,8 +489,8 @@ float FVehicleWheelSolver::CalculateCamberLateralDrift(
 	}
 
 	// Raw camber sign follows the tire local axis convention:
-	//     +sin(camber) = wheel right vector points into the ground normal.
-	// This is intentionally not flipped by left/right side.
+//     +sin(camber) = wheel right vector points into the ground normal.
+// This is intentionally not flipped by left/right side.
 	float SinCamber = FVector3f::DotProduct(WheelRight, GroundNormal);
 	SinCamber = FMath::Clamp(SinCamber, -1.f, 1.f);
 
@@ -512,49 +513,21 @@ float FVehicleWheelSolver::CalculateCamberLateralDrift(
 	// Convert the unsigned LUT value into the tire local lateral drift sign.
 	float SignedDrift = CamberDeg > 0.f ? -Drift : Drift;
 
-	// Geometric safety cap for the hard constraint/fallback path.
+	// Geometric safety cap.
 	//
-	// The hit location is treated only as one point on the local ground plane.
-	// Its lateral offset is deliberately ignored, because LineTrace may start from
-	// the outer tire side while SphereTrace may hit closer to the center.
+	// Do not reconstruct contact patch length from ImpactWorldLocation here.
+	// With LineTrace starting from the outer tire side, the reconstructed patch
+	// length can become camber-sign dependent and clamp one side to zero.
 	//
-	// Model: finite-width rigid cylinder touching a plane. Width contributes to
-	// the support distance along the ground normal, then the remaining normal
-	// distance is converted back into an equivalent loaded radius in the wheel
-	// disk plane. From that loaded radius we get a proxy contact half length.
-	const float TireRadius = FMath::Max(SMALL_NUMBER, Config.Radius);
-	const float TireHalfWidth = FMath::Max(SMALL_NUMBER, Config.Width * 0.5f);
-
-	const FVector WheelCenterWorld =
-		AsyncChassisWorldTransform.TransformPositionNoScale((FVector)SuspensionState.HubChassisLocation);
-
-	const FVector ImpactWorldLocation = SuspensionState.ImpactWorldLocation;
-	const FVector ImpactNormal = FVector(GroundNormal);
-	const FVector WheelAxis = FVector(WheelRight);
-
-	const float AxisNormalDot =
-		FMath::Clamp(FVector::DotProduct(WheelAxis, ImpactNormal), -1.f, 1.f);
-
-	const float SideNormalScale = FMath::Abs(AxisNormalDot);
-	const float RadialNormalScaleSq = FMath::Max(SMALL_NUMBER, 1.f - AxisNormalDot * AxisNormalDot);
-	const float RadialNormalScale = FMath::Sqrt(RadialNormalScaleSq);
-
-	const float CenterPlaneDistance =
-		FVector::DotProduct(WheelCenterWorld - ImpactWorldLocation, ImpactNormal);
-
-	const float LoadedRadius = FMath::Clamp(
-		(CenterPlaneDistance - TireHalfWidth * SideNormalScale) / RadialNormalScale,
+	// q_gamma = dy / dx is slope-like, so abs(tan(camber)) is the geometry-only
+	// upper bound available without a real contact patch model.
+	const float CosCamberAbs = FMath::Sqrt(FMath::Max(
 		SMALL_NUMBER,
-		TireRadius
-	);
-
-	const float ContactHalfLength = FMath::Sqrt(FMath::Max(
-		0.f,
-		TireRadius * TireRadius - LoadedRadius * LoadedRadius
+		1.f - SinCamber * SinCamber
 	));
 
 	const float DriftLimit =
-		FMath::Abs(SinCamber) * ContactHalfLength / LoadedRadius;
+		FMath::Abs(SinCamber) / CosCamberAbs;
 
 	return FMath::Clamp(SignedDrift, -DriftLimit, DriftLimit);
 }
