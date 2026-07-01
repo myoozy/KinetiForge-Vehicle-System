@@ -43,8 +43,7 @@ protected:
 		const float DeltaTime,
 		const float ClutchSlip,
 		const float EngineInertia,
-		const float GearboxReflectedInertia,
-		const float GearboxInputShaftInertia
+		const float GearboxReflectedInertia
 	);
 
 public:	

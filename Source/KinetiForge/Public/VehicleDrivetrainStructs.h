@@ -226,8 +226,35 @@ struct KINETIFORGE_API FVehicleEngineSimState
 UENUM(BlueprintType)
 enum class EClutchSimMode : uint8
 {
-	FrictionClutch,
-	FluidCoupling
+	/**
+	* Simulate a friction clutch, e.g. clutch for manual transmission.
+	* During physics steps, the series stiffness of clutch and all drive shafts will be simulated.
+	* 
+	* Required parameters:
+	* - Stiffness
+	* - Damping
+	* - Capacity
+	*/
+	SpringModel     UMETA(DisplayName = "FrictionClutch"),
+
+	/**
+	* Simulate a fluid coupling, e.g. torque converter.
+	* During physics steps, a damper on the clutch side will be simulated. No torsion spring will be simulated.
+	* 
+	* Required parameters:
+	* - Damping
+	* - Capacity
+	*/
+	DampingModel    UMETA(DisplayName = "FluidCoupling"),
+
+	/**
+	* Calculate the torque required to maintain the constrained rotational speed using impulse analysis.
+	* This is equivalent to a damper that always operates at critical damping.
+	* 
+	* Required parameters:
+	* - Capacity
+	*/
+	ConstraintModel UMETA(DisplayName = "Constraint")
 };
 
 USTRUCT(BlueprintType)
@@ -237,15 +264,20 @@ struct KINETIFORGE_API FVehicleClutchConfig
 
 	/**
 	* Unit: Nm/Rad
+	* 
+	* This is only been used in SpringModel / FrictionClutch
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float Stiffness = 100000.f;
+	float Stiffness = 10000.f;
 
 	/**
 	* Unit: NmSec/Rad
+	* 
+	* Set this lower when using SpringModel / FrictionClutch;
+	* Set this higher when using DampingModel / FluidCoupling;
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float Damping = 0.1f;
+	float Damping = 1.f;
 
 	/**
 	* Determines how much torque the clutch can take.
@@ -261,9 +293,10 @@ struct KINETIFORGE_API FVehicleClutchConfig
 	float Capacity = 1.5;
 
 	/**
+	* 
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup")
-	EClutchSimMode SimMode = EClutchSimMode::FrictionClutch;
+	EClutchSimMode SimMode = EClutchSimMode::SpringModel;
 };
 
 USTRUCT(BlueprintType)

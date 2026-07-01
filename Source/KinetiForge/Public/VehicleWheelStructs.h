@@ -21,11 +21,15 @@ struct KINETIFORGE_API FVehicleWheelConfig
 {
 	GENERATED_BODY()
 
-	//WheelSetup
+	/*Unit: cm*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
 	float Radius = 33.f;
+
+	/*Unit: cm*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
 	float Width = 20.f;
+
+	/*Unit: kg*m^2*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
 	float Inertia = 1.f;
 
