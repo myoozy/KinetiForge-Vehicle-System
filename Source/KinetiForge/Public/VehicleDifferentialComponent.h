@@ -65,12 +65,12 @@ public:
 		TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
 		float InSubstepDeltaTime,
 		float InGearboxOutputTorque,
-		float InReflectedInertia,
 		float InBrakeValue,
 		float InHandbrakeValue,
 		bool bLineLockActive,
 		float& OutTransmissionOutputShaftAngularVelocity,
-		float& OutTransmissionOutputShaftEffectiveInertia);
+		float& OutTransmissionOutputShaftEffectiveInertia,
+		float& OutEffectiveDriveShaftStiffness);
 	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	int32 UpdateTransferCase(
 		const TArray<UVehicleAxleAssemblyComponent*>& InAxles,
@@ -82,7 +82,8 @@ public:
 		float InSteeringValue,
 		bool bLineLockActive,
 		float& OutTransmissionOutputShaftAngularVelocity,
-		float& OutTransmissionOutputShaftEffectiveInertia);
+		float& OutTransmissionOutputShaftEffectiveInertia,
+		float& OutEffectiveDriveShaftStiffness);
 	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	float CalculateEffectiveWheelRadius(
 		const TArray<UVehicleAxleAssemblyComponent*>& InAxles

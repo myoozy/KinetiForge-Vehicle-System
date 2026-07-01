@@ -33,20 +33,17 @@ protected:
 		const float ClutchSlip,
 		const float EngineInertia,
 		const float GearboxReflectedInertia,
-		const float GearboxInputShaftInertia,
-		const float GearboxReflectedInertia_HighestGear);
+		const float DriveShaftStiffness);
 	float GetTorqueDampingModel(
 		const float DeltaTime,
 		const float ClutchSlip,
 		const float EngineInertia,
-		const float GearboxReflectedInertia,
-		const float GearboxInputShaftInertia);
+		const float GearboxReflectedInertia);
 	float GetTorqueConstraintModel(
 		const float DeltaTime,
 		const float ClutchSlip,
 		const float EngineInertia,
-		const float GearboxReflectedInertia,
-		const float GearboxInputShaftInertia
+		const float GearboxReflectedInertia
 	);
 
 public:	
@@ -65,9 +62,8 @@ public:
 		const float InClutchValue, 
 		const float InGearboxInputShaftVelocity, 
 		const float InGearboxReflectedInertia,
-		const float InGearboxInputShaftInertia,
-		const float InCurrentGearRatio, 
-		const float GearboxReflectedInertia_HighestGear,
+		const float InCurrentGearRatio,
+		const float InDriveShaftStiffness,
 		const float InEngineAngularVelocity,
 		const float InEngineInertia,
 		const float InEngineMaxTorque);

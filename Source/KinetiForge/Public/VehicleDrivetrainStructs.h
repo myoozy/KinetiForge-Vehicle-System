@@ -226,9 +226,24 @@ struct KINETIFORGE_API FVehicleEngineSimState
 UENUM(BlueprintType)
 enum class EClutchSimMode : uint8
 {
-	SpringModel     UMETA(ToolTip = "more realistic, but not recommended for Arcade/EVs/Large physics time step"),
-	DampingModel    UMETA(ToolTip = "behaves like AT-gearbox"),
-	ConstraintModel UMETA(ToolTip = "more fps tolerant")
+	/**
+	 * Simulates a friction clutch with torsional compliance.
+	 * The clutch stiffness is combined in series with the reflected
+	 * stiffness of the downstream driveline.
+	 */
+	FrictionClutch UMETA(DisplayName = "Friction Clutch"),
+
+	/**
+	 * Simulates a fluid coupling / torque converter as a viscous damper.
+	 * No torsional spring state is accumulated.
+	 */
+	FluidCoupling UMETA(DisplayName = "Fluid Coupling"),
+
+	/**
+	 * Uses impulse analysis to calculate the torque required to reduce
+	 * the relative angular velocity within the current physics step.
+	 */
+	ConstraintLock UMETA(DisplayName = "Constraint Lock")
 };
 
 USTRUCT(BlueprintType)
@@ -236,50 +251,44 @@ struct KINETIFORGE_API FVehicleClutchConfig
 {
 	GENERATED_USTRUCT_BODY()
 
-	/**
-	* This is for calculating the stiffness of the clutch structure and the stiffness of the drive shaft.
-	* Higher value makes the drive train response faster, but may diverge. Set this lower to prevent divergent.
-	* Unit: rad/s
-	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float NaturalFrequency = 120;
-
-	/**
-	* If SimMode is SpringModel, then Damping refers to damping ratio of the spring. 
-	* If SimMode is DampingModel, then Damping refers to smoothing factor!
-	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float Damping = 0.1;
-
-	/**
-	* Determines how much torque the clutch can take.
-	* 
-	* The real capacity(in Nm) : Capacity(e.g. 1.5) * MaxEngineTorque(including turbo boost)
-	* e.g. MaxEngineTorque(NA) = 200Nm; TurboMaxBoostPressure = 1bar; TurboBoostEfficiency = 0.7; Capacity = 1.5;
-	* Then the clutch can take up to 1.5 * 200 * (1 + 1 * 0.7) = 510Nm;
-	* 
-	* If the actual clutch torque is greater than capacity, the clutch will slip.
-	* Set this value higher when using 'SpringModel' to get more rpm shaking (when shifting you will see it)
-	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float Capacity = 1.5;
-
-	/**
-	* SpringModel: 
-	* Using a spring to transmit torque. Using this model will cause engine speed fluctuations 
-	* (especially when shifting gears with a sequential transmission and low damping ratio). 
-	* It is recommended to use this model when the physical step size is short 
-	* (because the natural angular frequency of the spring cannot exceed the game's physical simulation frequency). 
-	* If the physical step size is large, stiffness can be increased by increasing damping ratio; 
-	* 
-	* DampingModel: 
-	* Use critical damping to transfer torque. Critical damping is calculated based on the current rotational inertia and game physics frequency. 
-	* The torque is then smoothed to avoid numerical jitter. 
-	* The torque values are very smooth and do not cause speed jitter during gear changes. 
-	* This model is recommended for electric vehicles (because it is smoother).
-	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup")
-	EClutchSimMode SimMode = EClutchSimMode::SpringModel;
+	EClutchSimMode SimMode = EClutchSimMode::FrictionClutch;
+
+	/**
+	 * Torsional stiffness of the clutch/crank/input-side elastic path.
+	 * Used by FrictionClutch.
+	 * Unit: Nm/Rad
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup",
+		meta = (ClampMin = "0.0", EditCondition = "SimMode == EClutchSimMode::FrictionClutch", EditConditionHides))
+	float TorsionalStiffness = 10000.f;
+
+	/**
+	 * Damping ratio of the equivalent torsional spring mode.
+	 * Used by FrictionClutch.
+	 * 0 = no damping, 1 = critical damping.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup",
+		meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "SimMode == EClutchSimMode::FrictionClutch", EditConditionHides))
+	float DampingRatio = 0.1f;
+
+	/**
+	 * Viscous damping coefficient of the fluid coupling.
+	 * Used by FluidCoupling.
+	 * Unit: Nm*s/Rad
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup",
+		meta = (ClampMin = "0.0", EditCondition = "SimMode == EClutchSimMode::FluidCoupling", EditConditionHides))
+	float ViscousDamping = 100.f;
+
+	/**
+	 * Maximum transmissible clutch torque multiplier.
+	 *
+	 * Real capacity:
+	 * Capacity * MaxEngineTorque, including boost multiplier.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
+	float Capacity = 1.5f;
 };
 
 USTRUCT(BlueprintType)
@@ -305,8 +314,6 @@ struct KINETIFORGE_API FVehicleGearboxConfig
 {
 	GENERATED_USTRUCT_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
-	float InputShaftInertia = 0.05;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))
 	float ShiftDelay = 0.2;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup", meta = (ClampMin = "0.0"))

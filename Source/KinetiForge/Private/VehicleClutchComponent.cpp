@@ -32,102 +32,82 @@ float UVehicleClutchComponent::GetTorqueSpringModel(
 	const float ClutchSlip,
 	const float EngineInertia,
 	const float GearboxReflectedInertia,
-	const float GearboxInputShaftInertia,
-	const float GearboxReflectedInertia_HighestGear)
+	const float DriveShaftStiffness)
 {
-	float J_Gearbox = GearboxReflectedInertia + GearboxInputShaftInertia;
+	float J_Gearbox = GearboxReflectedInertia;
 	float J_Engine = EngineInertia;
 	float J_Total = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
-	float J_ToGetStiffness = 0.f;
 
 	// to simulate torson spring on drive shaft
-	J_Gearbox = GearboxReflectedInertia;
-	J_Engine = EngineInertia + GearboxInputShaftInertia;
-	J_ToGetStiffness = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
-	float K_Shaft = CalculateStiffness(Config.NaturalFrequency, J_ToGetStiffness);
+	float K_Shaft = DriveShaftStiffness;
 
 	// to simulate torson spring on clutch
-	J_Gearbox = GearboxInputShaftInertia + GearboxReflectedInertia_HighestGear;
-	J_Engine = EngineInertia;
-	J_ToGetStiffness = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
-	float K_Clutch = CalculateStiffness(Config.NaturalFrequency, J_ToGetStiffness);
+	float K_Clutch = Config.TorsionalStiffness;
 
-	float SpringStiffness = UVehicleUtilities::SafeDivide(K_Shaft * K_Clutch, K_Shaft + K_Clutch);
-	float CriticalDamping = 2.0f * FMath::Sqrt(SpringStiffness * J_Total);
-	float SpringDamping = CriticalDamping * Config.Damping;
-	
+	float K_Series = UVehicleUtilities::SafeDivide(K_Shaft * K_Clutch, K_Shaft + K_Clutch);
+
+	float DampingRatio = Config.DampingRatio;
+	float CriticalDamping = 2.0f * FMath::Sqrt(K_Series * J_Total);
+	float D_Total = CriticalDamping * DampingRatio;
+
 	float ClutchSlipScaled = ClutchSlip * State.ClutchLock;//ClutchSlip * ClutchLock
 	float CurrentAngleDiff = State.AngleDiff;
 
-	float DontKnowWhatItIs = SpringStiffness * DeltaTime + SpringDamping;
-	float TorqueNumerator = SpringStiffness * CurrentAngleDiff + DontKnowWhatItIs * ClutchSlipScaled;
+	float DontKnowWhatItIs = K_Series * DeltaTime + D_Total;
+	float TorqueNumerator = K_Series * CurrentAngleDiff + DontKnowWhatItIs * ClutchSlipScaled;
 	float TorqueDenominator = 1.0f + UVehicleUtilities::SafeDivide(DontKnowWhatItIs * DeltaTime, J_Total);
 
 	float SpringModelTorque = TorqueNumerator / TorqueDenominator;
 
-	float DampingModelTorque = State.ClutchLock * FMath::Clamp(CriticalDamping * ClutchSlip, -State.MaxClutchTorque, State.MaxClutchTorque);
-	
-	if (FMath::Abs(SpringModelTorque) > State.MaxClutchTorque)
+	float CurrentCapacity = State.MaxClutchTorque * State.ClutchLock;
+
+	if (FMath::Abs(SpringModelTorque) > CurrentCapacity)
 	{
-		SpringModelTorque = FMath::Sign(SpringModelTorque) * State.MaxClutchTorque;
+		SpringModelTorque = FMath::Sign(SpringModelTorque) * CurrentCapacity;
 	}
 	else
 	{
 		State.AngleDiff = State.ClutchLock * (State.AngleDiff + ClutchSlipScaled * DeltaTime);
 	}
 
-	return State.ClutchTorque = FMath::Lerp(DampingModelTorque, SpringModelTorque, State.ClutchLock);
+	return State.ClutchTorque = SpringModelTorque;
 }
 
 float UVehicleClutchComponent::GetTorqueDampingModel(
 	const float DeltaTime,
 	const float ClutchSlip,
 	const float EngineInertia,
-	const float GearboxReflectedInertia,
-	const float GearboxInputShaftInertia)
+	const float GearboxReflectedInertia)
 {
 	State.AngleDiff = 0.f;
 
-	float J_Gearbox = GearboxReflectedInertia + GearboxInputShaftInertia;
+	float J_Gearbox = GearboxReflectedInertia;
 	float J_Engine = EngineInertia;
+	float J_Total = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
 
-	float J = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
-	float GameFrequency = UVehicleUtilities::SafeDivide(1.f, DeltaTime);
-	float CriticalDamping = 2.f * J * GameFrequency;
+	float D_Clutch = Config.ViscousDamping;
 
-	float UnSmoothenedTorque = FMath::Clamp(ClutchSlip * CriticalDamping, -State.MaxClutchTorque, State.MaxClutchTorque);
-	UnSmoothenedTorque *= State.ClutchLock;
-	return State.ClutchTorque += FMath::Clamp(1 - Config.Damping, 0, 1) * (UnSmoothenedTorque - State.ClutchTorque);
+	float TorqueNumerator = D_Clutch * ClutchSlip;
+	float TorqueDenominator = 1.0f + UVehicleUtilities::SafeDivide(D_Clutch * DeltaTime, J_Total);
+
+	float DampingModelTorque = TorqueNumerator / TorqueDenominator;
+	float CurrentCapacity = State.MaxClutchTorque * State.ClutchLock;
+	return State.ClutchTorque = FMath::Clamp(DampingModelTorque, -CurrentCapacity, CurrentCapacity);
 }
 
 float UVehicleClutchComponent::GetTorqueConstraintModel(
 	const float DeltaTime,
 	const float ClutchSlip,
 	const float EngineInertia,
-	const float GearboxReflectedInertia,
-	const float GearboxInputShaftInertia)
+	const float GearboxReflectedInertia)
 {
-	// 1. 计算离合器两端的等效惯性 (Effective Inertia)
-	// 就像之前算悬挂有效质量一样：J_eff = (J1 * J2) / (J1 + J2)
-	float J_Gearbox = GearboxReflectedInertia + GearboxInputShaftInertia;
+	float J_Gearbox = GearboxReflectedInertia;
 	float J_Engine = EngineInertia;
 	float J_Effective = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
 
-	// 2. 计算“完美锁定扭矩” (Exact Lock Torque)
-	// 物理公式：冲量 P = J_eff * Delta_Omega
-	// 扭矩 Torque = P / dt
-	// 这个扭矩刚好能在 1 帧内把两端的转速差 (ClutchSlip) 绝对归零
 	float ExactLockTorque = (ClutchSlip * J_Effective) / DeltaTime;
-
-	// 3. 计算当前离合器的物理摩擦力上限
-	// State.MaxClutchTorque 已经是 (EngineMaxTorque * Capacity)
-	// State.ClutchLock 是当前的结合比例 [0, 1]
 	float CurrentCapacity = State.MaxClutchTorque * State.ClutchLock;
-
-	// 4. 摩擦力极限截断 (Friction Clamp)
-	// 如果完美锁定扭矩小于摩擦上限，说明离合器死死咬住了（不打滑）；
-	// 如果大于摩擦上限，说明引擎动力太猛，离合器只能提供最大滑动摩擦力（打滑）。
-	return FMath::Clamp(ExactLockTorque, -CurrentCapacity, CurrentCapacity);
+	return State.ClutchTorque = FMath::Clamp(ExactLockTorque, -CurrentCapacity, CurrentCapacity);
 }
 
 // Called every frame
@@ -143,9 +123,8 @@ void UVehicleClutchComponent::UpdatePhysics(
 	const float InClutchValue,
 	const float InGearboxInputShaftVelocity,
 	const float InGearboxReflectedInertia,
-	const float InGearboxInputShaftInertia,
 	const float InCurrentGearRatio,
-	const float GearboxReflectedInertia_HighestGear,
+	const float InDriveShaftStiffness,
 	const float InEngineAngularVelocity,
 	const float InEngineInertia,
 	const float InEngineMaxTorque)
@@ -168,32 +147,29 @@ void UVehicleClutchComponent::UpdatePhysics(
 	switch (Config.SimMode)
 	{
 	default:
-	case EClutchSimMode::ConstraintModel:
-		State.ClutchTorque = GetTorqueConstraintModel(
+	case EClutchSimMode::ConstraintLock:
+		GetTorqueConstraintModel(
 			InDeltaTime,
 			ClutchSlip,
 			EngineInertia,
-			InGearboxReflectedInertia,
-			InGearboxInputShaftInertia
+			InGearboxReflectedInertia
 		);
 		break;
-	case EClutchSimMode::SpringModel:
+	case EClutchSimMode::FrictionClutch:
 		GetTorqueSpringModel(
 			InDeltaTime,
 			ClutchSlip,
 			EngineInertia,
 			InGearboxReflectedInertia,
-			InGearboxInputShaftInertia,
-			GearboxReflectedInertia_HighestGear
+			InDriveShaftStiffness
 		);
 		break;
-	case EClutchSimMode::DampingModel:
+	case EClutchSimMode::FluidCoupling:
 		GetTorqueDampingModel(
 			InDeltaTime,
 			ClutchSlip,
 			EngineInertia,
-			InGearboxReflectedInertia,
-			InGearboxInputShaftInertia
+			InGearboxReflectedInertia
 		);
 		break;
 	}

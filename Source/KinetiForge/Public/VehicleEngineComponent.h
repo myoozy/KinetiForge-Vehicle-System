@@ -57,6 +57,7 @@ protected:
 
 	void EngineAcceleration(const float DeltaTime);
 	void UpdateExhaust(const float DeltaTime);
+	float EstimateThrottleForTorque(float TargetEffectiveTorque);
 
 public:	
 	// Called every frame

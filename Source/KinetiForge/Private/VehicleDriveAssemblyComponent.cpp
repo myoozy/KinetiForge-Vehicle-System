@@ -800,18 +800,17 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		EngineRaw->UpdatePhysics(RealSubstepDeltaTime, InputValues.Final.Throttle, ClutchTorque, bDisableSpark);
 
 		// get gearbox output torque
-		float GearboxOutputTorque;
-		float GearboxReflectedInertia;
-		GearboxRaw->UpdateOutputShaft(ClutchTorque, GearboxOutputTorque, GearboxReflectedInertia);
+		float GearboxOutputTorque = 0.f;
+		GearboxRaw->UpdateOutputShaft(ClutchTorque, GearboxOutputTorque);
 
 		// update transfercase
-		float SumAxleInertia;
-		float GearboxOutputShaftAngularVelocity;
+		float SumAxleInertia = 0.f;
+		float GearboxOutputShaftAngularVelocity = 0.f;
+		float EffectiveDriveShaftStiffness = 0.f;
 		NumOfDriveAxles = TransferCaseRaw->SubstepTransferCase(
 			AxlesRaw,
 			RealSubstepDeltaTime,
 			GearboxOutputTorque,
-			GearboxReflectedInertia,
 			InputValues.Final.Brake,
 			InputValues.Final.Handbrake,
 			InputAssistConfig.bBurnOutAssist
@@ -819,23 +818,22 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 			&& InputValues.Final.Brake > 0.9
 			&& LocalLinearVelocity.X < 1.f,
 			GearboxOutputShaftAngularVelocity,
-			SumAxleInertia
+			SumAxleInertia,
+			EffectiveDriveShaftStiffness
 		);
 
 		// get gearbox inputshaft angular velocity
-		float GearboxInputShaftVelocity;
-		// float GearboxReflectedInertia; // already defined
-		float GearboxInputShaftInertia;
-		float CurrentGearboxRatio;
-		float HighestGearReflectedInertia;
+		float GearboxInputShaftVelocity = 0.f;
+		float GearboxInputShaftEffectiveInertia = 0.f; // already defined
+		float CurrentGearboxRatio = 0.f;
 		GearboxRaw->UpdateInputShaft(
 			GearboxOutputShaftAngularVelocity,
 			SumAxleInertia,
+			EffectiveDriveShaftStiffness,
 			GearboxInputShaftVelocity,
-			GearboxReflectedInertia,
-			GearboxInputShaftInertia,
-			CurrentGearboxRatio,
-			HighestGearReflectedInertia
+			GearboxInputShaftEffectiveInertia,
+			EffectiveDriveShaftStiffness,
+			CurrentGearboxRatio
 		);
 
 		// get clutch torque for next frame
@@ -843,10 +841,9 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 			RealSubstepDeltaTime,
 			InputValues.Final.Clutch,
 			GearboxInputShaftVelocity,
-			GearboxReflectedInertia,
-			GearboxInputShaftInertia,
+			GearboxInputShaftEffectiveInertia,
 			CurrentGearboxRatio,
-			HighestGearReflectedInertia,
+			EffectiveDriveShaftStiffness,
 			EngineRaw->GetAngularVelocity(),
 			EngineRaw->GetEngineInertia(),
 			EngineRaw->GetMaxEngineTorque()

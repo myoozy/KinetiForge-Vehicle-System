@@ -69,19 +69,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleGearbox")
 	void UpdateOutputShaft(
 		float InClutchTorque, 
-		float& OutTorque, 
-		float& OutReflectedInertia
+		float& OutTorque
 	);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleGearbox")
 	void UpdateInputShaft(
-		float InAxleVelocity, 
-		float InAxleInertia, 
-		float& OutClutchVelocity, 
+		float InAxleVelocity,
+		float InAxleInertia,
+		float InDriveShaftStiffness,
+		float& OutClutchVelocity,
 		float& OutReflectedInertia,
-		float& OutInputShaftInertia,
-		float& OutCurrentGearRatio, 
-		float& GearboxReflectedInertia_HighestGear
+		float& OutReflectedDriveShaftStiffness,
+		float& OutCurrentGearRatio
 	);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleGearbox")

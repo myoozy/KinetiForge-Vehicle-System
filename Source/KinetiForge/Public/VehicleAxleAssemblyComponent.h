@@ -172,9 +172,9 @@ public:
 		float InDriveTorque,
 		float InBrakeInput,
 		float InHandbrakeInput,
-		float InReflectedInertia,
 		float& OutAxleEffectiveInertia,
-		float& OutAngularVelocity
+		float& OutAngularVelocity,
+		float& OutDriveShaftStiffness
 	);
 	void PostStepAxle();
 
@@ -218,9 +218,9 @@ public:
 		float InBrakeInput,
 		float InHandbrakeInput,
 		float InSteeringInput,
-		float InReflectedInertia,
 		float& OutAxleEffectiveInertia,
-		float& OutAngularVelocity);
+		float& OutAngularVelocity,
+		float& OutDriveShaftStiffness);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	void GetWheels(UVehicleWheelComponent*& OutLeftWheel, UVehicleWheelComponent*& OutRightWheel)
