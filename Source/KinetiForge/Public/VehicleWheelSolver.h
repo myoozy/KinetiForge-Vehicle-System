@@ -91,7 +91,8 @@ private:
 		const bool bOnGround);
 	static void UpdateSlipRatio(
 		FVehicleWheelSimState& LocalState,
-		const FVehicleWheelSimContext& Context);
+		const FVehicleWheelSimContext& Context,
+		const bool bOnGround);
 	static float CalculateCamberLateralDrift(
 		const FVehicleSuspensionSimState& SuspensionState,
 		const FVehicleWheelCachedLUTs& TireLUTs,

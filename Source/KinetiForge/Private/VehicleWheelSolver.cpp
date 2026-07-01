@@ -428,11 +428,13 @@ void FVehicleWheelSolver::UpdateSlipAngle(
 
 void FVehicleWheelSolver::UpdateSlipRatio(
 	FVehicleWheelSimState& LocalState,
-	const FVehicleWheelSimContext& Context)
+	const FVehicleWheelSimContext& Context,
+	const bool bOnGround)
 {
-	//calculate slip ratio
+	float KinematicsLongSlipVelocity = LocalState.AngularVelocity * Context.R - LocalState.LocalLinearVelocity.X;
+	KinematicsLongSlipVelocity *= bOnGround;
 	float Denominator = FMath::Max(FMath::Max(FMath::Abs(LocalState.LocalLinearVelocity.X), FMath::Abs(LocalState.AngularVelocity * Context.R)), 1.f);
-	LocalState.SlipRatio = LocalState.LongSlipVelocity / Denominator;
+	LocalState.SlipRatio = KinematicsLongSlipVelocity / Denominator;
 }
 
 float FVehicleWheelSolver::CalculateCamberLateralDrift(
@@ -477,54 +479,37 @@ FVector2f FVehicleWheelSolver::UpdateTransientSlip(
 	if (bOnGround)
 	{
 		const FVector2f SafeRelaxationLength = FVector2f::Max(RelaxationLength, FVector2f(SMALL_NUMBER));
+		const FVector2f RelaxationLengthInv = FVector2f(1.f) / SafeRelaxationLength;
 
-		float AbsVx = FMath::Abs(LocalState.LocalLinearVelocity.X);
-		float AbsOmegaR = FMath::Abs(LocalState.AngularVelocity * Context.R);
-		
-		// Real rolling / transport speed.
-		//
-		// IMPORTANT:
-		// This one is NOT clamped to MinVx.
-		// If the vehicle is parked and the wheel is not rotating,
-		// RollSpeed = 0, so camber does not inject slip.
-		const float RollSpeed = FMath::Max(AbsVx, AbsOmegaR);
+		const float Vx = LocalState.LocalLinearVelocity.X;
+		const float Vy = LocalState.LocalLinearVelocity.Y;
+		const float OmegaR = LocalState.AngularVelocity * Context.R;
 
-		// Camber-induced lateral transport.
-		//
-		// Context.CamberLateralDrift = q_gamma = dy / dx
-		//
-		// CamberSlipVelocityY = v_roll * q_gamma
-		//
-		// If the wheel is stationary:
-		//     RollSpeed = 0
-		//     CamberSlipVelocityY = 0
-		//
-		// So camber does not make a parked car crawl sideways.
-		const float CamberSlipVelocityY =
-			RollSpeed * Context.CamberLateralDrift;
+		const float q = bOnGround ? Context.CamberLateralDrift : 0.f;
+		const float Norm = FMath::Sqrt(1.f + q * q);
 
-		//Calculate longitudinal slip
-		LocalState.LongSlipVelocity = LocalState.AngularVelocity * Context.R - LocalState.LocalLinearVelocity.X;
-		LocalState.LongSlipVelocity *= bOnGround;
+		// Soft patch target. This does not mean rim direction changes.
+		const float PatchVx = OmegaR / Norm;
+		const float PatchVy = OmegaR * q / Norm;
 
-		// lateral slip
-		LocalState.LatSlipVelocity = -LocalState.LocalLinearVelocity.Y + CamberSlipVelocityY;
+		LocalState.LongSlipVelocity = (PatchVx - Vx) * bOnGround;
+		LocalState.LatSlipVelocity = (PatchVy - Vy) * bOnGround;
 
-		FVector2f SlipVelocity = FVector2f(LocalState.LongSlipVelocity, LocalState.LatSlipVelocity);
+		const FVector2f SlipVelocity =
+			FVector2f(LocalState.LongSlipVelocity, LocalState.LatSlipVelocity);
 
 		// This is only for the relaxation denominator.
 		// It is a numerical regularization, not a real transport speed.
-		FVector2f AbsVx2D = FVector2f(
-			FMath::Max(AbsVx, AbsOmegaR),
-			AbsVx
-		);
+		float AbsVx = FMath::Abs(LocalState.LocalLinearVelocity.X);
+		float AbsOmegaR = FMath::Abs(LocalState.AngularVelocity * Context.R);
+		FVector2f AbsVx2D = FVector2f(FMath::Max(AbsVx, AbsOmegaR), AbsVx);
 
 		float MinVx = 0.1f;
 		AbsVx2D = FVector2f::Max(AbsVx2D, FVector2f(MinVx));
 
 		LocalState.TransientSlip =
-			(LocalState.TransientSlip + (SlipVelocity * Context.SubstepDeltaTime) / SafeRelaxationLength) /
-			(FVector2f(1.f, 1.f) + (AbsVx2D * Context.SubstepDeltaTime) / SafeRelaxationLength);
+			(LocalState.TransientSlip + (SlipVelocity * Context.SubstepDeltaTime) * RelaxationLengthInv) /
+			(FVector2f(1.f, 1.f) + (AbsVx2D * Context.SubstepDeltaTime) * RelaxationLengthInv);
 
 		float TransientSlipRatio = LocalState.TransientSlip.X;
 		float TransientSlipAngle = FMath::Atan(LocalState.TransientSlip.Y) / (0.5f * PI);
@@ -646,7 +631,7 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	FVector2f TransientSlip = UpdateTransientSlip(LocalState, Context, bOnGround, TireConfig.RelaxationLength);
 	
 	// not for tire force now but for abs and tc logic
-	UpdateSlipRatio(LocalState, Context);
+	UpdateSlipRatio(LocalState, Context, bOnGround);
 	UpdateSlipAngle(LocalState, bOnGround);
 
 	if (!bOnGround)
@@ -659,7 +644,7 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 		CalculateConstraintLongForce(LocalState, Context, EffectiveSprungMassLong),
 		CalculateConstraintLatForce(LocalState, Context, EffectiveSprungMassLat)
 	);
-
+	
 	ConstraintTireForce += Context.GravityComp2D;
 
 	// get stiffness(tangent) of linear region
