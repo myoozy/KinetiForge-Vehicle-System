@@ -509,7 +509,7 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 	// 5. output effective inertia and angular velocity
 	OutAxleEffectiveInertia = State.AxleEffectiveInertia;
 	OutAngularVelocity = State.AxleAngularVelocity;
-	OutDriveShaftStiffness = bWheelNotDriven ? 0.f : AxleConfig.DriveShaftStiffness;
+	OutDriveShaftStiffness = bWheelNotDriven ? 0.f : AxleConfig.DriveShaftTorsionalStiffness;
 }
 
 void UVehicleAxleAssemblyComponent::PostStepAxle()

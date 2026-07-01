@@ -42,15 +42,18 @@ float UVehicleClutchComponent::GetTorqueSpringModel(
 	float K_Shaft = DriveShaftStiffness;
 
 	// to simulate torson spring on clutch
-	float K_Clutch = Config.Stiffness;
-	float D_Clutch = Config.Damping;
+	float K_Clutch = Config.TorsionalStiffness;
 
 	float K_Series = UVehicleUtilities::SafeDivide(K_Shaft * K_Clutch, K_Shaft + K_Clutch);
-	
+
+	float DampingRatio = Config.DampingRatio;
+	float CriticalDamping = 2.0f * FMath::Sqrt(K_Series * J_Total);
+	float D_Total = CriticalDamping * DampingRatio;
+
 	float ClutchSlipScaled = ClutchSlip * State.ClutchLock;//ClutchSlip * ClutchLock
 	float CurrentAngleDiff = State.AngleDiff;
 
-	float DontKnowWhatItIs = K_Series * DeltaTime + D_Clutch;
+	float DontKnowWhatItIs = K_Series * DeltaTime + D_Total;
 	float TorqueNumerator = K_Series * CurrentAngleDiff + DontKnowWhatItIs * ClutchSlipScaled;
 	float TorqueDenominator = 1.0f + UVehicleUtilities::SafeDivide(DontKnowWhatItIs * DeltaTime, J_Total);
 
@@ -82,7 +85,7 @@ float UVehicleClutchComponent::GetTorqueDampingModel(
 	float J_Engine = EngineInertia;
 	float J_Total = UVehicleUtilities::SafeDivide(J_Gearbox * J_Engine, J_Gearbox + J_Engine);
 
-	float D_Clutch = Config.Damping;
+	float D_Clutch = Config.ViscousDamping;
 
 	float TorqueNumerator = D_Clutch * ClutchSlip;
 	float TorqueDenominator = 1.0f + UVehicleUtilities::SafeDivide(D_Clutch * DeltaTime, J_Total);
@@ -144,7 +147,7 @@ void UVehicleClutchComponent::UpdatePhysics(
 	switch (Config.SimMode)
 	{
 	default:
-	case EClutchSimMode::ConstraintModel:
+	case EClutchSimMode::ConstraintLock:
 		GetTorqueConstraintModel(
 			InDeltaTime,
 			ClutchSlip,
@@ -152,7 +155,7 @@ void UVehicleClutchComponent::UpdatePhysics(
 			InGearboxReflectedInertia
 		);
 		break;
-	case EClutchSimMode::SpringModel:
+	case EClutchSimMode::FrictionClutch:
 		GetTorqueSpringModel(
 			InDeltaTime,
 			ClutchSlip,
@@ -161,7 +164,7 @@ void UVehicleClutchComponent::UpdatePhysics(
 			InDriveShaftStiffness
 		);
 		break;
-	case EClutchSimMode::DampingModel:
+	case EClutchSimMode::FluidCoupling:
 		GetTorqueDampingModel(
 			InDeltaTime,
 			ClutchSlip,

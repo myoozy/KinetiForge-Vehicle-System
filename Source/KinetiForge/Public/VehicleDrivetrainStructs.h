@@ -227,34 +227,23 @@ UENUM(BlueprintType)
 enum class EClutchSimMode : uint8
 {
 	/**
-	* Simulate a friction clutch, e.g. clutch for manual transmission.
-	* During physics steps, the series stiffness of clutch and all drive shafts will be simulated.
-	* 
-	* Required parameters:
-	* - Stiffness
-	* - Damping
-	* - Capacity
-	*/
-	SpringModel     UMETA(DisplayName = "FrictionClutch"),
+	 * Simulates a friction clutch with torsional compliance.
+	 * The clutch stiffness is combined in series with the reflected
+	 * stiffness of the downstream driveline.
+	 */
+	FrictionClutch UMETA(DisplayName = "Friction Clutch"),
 
 	/**
-	* Simulate a fluid coupling, e.g. torque converter.
-	* During physics steps, a damper on the clutch side will be simulated. No torsion spring will be simulated.
-	* 
-	* Required parameters:
-	* - Damping
-	* - Capacity
-	*/
-	DampingModel    UMETA(DisplayName = "FluidCoupling"),
+	 * Simulates a fluid coupling / torque converter as a viscous damper.
+	 * No torsional spring state is accumulated.
+	 */
+	FluidCoupling UMETA(DisplayName = "Fluid Coupling"),
 
 	/**
-	* Calculate the torque required to maintain the constrained rotational speed using impulse analysis.
-	* This is equivalent to a damper that always operates at critical damping.
-	* 
-	* Required parameters:
-	* - Capacity
-	*/
-	ConstraintModel UMETA(DisplayName = "Constraint")
+	 * Uses impulse analysis to calculate the torque required to reduce
+	 * the relative angular velocity within the current physics step.
+	 */
+	ConstraintLock UMETA(DisplayName = "Constraint Lock")
 };
 
 USTRUCT(BlueprintType)
@@ -262,41 +251,44 @@ struct KINETIFORGE_API FVehicleClutchConfig
 {
 	GENERATED_USTRUCT_BODY()
 
-	/**
-	* Unit: Nm/Rad
-	* 
-	* This is only been used in SpringModel / FrictionClutch
-	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float Stiffness = 10000.f;
-
-	/**
-	* Unit: NmSec/Rad
-	* 
-	* Set this lower when using SpringModel / FrictionClutch;
-	* Set this higher when using DampingModel / FluidCoupling;
-	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float Damping = 1.f;
-
-	/**
-	* Determines how much torque the clutch can take.
-	* 
-	* The real capacity(in Nm) : Capacity(e.g. 1.5) * MaxEngineTorque(including turbo boost)
-	* e.g. MaxEngineTorque(NA) = 200Nm; TurboMaxBoostPressure = 1bar; TurboBoostEfficiency = 0.7; Capacity = 1.5;
-	* Then the clutch can take up to 1.5 * 200 * (1 + 1 * 0.7) = 510Nm;
-	* 
-	* If the actual clutch torque is greater than capacity, the clutch will slip.
-	* Set this value higher when using 'SpringModel' to get more rpm shaking (when shifting you will see it)
-	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
-	float Capacity = 1.5;
-
-	/**
-	* 
-	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup")
-	EClutchSimMode SimMode = EClutchSimMode::SpringModel;
+	EClutchSimMode SimMode = EClutchSimMode::FrictionClutch;
+
+	/**
+	 * Torsional stiffness of the clutch/crank/input-side elastic path.
+	 * Used by FrictionClutch.
+	 * Unit: Nm/Rad
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup",
+		meta = (ClampMin = "0.0", EditCondition = "SimMode == EClutchSimMode::FrictionClutch", EditConditionHides))
+	float TorsionalStiffness = 10000.f;
+
+	/**
+	 * Damping ratio of the equivalent torsional spring mode.
+	 * Used by FrictionClutch.
+	 * 0 = no damping, 1 = critical damping.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup",
+		meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "SimMode == EClutchSimMode::FrictionClutch", EditConditionHides))
+	float DampingRatio = 0.1f;
+
+	/**
+	 * Viscous damping coefficient of the fluid coupling.
+	 * Used by FluidCoupling.
+	 * Unit: Nm*s/Rad
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup",
+		meta = (ClampMin = "0.0", EditCondition = "SimMode == EClutchSimMode::FluidCoupling", EditConditionHides))
+	float ViscousDamping = 100.f;
+
+	/**
+	 * Maximum transmissible clutch torque multiplier.
+	 *
+	 * Real capacity:
+	 * Capacity * MaxEngineTorque, including boost multiplier.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClutchSetup", meta = (ClampMin = "0.0"))
+	float Capacity = 1.5f;
 };
 
 USTRUCT(BlueprintType)
