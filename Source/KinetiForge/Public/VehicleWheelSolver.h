@@ -22,6 +22,7 @@ public:
 
 	void PreStep(
 		float InMacroDeltaTime,
+		const FTransform& AsyncChassisWorldTransform,
 		const FVehicleSuspensionSimState& SuspensionState,
 		const FVehicleWheelConfig& WheelConfig,
 		const FVehicleTireConfig& TireConfig
@@ -86,6 +87,11 @@ private:
 		const float LastTireLongitudinalForce,
 		const bool bOnGround,
 		const float SlipVelocityTolerance = 0.1f);
+	static void UpdateSlipVelocity(
+		FVehicleWheelSimState& LocalState,
+		const FVehicleWheelSimContext& Context,
+		const bool bOnGround
+	);
 	static void UpdateSlipAngle(
 		FVehicleWheelSimState& LocalState,
 		const bool bOnGround);
@@ -95,6 +101,8 @@ private:
 		const bool bOnGround);
 	static float CalculateCamberLateralDrift(
 		const FVehicleSuspensionSimState& SuspensionState,
+		const FTransform& AsyncChassisWorldTransform,
+		const FVehicleWheelConfig& Config,
 		const FVehicleWheelCachedLUTs& TireLUTs,
 		float& OutSignedCamberDeg);
 	/**Returns transient slip ratio and slip angle (normalized)*/

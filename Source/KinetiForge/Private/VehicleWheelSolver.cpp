@@ -20,7 +20,8 @@ void FVehicleWheelSolver::Initialize(const FVehicleTireConfig& TireConfig)
 }
 
 void FVehicleWheelSolver::PreStep(
-	float InMacroDeltaTime, 
+	float InMacroDeltaTime,
+	const FTransform& AsyncChassisWorldTransform,
 	const FVehicleSuspensionSimState& SuspensionState, 
 	const FVehicleWheelConfig& WheelConfig,
 	const FVehicleTireConfig& TireConfig)
@@ -74,6 +75,8 @@ void FVehicleWheelSolver::PreStep(
 	// get camber
 	Context.CamberLateralDrift = CalculateCamberLateralDrift(
 		SuspensionState,
+		AsyncChassisWorldTransform,
+		WheelConfig,
 		CachedLUTs,
 		LocalState.SignedCamberDegree
 	);
@@ -402,6 +405,28 @@ void FVehicleWheelSolver::WheelAcceleration(
 	LocalState.AngularAcceleration = (LocalState.AngularVelocity - LastAngularVelocity) * Context.SubstepDeltaTimeInv;
 }
 
+void FVehicleWheelSolver::UpdateSlipVelocity(
+	FVehicleWheelSimState& LocalState,
+	const FVehicleWheelSimContext& Context,
+	const bool bOnGround
+)
+{
+	const float Vx = LocalState.LocalLinearVelocity.X;
+	const float Vy = LocalState.LocalLinearVelocity.Y;
+	const float OmegaR = LocalState.AngularVelocity * Context.R;
+
+	const float q = bOnGround ? Context.CamberLateralDrift : 0.f;
+	const float Norm = FMath::Sqrt(1.f + q * q);
+
+	// Soft patch target. This does not mean rim direction changes.
+	const float PatchVx = OmegaR / Norm;
+	const float PatchVy = OmegaR * q / Norm;
+
+	LocalState.LongSlipVelocity = (PatchVx - Vx) * bOnGround;
+	LocalState.LatSlipVelocity = (PatchVy - Vy) * bOnGround;
+
+}
+
 void FVehicleWheelSolver::UpdateSlipAngle(
 	FVehicleWheelSimState& LocalState,
 	const bool bOnGround)
@@ -439,35 +464,99 @@ void FVehicleWheelSolver::UpdateSlipRatio(
 
 float FVehicleWheelSolver::CalculateCamberLateralDrift(
 	const FVehicleSuspensionSimState& SuspensionState,
+	const FTransform& AsyncChassisWorldTransform,
+	const FVehicleWheelConfig& Config,
 	const FVehicleWheelCachedLUTs& TireLUTs,
 	float& OutSignedCamberDeg)
 {
+	if (!SuspensionState.bWheelOnGround)
+	{
+		OutSignedCamberDeg = 0.f;
+		return 0.f;
+	}
+
 	const FVector3f WheelRight =
 		SuspensionState.WheelWorldRightVector.GetSafeNormal();
 
 	const FVector3f GroundNormal =
 		SuspensionState.ImpactWorldNormal.GetSafeNormal();
 
+	if (WheelRight.IsNearlyZero() || GroundNormal.IsNearlyZero())
+	{
+		OutSignedCamberDeg = 0.f;
+		return 0.f;
+	}
+
+	// Raw camber sign follows the tire local axis convention:
+	//     +sin(camber) = wheel right vector points into the ground normal.
+	// This is intentionally not flipped by left/right side.
 	float SinCamber = FVector3f::DotProduct(WheelRight, GroundNormal);
 	SinCamber = FMath::Clamp(SinCamber, -1.f, 1.f);
 
-	float CamberRad = FMath::Asin(SinCamber);
-	float CamberDeg = FMath::RadiansToDegrees(CamberRad);
+	const float CamberRad = FMath::Asin(SinCamber);
+	const float CamberDeg = FMath::RadiansToDegrees(CamberRad);
 
+	// Human-readable signed camber: negative camber has the same sign on both sides.
 	OutSignedCamberDeg = SuspensionState.bIsRightWheel ? -CamberDeg : CamberDeg;
-	const float AbsCamberDeg = FMath::Abs(CamberDeg);
 
 	// Curve input:
 	//     abs camber angle in degrees
 	//
 	// Curve output:
 	//     q_gamma = dy / dx
-	float Drift = TireLUTs.CamberToLateralDrift.FastEval(AbsCamberDeg / 90.f).Value;
+	float Drift = TireLUTs.CamberToLateralDrift.FastEval(FMath::Abs(CamberDeg) / 90.f).Value;
 
 	// Just in case the user draws a negative curve by accident.
 	Drift = FMath::Max(0.f, Drift);
 
-	return CamberDeg > 0.f ? -Drift : Drift;
+	// Convert the unsigned LUT value into the tire local lateral drift sign.
+	float SignedDrift = CamberDeg > 0.f ? -Drift : Drift;
+
+	// Geometric safety cap for the hard constraint/fallback path.
+	//
+	// The hit location is treated only as one point on the local ground plane.
+	// Its lateral offset is deliberately ignored, because LineTrace may start from
+	// the outer tire side while SphereTrace may hit closer to the center.
+	//
+	// Model: finite-width rigid cylinder touching a plane. Width contributes to
+	// the support distance along the ground normal, then the remaining normal
+	// distance is converted back into an equivalent loaded radius in the wheel
+	// disk plane. From that loaded radius we get a proxy contact half length.
+	const float TireRadius = FMath::Max(SMALL_NUMBER, Config.Radius);
+	const float TireHalfWidth = FMath::Max(SMALL_NUMBER, Config.Width * 0.5f);
+
+	const FVector WheelCenterWorld =
+		AsyncChassisWorldTransform.TransformPositionNoScale((FVector)SuspensionState.HubChassisLocation);
+
+	const FVector ImpactWorldLocation = SuspensionState.ImpactWorldLocation;
+	const FVector ImpactNormal = FVector(GroundNormal);
+	const FVector WheelAxis = FVector(WheelRight);
+
+	const float AxisNormalDot =
+		FMath::Clamp(FVector::DotProduct(WheelAxis, ImpactNormal), -1.f, 1.f);
+
+	const float SideNormalScale = FMath::Abs(AxisNormalDot);
+	const float RadialNormalScaleSq = FMath::Max(SMALL_NUMBER, 1.f - AxisNormalDot * AxisNormalDot);
+	const float RadialNormalScale = FMath::Sqrt(RadialNormalScaleSq);
+
+	const float CenterPlaneDistance =
+		FVector::DotProduct(WheelCenterWorld - ImpactWorldLocation, ImpactNormal);
+
+	const float LoadedRadius = FMath::Clamp(
+		(CenterPlaneDistance - TireHalfWidth * SideNormalScale) / RadialNormalScale,
+		SMALL_NUMBER,
+		TireRadius
+	);
+
+	const float ContactHalfLength = FMath::Sqrt(FMath::Max(
+		0.f,
+		TireRadius * TireRadius - LoadedRadius * LoadedRadius
+	));
+
+	const float DriftLimit =
+		FMath::Abs(SinCamber) * ContactHalfLength / LoadedRadius;
+
+	return FMath::Clamp(SignedDrift, -DriftLimit, DriftLimit);
 }
 
 FVector2f FVehicleWheelSolver::UpdateTransientSlip(
@@ -480,20 +569,6 @@ FVector2f FVehicleWheelSolver::UpdateTransientSlip(
 	{
 		const FVector2f SafeRelaxationLength = FVector2f::Max(RelaxationLength, FVector2f(SMALL_NUMBER));
 		const FVector2f RelaxationLengthInv = FVector2f(1.f) / SafeRelaxationLength;
-
-		const float Vx = LocalState.LocalLinearVelocity.X;
-		const float Vy = LocalState.LocalLinearVelocity.Y;
-		const float OmegaR = LocalState.AngularVelocity * Context.R;
-
-		const float q = bOnGround ? Context.CamberLateralDrift : 0.f;
-		const float Norm = FMath::Sqrt(1.f + q * q);
-
-		// Soft patch target. This does not mean rim direction changes.
-		const float PatchVx = OmegaR / Norm;
-		const float PatchVy = OmegaR * q / Norm;
-
-		LocalState.LongSlipVelocity = (PatchVx - Vx) * bOnGround;
-		LocalState.LatSlipVelocity = (PatchVy - Vy) * bOnGround;
 
 		const FVector2f SlipVelocity =
 			FVector2f(LocalState.LongSlipVelocity, LocalState.LatSlipVelocity);
@@ -627,6 +702,8 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	const FVehicleTireConfig& TireConfig,
 	const FVehicleWheelCachedLUTs& TireLUTs)
 {
+	UpdateSlipVelocity(LocalState, Context, bOnGround);
+
 	// transient slip for tire force
 	FVector2f TransientSlip = UpdateTransientSlip(LocalState, Context, bOnGround, TireConfig.RelaxationLength);
 	
