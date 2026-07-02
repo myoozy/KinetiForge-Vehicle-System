@@ -67,8 +67,10 @@ float UVehicleClutchComponent::GetTorqueSpringModel(
 	}
 	else
 	{
-		State.AngleDiff = State.ClutchLock * (State.AngleDiff + ClutchSlipScaled * DeltaTime);
+		State.AngleDiff += ClutchSlipScaled * DeltaTime;
 	}
+
+	State.AngleDiff *= State.ClutchLock;
 
 	return State.ClutchTorque = SpringModelTorque;
 }
