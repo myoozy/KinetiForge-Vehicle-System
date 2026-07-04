@@ -580,21 +580,25 @@ float FVehicleWheelSolver::CalculateConstraintLongForce(
 	const float WheelInvMassLong = UVehicleUtilities::SafeDivide(Context.R * Context.R, LocalState.EffectiveInertia);
 	const float ExactTotalLongMass = 1.0f / (BodyInvMassLong + WheelInvMassLong);
 
-	float Vx = FMath::Abs(LocalState.LocalLinearVelocity.X) + SMALL_NUMBER;
+	const float Vx = LocalState.LocalLinearVelocity.X;
+	const float Omega = LocalState.AngularVelocity;
 
 	float ForceRequiredToBringToStop = Vx * Context.MacroDeltaTimeInv * ExactTotalLongMass;
-	ForceRequiredToBringToStop += FMath::Abs(LocalState.DriveTorque * Context.RInv);
+	ForceRequiredToBringToStop += LocalState.DriveTorque * Context.RInv;
+	ForceRequiredToBringToStop = FMath::Abs(ForceRequiredToBringToStop);
 
 	//get linear brake force
-	float SignedBrakeTorque = LocalState.BrakeTorque * (-FMath::Sign(LocalState.LocalLinearVelocity.X));
+	float SignedBrakeTorque = LocalState.BrakeTorque * (-FMath::Sign(Vx));
 	SignedBrakeTorque = FMath::Clamp(SignedBrakeTorque, -ForceRequiredToBringToStop, ForceRequiredToBringToStop);
 
 	//torque from ground interaction is the torque required to make angularvelocity == linearvelocity / radius
-	float GroundAngularVelocity = LocalState.LocalLinearVelocity.X * Context.RInv;
-	LocalState.TorqueFromGroundInteraction = Context.SubstepDeltaTimeInv * LocalState.EffectiveInertia * (LocalState.AngularVelocity - GroundAngularVelocity);
+	float GroundAngularVelocity = Vx * Context.RInv;
+	LocalState.TorqueFromGroundInteraction = Context.SubstepDeltaTimeInv * LocalState.EffectiveInertia * (Omega - GroundAngularVelocity);
 
 	//get longitudinal force
-	return (LocalState.DriveTorque + SignedBrakeTorque + LocalState.TorqueFromGroundInteraction) * Context.RInv;
+	float ConstraintForce = (LocalState.DriveTorque + SignedBrakeTorque + LocalState.TorqueFromGroundInteraction) * Context.RInv;
+	float KinematicsLongSlipVelocity = Omega * Context.R - Vx;
+	return ConstraintForce * KinematicsLongSlipVelocity > 0.f ? ConstraintForce : 0.f;
 }
 
 float FVehicleWheelSolver::CalculateConstraintLatForce(
