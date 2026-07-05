@@ -576,29 +576,27 @@ float FVehicleWheelSolver::CalculateConstraintLongForce(
 	const FVehicleWheelSimContext& Context,
 	const float EffectiveSprungMass)
 {
-	const float BodyInvMassLong = 1.0f / EffectiveSprungMass;
-	const float WheelInvMassLong = UVehicleUtilities::SafeDivide(Context.R * Context.R, LocalState.EffectiveInertia);
-	const float ExactTotalLongMass = 1.0f / (BodyInvMassLong + WheelInvMassLong);
-
 	const float Vx = LocalState.LocalLinearVelocity.X;
 	const float Omega = LocalState.AngularVelocity;
+	const float R = Context.R;
+	const float RInv = Context.RInv;
 
-	float ForceRequiredToBringToStop = Vx * Context.MacroDeltaTimeInv * ExactTotalLongMass;
-	ForceRequiredToBringToStop += LocalState.DriveTorque * Context.RInv;
-	ForceRequiredToBringToStop = FMath::Abs(ForceRequiredToBringToStop);
-
+	const float DriveForce = LocalState.DriveTorque * RInv;
+	const float ForceRequiredToBringToStop = -(Vx * Context.MacroDeltaTimeInv * EffectiveSprungMass + DriveForce);
+	
 	//get linear brake force
-	float SignedBrakeTorque = LocalState.BrakeTorque * (-FMath::Sign(Vx));
-	SignedBrakeTorque = FMath::Clamp(SignedBrakeTorque, -ForceRequiredToBringToStop, ForceRequiredToBringToStop);
+	const float TargetBrakeForce = LocalState.BrakeTorque * RInv;
+	const float SignedBrakeForce = FMath::Clamp(ForceRequiredToBringToStop, -TargetBrakeForce, TargetBrakeForce);
 
 	//torque from ground interaction is the torque required to make angularvelocity == linearvelocity / radius
-	float GroundAngularVelocity = Vx * Context.RInv;
-	LocalState.TorqueFromGroundInteraction = Context.SubstepDeltaTimeInv * LocalState.EffectiveInertia * (Omega - GroundAngularVelocity);
-
+	const float KinematicsSlipVelocity = Omega * R - Vx;
+	const float ForceFromGroundInteraction = Context.SubstepDeltaTimeInv * LocalState.EffectiveInertia * KinematicsSlipVelocity;
+	LocalState.TorqueFromGroundInteraction = ForceFromGroundInteraction * R;
+	
 	//get longitudinal force
-	float ConstraintForce = (LocalState.DriveTorque + SignedBrakeTorque + LocalState.TorqueFromGroundInteraction) * Context.RInv;
-	float KinematicsLongSlipVelocity = Omega * Context.R - Vx;
-	return ConstraintForce * KinematicsLongSlipVelocity > 0.f ? ConstraintForce : 0.f;
+	float ConstraintForce = DriveForce + SignedBrakeForce + ForceFromGroundInteraction;
+	
+	return ConstraintForce * KinematicsSlipVelocity > 0.f ? ConstraintForce : 0.f;
 }
 
 float FVehicleWheelSolver::CalculateConstraintLatForce(
