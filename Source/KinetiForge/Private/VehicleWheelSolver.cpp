@@ -132,7 +132,7 @@ void FVehicleWheelSolver::Substep(
 	// =========================================================
 	// 2. Get wheel speed
 	// =========================================================
-	const float SlipVelocityTolerance = 0.1f;
+	const float SlipVelocityTolerance = 0.f;
 	WheelAcceleration(LocalState, Context, SubstepForce2D.X, SuspensionState.bWheelOnGround, SlipVelocityTolerance);
 
 	Context.AccumulateTireImpulse2D += SubstepForce2D * Context.SubstepDeltaTime;
@@ -582,21 +582,22 @@ float FVehicleWheelSolver::CalculateConstraintLongForce(
 	const float RInv = Context.RInv;
 
 	const float DriveForce = LocalState.DriveTorque * RInv;
-	const float ForceRequiredToBringToStop = -(Vx * Context.MacroDeltaTimeInv * EffectiveSprungMass + DriveForce);
-	
+
+	//torque from ground interaction is the torque required to make angularvelocity == linearvelocity / radius
+	const float AngularSlipVelocity = Omega - Vx * RInv;
+	LocalState.TorqueFromGroundInteraction = Context.SubstepDeltaTimeInv * LocalState.EffectiveInertia * AngularSlipVelocity;
+	const float ForceFromGroundInteraction = LocalState.TorqueFromGroundInteraction * RInv;
+
+	const float ForceRequiredToBringToStop = -(Vx * Context.MacroDeltaTimeInv * EffectiveSprungMass + DriveForce + ForceFromGroundInteraction);
+
 	//get linear brake force
 	const float TargetBrakeForce = LocalState.BrakeTorque * RInv;
 	const float SignedBrakeForce = FMath::Clamp(ForceRequiredToBringToStop, -TargetBrakeForce, TargetBrakeForce);
 
-	//torque from ground interaction is the torque required to make angularvelocity == linearvelocity / radius
-	const float KinematicsSlipVelocity = Omega * R - Vx;
-	const float ForceFromGroundInteraction = Context.SubstepDeltaTimeInv * LocalState.EffectiveInertia * KinematicsSlipVelocity;
-	LocalState.TorqueFromGroundInteraction = ForceFromGroundInteraction * R;
-	
 	//get longitudinal force
 	float ConstraintForce = DriveForce + SignedBrakeForce + ForceFromGroundInteraction;
 	
-	return ConstraintForce * KinematicsSlipVelocity > 0.f ? ConstraintForce : 0.f;
+	return ConstraintForce * AngularSlipVelocity > 0.f ? ConstraintForce : 0.f;
 }
 
 float FVehicleWheelSolver::CalculateConstraintLatForce(
