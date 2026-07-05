@@ -597,7 +597,7 @@ float FVehicleWheelSolver::CalculateConstraintLongForce(
 	//get longitudinal force
 	float ConstraintForce = DriveForce + SignedBrakeForce + ForceFromGroundInteraction;
 	
-	return ConstraintForce * AngularSlipVelocity > 0.f ? ConstraintForce : 0.f;
+	return ConstraintForce;
 }
 
 float FVehicleWheelSolver::CalculateConstraintLatForce(
