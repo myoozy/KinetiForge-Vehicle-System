@@ -710,6 +710,7 @@ void FVehicleSuspensionSolver::CopyContextToState(
 	NewState.SteeringAngle = Context.SteeringAngle;
 	NewState.StrutCurrentLength = Context.StrutCurrentLength;
 	NewState.StrutCurrentVelocity = Context.StrutCurrentVelocity;
+	NewState.TransientStrutLengthLimit = Context.TransientStrutLengthLimit;
 	NewState.VirtualUnsprungMass = Context.VirtualUnsprungMass;
 	NewState.EffectiveSprungMassNormal = Context.EffectiveSprungMassNormal;
 	NewState.EffectiveSprungMassLong = Context.EffectiveSprungMassLong;
@@ -754,6 +755,7 @@ void FVehicleSuspensionSolver::CopyStateToContext(
 {
 	Context.StrutCurrentLength = PrevState.StrutCurrentLength;
 	Context.StrutCurrentVelocity = PrevState.StrutCurrentVelocity;
+	Context.TransientStrutLengthLimit = PrevState.TransientStrutLengthLimit;
 	Context.StaticSprungMass = PrevState.StaticSprungMass;
 	Context.HubChassisTransform.SetRotation(PrevState.HubChassisRotation);
 	Context.HubChassisTransform.SetLocation(PrevState.HubChassisLocation);
@@ -1053,15 +1055,20 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 	const float HitDistanceNoBias = FMath::Max(0.f, Ctx.HitDistance - WheelRadius);
 
 	const float MaxExtension = FMath::Clamp(UVehicleUtilities::SafeDivide(HitDistanceNoBias, Ctx.RayCastLength), 0.f, 1.f);
-	const float MaxCurrentLength = MaxExtension * KineConfig.Stroke;
+	const float StrutLengthLimit = MaxExtension * KineConfig.Stroke;
+	const float LastStrutLengthLimit = Ctx.TransientStrutLengthLimit;
+	Ctx.TransientStrutLengthLimit = StrutLengthLimit;
 	const float StrutLastLength = Ctx.StrutCurrentLength;
 	Ctx.StrutLastLength = StrutLastLength;
 	const float MacroDtInv = UVehicleUtilities::SafeDivide(1.f, Ctx.PhysicsDeltaTime);
-	const float RayStrutVelocity = (MaxCurrentLength - StrutLastLength) * MacroDtInv;
+	const float RayStrutVelocity = (StrutLengthLimit - LastStrutLengthLimit) * MacroDtInv;
 
 	bool bSimulateUnsprungMass = KineConfig.SuspensionAndBrakeMass > SMALL_NUMBER;
 	if (bSimulateUnsprungMass)
 	{
+		const float m_to_cm = 100.f;
+		const float cm_to_m = 0.01f;
+
 		const float TargetSubDt = 1.f / 480.f;
 		int32 Substeps = FMath::CeilToInt32(Ctx.PhysicsDeltaTime / TargetSubDt);
 		Substeps = FMath::Max(Substeps, 1);
@@ -1106,7 +1113,7 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 		float StrutAcceleration = FVector::DotProduct(MountWorldAcceleration, Ctx.StrutWorldDirection);
 
 		// 7. 计算伪惯性力 (F = -m * a)。单位：N
-		float FictitiousForce = Ctx.VirtualUnsprungMass * StrutAcceleration * 0.01f;
+		float FictitiousForce = Ctx.VirtualUnsprungMass * StrutAcceleration * cm_to_m;
 
 		if (SpringConfig.bUseDampingRatio)
 		{
@@ -1123,12 +1130,12 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 		float EffectiveSwaybarStiffness = ActiveSwaybarStiffness * StrutZProj * StrutZProj;
 		float TotalStiffness = EquivSpring + EffectiveSwaybarStiffness;
 
-		const float m_to_cm = 100.f;
+		bool bGroundConstraintTriggered = false;
 
 		for (int32 i = 0; i < Substeps; ++i)
 		{
 			float CurrentSubstepTime = (i + 1) * SubDt;
-			float InterpolatedGroundLimit = StrutLastLength + RayStrutVelocity * CurrentSubstepTime;
+			float InterpolatedGroundLimit = LastStrutLengthLimit + RayStrutVelocity * CurrentSubstepTime;
 
 			// 1. 计算当前的显式静态力 
 			float SpringCompression = KineConfig.Stroke - CurrentLength;
@@ -1153,7 +1160,7 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 			// 隐式刚度项: K * dt^2 / m (需要带上和加速度相同的 100.f 单位换算)
 			float ImplicitSpringTerm = TotalStiffness * VirtualUnsprungMassInv * SubDt * SubDt * m_to_cm;
 
-			// 核心魔法：把刚度项加入分母，彻底消除震荡
+			// 把刚度项加入分母
 			float DampingDenominator = 1.f + ImplicitDampingTerm + ImplicitSpringTerm;
 
 			// 4. 更新最终速度与位置
@@ -1163,6 +1170,7 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 			// 运动学约束
 			if (CurrentLength > InterpolatedGroundLimit)
 			{
+				bGroundConstraintTriggered = true;
 				CurrentLength = InterpolatedGroundLimit;
 				if (CurrentVelocity > RayStrutVelocity)
 				{
@@ -1176,17 +1184,17 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 			}
 		}
 
-		Ctx.bWheelOnGround = CurrentLength >= MaxCurrentLength && Ctx.bHitGround;
+		Ctx.bWheelOnGround = bGroundConstraintTriggered && Ctx.bHitGround;
 
 		Ctx.StrutCurrentLength = CurrentLength;
-		Ctx.StrutCurrentVelocity = (CurrentLength - StrutLastLength) * MacroDtInv;
+		Ctx.StrutCurrentVelocity = CurrentVelocity;
 		Ctx.CurrentExtensionRatio = UVehicleUtilities::SafeDivide(CurrentLength, KineConfig.Stroke);
 	}
 	else
 	{
 		Ctx.VirtualUnsprungMass = 0.f;
 		Ctx.bWheelOnGround = Ctx.bHitGround;
-		Ctx.StrutCurrentLength = MaxCurrentLength;
+		Ctx.StrutCurrentLength = StrutLengthLimit;
 		Ctx.StrutCurrentVelocity = RayStrutVelocity;
 		Ctx.CurrentExtensionRatio = MaxExtension;
 	}
@@ -1648,7 +1656,6 @@ bool FVehicleSuspensionSolver::SolveUpperWishbone(
 	FVector3f PivotToLower = LowerBallPos - UpperPivotPos;
 	float Dist3D = PivotToLower.Size();
 
-	// Lambda 闭包依然极其好用
 	auto ApplyGracefulDegradation = [&]() {
 		FVector3f DirToLower = PivotToLower.GetSafeNormal();
 		if (DirToLower.IsNearlyZero()) { DirToLower = FVector3f(0.f, 0.f, -1.f); }

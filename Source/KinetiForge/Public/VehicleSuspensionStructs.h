@@ -263,6 +263,8 @@ struct KINETIFORGE_API FVehicleSuspensionSimState
 	float StrutCurrentLength = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
 	float StrutCurrentVelocity = 0.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geometry")
+	float TransientStrutLengthLimit = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
 	float StaticSprungMass = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mass")
@@ -323,6 +325,8 @@ struct KINETIFORGE_API FVehicleSuspensionSimContext
 	float StrutLastLength = 0.f;
 
 	float StrutCurrentVelocity = 0.f;
+
+	float TransientStrutLengthLimit = 0.f;
 
 	float CurrentExtensionRatio = 0.f;
 
