@@ -872,15 +872,18 @@ void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 		// calculate linear velocity
 		FVector3f LocalVel;
 		FVector3f WorldVel;
-		NumOfWheelsOnGround += Axle->GetNumOfWheelsOnGround();
+		int32 AxleNumGroundedWheels = Axle->GetNumOfWheelsOnGround();
+		NumOfWheelsOnGround += AxleNumGroundedWheels;
 		Axle->GetLinearVelocity(LocalVel, WorldVel);
+		LocalVel *= AxleNumGroundedWheels;
+		WorldVel *= AxleNumGroundedWheels;
 		SumLocalLinVel += LocalVel;
 		SumWorldLinVel += WorldVel;
 	}
 	bIsInAir = !NumOfWheelsOnGround;
 	float NumGroundedWheelsInv = UVehicleUtilities::SafeDivide(1.f, (float)NumOfWheelsOnGround);
-	LocalLinearVelocity = SumLocalLinVel * 2.f * NumGroundedWheelsInv;
-	WorldLinearVelocity = SumWorldLinVel * 2.f * NumGroundedWheelsInv;
+	LocalLinearVelocity = SumLocalLinVel * NumGroundedWheelsInv;
+	WorldLinearVelocity = SumWorldLinVel * NumGroundedWheelsInv;
 	LocalVelocityClamped = LocalLinearVelocity.SquaredLength() > 0.01f ? LocalLinearVelocity : FVector3f(0.f);
 
 	// get acceleration
