@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
+// Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
 
 #include "VehicleWheelComponent.h"
@@ -339,6 +339,9 @@ void UVehicleWheelComponent::StartPreStepSolidAxleSuspension(
 	const float ActiveSwaybarStiffness,
 	const float OtherHubChassisZ)
 {
+	// The unsprung integrator below divides the frame's limit change by this timestep, so it has
+	// to see the real macrostep before it runs; Finalize setting it later is too late.
+	Ctx.PhysicsDeltaTime = InMacroDeltaTime;
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_UpdatePhysics);
 
 	Chaos::FRigidBodyHandle_Internal* const ChassisHandle = UVehicleUtilities::GetInternalHandle(Chassis.Get());
