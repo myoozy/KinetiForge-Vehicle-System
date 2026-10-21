@@ -5,6 +5,8 @@
 #include "VehicleWheelCoordinatorComponent.h"
 #include "VehicleAsyncSpringArmComponent.h"
 #include "AsyncTickManager.h"
+#include "VehiclePhysicsStep.h"
+#include "Misc/ScopeLock.h"
 
 UVehicleAsyncTickComponent* UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(AActor* VehicleActor)
 {
@@ -27,32 +29,86 @@ UVehicleAsyncTickComponent* UVehicleAsyncTickComponent::FindVehicleAsyncTickComp
 
 void UVehicleAsyncTickComponent::RegisterDriveAssembly(UVehicleDriveAssemblyComponent* newDriveAssembly)
 {
-	if (IsValid(newDriveAssembly))DriveAssemblies.AddUnique(newDriveAssembly);
+	check(IsInGameThread());
+	if (!IsValid(newDriveAssembly)) return;
+	if (newDriveAssembly->VehicleAsyncTickComponent.IsValid()
+		&& newDriveAssembly->VehicleAsyncTickComponent.Get() != this) return;
+	if (!newDriveAssembly->PreparePhysicsStepRegistration()) return;
+	newDriveAssembly->VehicleAsyncTickComponent = this;
+	const auto Step = newDriveAssembly->GetPhysicsStep();
+	TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> ReplacedStep;
+	{
+		FScopeLock Lock(&RegistrationMutex);
+		if (const auto* ExistingStep = DrivePhysicsSteps.Find(newDriveAssembly))
+		{
+			ReplacedStep = *ExistingStep;
+		}
+		DriveAssemblies.AddUnique(newDriveAssembly);
+		DrivePhysicsSteps.Add(newDriveAssembly, Step);
+	}
+	// Stop a replaced entry without the registration lock.
+	if (ReplacedStep && ReplacedStep != Step) ReplacedStep->InvalidateBindingAndWait();
 }
 
 void UVehicleAsyncTickComponent::UnRegisterDriveAssembly(UVehicleDriveAssemblyComponent* targetDriveAssembly)
 {
-	if (DriveAssemblies.Find(targetDriveAssembly))DriveAssemblies.Remove(targetDriveAssembly);
+	check(IsInGameThread());
+	TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> RemovedStep;
+	{
+		FScopeLock Lock(&RegistrationMutex);
+		DriveAssemblies.Remove(targetDriveAssembly);
+		DrivePhysicsSteps.RemoveAndCopyValue(targetDriveAssembly, RemovedStep);
+	}
+	// Never wait while holding the list mutex: an in-flight tick may be copying that list.
+	if (RemovedStep) RemovedStep->StopAndWait();
 }
 
 void UVehicleAsyncTickComponent::RegisterWheelCoordinator(UVehicleWheelCoordinatorComponent* newWheelCoordinator)
 {
+	FScopeLock Lock(&RegistrationMutex);
 	if (IsValid(newWheelCoordinator))WheelCoordinators.AddUnique(newWheelCoordinator);
 }
 
 void UVehicleAsyncTickComponent::UnRegisterWheelCoordinator(UVehicleWheelCoordinatorComponent* targetWheelCoordinator)
 {
-	if (WheelCoordinators.Find(targetWheelCoordinator))WheelCoordinators.Remove(targetWheelCoordinator);
+	FScopeLock Lock(&RegistrationMutex);
+	WheelCoordinators.Remove(targetWheelCoordinator);
 }
 
 void UVehicleAsyncTickComponent::RegisterAsyncSpringArm(UVehicleAsyncSpringArmComponent* newAsyncSpringArm)
 {
+	FScopeLock Lock(&RegistrationMutex);
 	if (IsValid(newAsyncSpringArm))AsyncSpringArms.AddUnique(newAsyncSpringArm);
 }
 
 void UVehicleAsyncTickComponent::UnRegisterAsyncSpringArm(UVehicleAsyncSpringArmComponent* targetAsyncSpringArm)
 {
-	if (AsyncSpringArms.Find(targetAsyncSpringArm))AsyncSpringArms.Remove(targetAsyncSpringArm);
+	FScopeLock Lock(&RegistrationMutex);
+	AsyncSpringArms.Remove(targetAsyncSpringArm);
+}
+
+void UVehicleAsyncTickComponent::OnRegister()
+{
+	Super::OnRegister();
+	if (!HasBegunPlay()) return; // Initial registration is connected by the existing BeginPlay path.
+	TArray<TWeakObjectPtr<UVehicleDriveAssemblyComponent>> DrivesToRestore;
+	{
+		FScopeLock Lock(&RegistrationMutex);
+		DrivesToRestore = DriveAssemblies;
+	}
+	for (const auto& Drive : DrivesToRestore)
+	{
+		if (Drive.IsValid() && Drive->IsRegistered() && Drive->HasBegunPlay()) RegisterDriveAssembly(Drive.Get());
+	}
+	SetActive(true);
+	SetAsyncPhysicsTickEnabled(true); // Auxiliary UObject updates always use the engine's frozen-GT callback.
+	if (UWorld* World = GetWorld())
+	{
+		if (FAsyncTickManager* Manager = FAsyncTickManager::GetPhysicsManagerFromScene(World->GetPhysicsScene()))
+		{
+			Manager->AddActorComponent(this);
+		}
+	}
 }
 
 void UVehicleAsyncTickComponent::BeginPlay()
@@ -64,20 +120,14 @@ void UVehicleAsyncTickComponent::BeginPlay()
 	SetActive(true);
 	if (IsRegistered() && IsActive())
 	{
-		SetAsyncPhysicsTickEnabled(bUpdatePhysicsOnGameThread);
+		SetAsyncPhysicsTickEnabled(true); // Drive keeps its separate worker/frozen choice.
 	}
 
-	if (UWorld* World = GetWorld())
-	{
-		if (FAsyncTickManager* FoundManager = FAsyncTickManager::GetPhysicsManagerFromScene(World->GetPhysicsScene()))
-		{
-			CachedAsyncTickManager = FoundManager;
-		}
-	}
 }
 
 void UVehicleAsyncTickComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	StopDrivePhysicsSteps(true);
 	SetAsyncPhysicsTickEnabled(false);
 	SetActive(false);
 
@@ -86,15 +136,26 @@ void UVehicleAsyncTickComponent::EndPlay(const EEndPlayReason::Type EndPlayReaso
 	// ...
 }
 
+void UVehicleAsyncTickComponent::BeginDestroy()
+{
+	// UObject destruction can bypass normal tick registration teardown.
+	StopDrivePhysicsSteps(true);
+	Super::BeginDestroy();
+}
+
 void UVehicleAsyncTickComponent::OnUnregister()
 {
+	StopDrivePhysicsSteps(false);
 	SetAsyncPhysicsTickEnabled(false);
 	SetActive(false);
 
-	if (CachedAsyncTickManager)
+	// The scene may already be gone during deferred GC; do not retain its raw manager pointer.
+	if (UWorld* World = GetWorld())
 	{
-		CachedAsyncTickManager->RemoveActorComponent(this);
-		CachedAsyncTickManager = nullptr;
+		if (FAsyncTickManager* Manager = FAsyncTickManager::GetPhysicsManagerFromScene(World->GetPhysicsScene()))
+		{
+			Manager->RemoveActorComponent(this);
+		}
 	}
 
 	Super::OnUnregister();
@@ -103,39 +164,27 @@ void UVehicleAsyncTickComponent::OnUnregister()
 void UVehicleAsyncTickComponent::NativeAsyncTick(float DeltaTime)
 {
 	Super::NativeAsyncTick(DeltaTime);
-
-	if (!bUpdatePhysicsOnGameThread)
-	{
-		UpdateAllPhysics(DeltaTime);
-	}
 }
 
 void UVehicleAsyncTickComponent::AsyncPhysicsTickComponent(float DeltaTime, float SimTime)
 {
 	Super::AsyncPhysicsTickComponent(DeltaTime, SimTime);
 
-	if (bUpdatePhysicsOnGameThread)
-	{
-		UpdateAllPhysics(DeltaTime);
-	}
+	UpdateAuxiliaryPhysics(DeltaTime);
 }
 
-void UVehicleAsyncTickComponent::UpdateAllPhysics(float DeltaTime)
+void UVehicleAsyncTickComponent::UpdateAuxiliaryPhysics(float DeltaTime)
 {
-	// vehicle physics
-	for (TWeakObjectPtr<UVehicleDriveAssemblyComponent> DriveAssemblyPtr : DriveAssemblies)
+	check(IsInGameThread()); // Invoked by the engine's frozen-GT physics callback, not ordinary GT Tick.
+	TArray<TWeakObjectPtr<UVehicleWheelCoordinatorComponent>> Coordinators;
+	TArray<TWeakObjectPtr<UVehicleAsyncSpringArmComponent>> SpringArms;
 	{
-		if (UVehicleDriveAssemblyComponent* DriveAssembly = DriveAssemblyPtr.Get())
-		{
-			if (DriveAssembly->bUpdatePhysicsAutomatically)
-			{
-				DriveAssembly->UpdatePhysics(DeltaTime);
-			}
-		}
+		FScopeLock Lock(&RegistrationMutex);
+		Coordinators = WheelCoordinators;
+		SpringArms = AsyncSpringArms;
 	}
-
 	// aeros
-	for (TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinatorPtr : WheelCoordinators)
+	for (TWeakObjectPtr<UVehicleWheelCoordinatorComponent> WheelCoordinatorPtr : Coordinators)
 	{
 		if (UVehicleWheelCoordinatorComponent* WheelCoordinator = WheelCoordinatorPtr.Get())
 		{
@@ -144,11 +193,24 @@ void UVehicleAsyncTickComponent::UpdateAllPhysics(float DeltaTime)
 	}
 
 	// async spring arms
-	for (TWeakObjectPtr<UVehicleAsyncSpringArmComponent> AsyncSpringArmPtr : AsyncSpringArms)
+	for (TWeakObjectPtr<UVehicleAsyncSpringArmComponent> AsyncSpringArmPtr : SpringArms)
 	{
 		if (UVehicleAsyncSpringArmComponent* SpringArm = AsyncSpringArmPtr.Get())
 		{
 			SpringArm->UpdatePhysics(DeltaTime);
 		}
 	}
+}
+
+void UVehicleAsyncTickComponent::StopDrivePhysicsSteps(bool bForgetDrives)
+{
+	check(IsInGameThread());
+	TArray<TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe>> Steps;
+	{
+		FScopeLock Lock(&RegistrationMutex);
+		DrivePhysicsSteps.GenerateValueArray(Steps);
+		DrivePhysicsSteps.Reset();
+		if (bForgetDrives) DriveAssemblies.Reset();
+	}
+	for (const auto& Step : Steps) if (Step) Step->StopAndWait();
 }

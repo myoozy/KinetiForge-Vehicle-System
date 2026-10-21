@@ -20,6 +20,21 @@ public:
 
 	void Initialize(const FVehicleTireConfig& TireConfig);
 
+	/** Caller-owned numerical phases. Curves are consumed through the prepared LUTs. */
+	static void PrepareWheel(FVehicleWheelSimState& State, FVehicleWheelSimContext& Context,
+		const FVehicleWheelCachedLUTs& LUTs, float MacroDeltaTime,
+		const FTransform& ChassisWorldTransform,
+		const FVehicleSuspensionSimState& SuspensionState,
+		const FVehicleWheelConfig& WheelConfig, const FVehicleTireConfig& TireConfig);
+	static void IntegrateWheel(FVehicleWheelSimState& State, FVehicleWheelSimContext& Context,
+		const FVehicleWheelCachedLUTs& LUTs, float SubstepDeltaTime,
+		float DriveTorque, float BrakeTorque, float HandbrakeTorque, float ReflectedInertia,
+		const FVehicleWheelConfig& WheelConfig, const FVehicleTireConfig& TireConfig,
+		const FVehicleABSConfig& ABSConfig, const FVehicleSuspensionSimState& SuspensionState);
+	static void FinalizeWheel(FVehicleWheelSimState& State, const FVehicleWheelSimContext& Context);
+	/** Resource preparation only; call from the game thread when curves may be accessed. */
+	static void CacheLUTs(FVehicleWheelCachedLUTs& LUTs, const FVehicleTireConfig& TireConfig);
+
 	void PreStep(
 		float InMacroDeltaTime,
 		const FTransform& AsyncChassisWorldTransform,
@@ -44,7 +59,7 @@ public:
 
 	);
 
-	void DrawWheelForce(
+	static void DrawWheelForce(
 		UVehicleWheelComponent* WheelComponent,
 		const FVehicleSuspensionSimState& SuspensionState,
 		float Duration = -1,

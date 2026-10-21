@@ -2,6 +2,7 @@
 
 
 #include "VehicleDriveAssemblyComponent.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "VehicleWheelComponent.h"
 #include "VehicleDifferentialComponent.h"
@@ -12,13 +13,23 @@
 #include "VehicleGearboxComponent.h"
 #include "VehicleAsyncTickComponent.h"
 #include "VehicleUtilities.h"
-#include "AsyncTickFunctions.h"
 #include "Net/UnrealNetwork.h" 
 #include "GameFramework/SpringArmComponent.h"
+#include "VehiclePowerUnitBridge.h"
+#include "VehiclePhysicsStep.h"
+#include "AsyncTickPhysicsExecution.h"
+#include "PBDRigidsSolver.h"
+#include "VehicleFixedDriveRuntime.h"
+#include "KinetiForge.h"
+#include "Modules/ModuleManager.h"
+#include "Misc/ScopeLock.h"
 
 // Sets default values for this component's properties
 UVehicleDriveAssemblyComponent::UVehicleDriveAssemblyComponent()
 {
+	PhysicsStep = MakeShared<FVehiclePhysicsStep, ESPMode::ThreadSafe>(
+		[](float) {});
+	PhysicsStep->InvalidateBindingAndWait(); // No executable entry until a complete scene binding is published.
 	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
@@ -83,11 +94,14 @@ void UVehicleDriveAssemblyComponent::BeginPlay()
 	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Chassis.Get());
 	if (WheelCoordinator.IsValid())WheelCoordinator->RegisterDriveAssembly(this);
 
-	VehicleAsyncTickComponent = UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(GetOwner());
-	if (VehicleAsyncTickComponent.IsValid())VehicleAsyncTickComponent->RegisterDriveAssembly(this);
-
 	SearchExistingAxles();
 	GeneratePowerUnit();
+	bPowerUnitBridgeRequested = true;
+	if (bPowerUnitBridgeRequested) InitializePowerUnitBridge();
+
+	// Publish the selected backend before registering for asynchronous updates.
+	VehicleAsyncTickComponent = UVehicleAsyncTickComponent::FindVehicleAsyncTickComponent(GetOwner());
+	if (VehicleAsyncTickComponent.IsValid())VehicleAsyncTickComponent->RegisterDriveAssembly(this);
 
 	//initialize autogearbox timer
 	AutoGearboxCount = FMath::FRandRange(-AutoGearboxConfig.AutomaticGearboxRefreshTime, 0.0f) + AutoGearboxConfig.AutomaticGearboxRefreshTime;
@@ -96,6 +110,8 @@ void UVehicleDriveAssemblyComponent::BeginPlay()
 
 void UVehicleDriveAssemblyComponent::OnRegister()
 {
+	const auto PreviousAsyncTickComponent = VehicleAsyncTickComponent;
+	StopPhysicsUpdates();
 	Super::OnRegister();
 	//...
 	Chassis = UVehicleUtilities::FindPhysicalParent(this);
@@ -107,10 +123,307 @@ void UVehicleDriveAssemblyComponent::OnRegister()
 		Owner->SetReplicates(true);
 	}
 	GenerateAxles();
+	PrepareIsolatedAxles();
+	PreparePhysicsStepRegistration();
+	if (HasBegunPlay() && PreviousAsyncTickComponent.IsValid())
+	{
+		PreviousAsyncTickComponent->RegisterDriveAssembly(this);
+	}
+}
+
+TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> UVehicleDriveAssemblyComponent::GetPhysicsStep() const
+{
+	FScopeLock Lock(&PhysicsStepMutex);
+	return PhysicsStep;
+}
+
+bool UVehicleDriveAssemblyComponent::PrepareIsolatedAxles()
+{
+	check(IsInGameThread());
+	SearchExistingAxles();
+	for (const auto& Axle : Axles)
+	{
+		if (!Axle.IsValid()) continue;
+		if (Axle->PhysicsOwnership.HasActiveOwner()) return false;
+		UVehicleWheelComponent* Left = nullptr;
+		UVehicleWheelComponent* Right = nullptr;
+		Axle->GetWheels(Left, Right);
+		for (auto* Wheel : {Left, Right}) if (Wheel && Wheel->PhysicsOwnership.HasActiveOwner()) return false;
+	}
+	for (const auto& Axle : Axles)
+	{
+		if (Axle.IsValid() && !Axle->BindIsolatedAxleRuntime()) return false;
+	}
+	return true;
+}
+
+TArray<FVehiclePhysicsBodyIdentity> UVehicleDriveAssemblyComponent::CaptureAssemblyBodyIdentities() const
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_CaptureBodyIdentities);
+	check(IsInGameThread());
+	TArray<FVehiclePhysicsBodyIdentity> Identities;
+	const auto Capture = [&Identities](UPrimitiveComponent* Body)
+	{
+		Identities.Add(FVehiclePhysicsBodyIdentity::Capture(Body ? Body->GetBodyInstance() : nullptr));
+	};
+	Capture(Chassis.Get());
+	for (const auto& Axle : Axles)
+	{
+		if (!Axle.IsValid()) continue;
+		UVehicleWheelComponent* Left = nullptr;
+		UVehicleWheelComponent* Right = nullptr;
+		Axle->GetWheels(Left, Right);
+		for (auto* Wheel : {Left, Right}) if (Wheel) Capture(Wheel->Chassis.Get());
+	}
+	return Identities;
+}
+
+TSharedPtr<FVehicleFixedDriveRuntime, ESPMode::ThreadSafe> UVehicleDriveAssemblyComponent::CaptureFixedDriveRuntime()
+{
+	check(IsInGameThread());
+	const auto Unit = GetPowerUnitBridge();
+	if (!Unit || !VehicleAsyncTickComponent.IsValid()) return nullptr;
+	if (!PrepareIsolatedAxles()) return nullptr;
+	TArray<FVehiclePhysicsBodyIdentity> Identities = CaptureAssemblyBodyIdentities();
+	for (const auto& Identity : Identities) if (!Identity.IsValid()) return nullptr;
+	TArray<FVehicleAxlePhysicsAssembly> Assemblies;
+	for (const auto& Axle : Axles)
+	{
+		if (!Axle.IsValid()) continue;
+		const auto AxleBridge = Axle->GetAxleBridge();
+		if (!AxleBridge) return nullptr; // Bind before BeginPlay; never fall back to a component consumer.
+		UVehicleWheelComponent* Left = nullptr;
+		UVehicleWheelComponent* Right = nullptr;
+		Axle->GetWheels(Left, Right);
+		auto CaptureWheel = [](UVehicleWheelComponent* Wheel)
+		{
+			FVehicleAxlePhysicsWheelBinding Binding;
+			if (Wheel)
+			{
+				Binding.WheelBridge = Wheel->GetWheelBridge();
+				UPrimitiveComponent* Body = Wheel->Chassis.Get();
+				Binding.ChassisBodyIdentity = FVehiclePhysicsBodyIdentity::Capture(Body ? Body->GetBodyInstance() : nullptr);
+			}
+			return Binding;
+		};
+		if ((Left && !Left->GetWheelBridge()) || (Right && !Right->GetWheelBridge())) return nullptr;
+		Assemblies.Emplace(AxleBridge, CaptureWheel(Left), CaptureWheel(Right));
+	}
+	BoundAssemblyBodies = Identities;
+	return MakeShared<FVehicleFixedDriveRuntime, ESPMode::ThreadSafe>(Unit, Identities[0], MoveTemp(Assemblies));
+}
+
+bool UVehicleDriveAssemblyComponent::PreparePhysicsStepRegistration()
+{
+	check(IsInGameThread());
+	const auto PreviousStep = GetPhysicsStep();
+	TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> Candidate;
+	TSharedPtr<FVehicleFixedDriveRuntime, ESPMode::ThreadSafe> FixedRuntime;
+	bool bFixedRuntimeReady = true;
+	// Only reuse an entry actually published by the scene host. In particular,
+	// an unregistered component's constructor entry is not a fixed-runtime binding.
+	if (PreviousStep && !PreviousStep->IsStopped() && PreviousStep == ScenePhysicsStep) Candidate = PreviousStep;
+	else
+	{
+		FixedRuntime = CaptureFixedDriveRuntime();
+		bFixedRuntimeReady = FixedRuntime.IsValid();
+		Candidate = MakeShared<FVehiclePhysicsStep, ESPMode::ThreadSafe>(
+			[Runtime = FixedRuntime](float DeltaTime, const FVehiclePhysicsExecutionContext& Context)
+			{ if (Runtime) Runtime->Update(DeltaTime, Context); });
+	}
+	TArray<UVehicleAxleAssemblyComponent*> ClaimedAxles;
+	TArray<UVehicleWheelComponent*> ClaimedWheels;
+	TArray<FVehiclePhysicsOwnership*> ClaimedPowerOwnerships;
+	TArray<UVehicleDifferentialComponent*> DependentDifferentials;
+	bool bCanClaim = true;
+	bool bDependencyNotReady = false;
+	const bool bAssemblyHasBegunPlay = HasBegunPlay();
+	for (const auto& AxleRef : Axles)
+	{
+		UVehicleAxleAssemblyComponent* Axle = AxleRef.Get();
+		if (!Axle) continue; // Destroyed dependencies are omitted; surviving single-wheel paths remain valid.
+		if (!Axle->IsRegistered() || (bAssemblyHasBegunPlay && !Axle->HasBegunPlay()))
+		{
+			bCanClaim = false;
+			bDependencyNotReady = true;
+			break;
+		}
+		if (ClaimedAxles.Contains(Axle) || !Axle->PhysicsOwnership.CanClaim(Candidate))
+		{
+			bCanClaim = false;
+			break;
+		}
+		ClaimedAxles.Add(Axle);
+		UVehicleDifferentialComponent* AxleDifferential = nullptr;
+		Axle->GetDifferential(AxleDifferential);
+		if (AxleDifferential)
+		{
+			if (!AxleDifferential->IsRegistered() || (bAssemblyHasBegunPlay && !AxleDifferential->HasBegunPlay()))
+			{
+				bCanClaim = false;
+				bDependencyNotReady = true;
+				break;
+			}
+			DependentDifferentials.AddUnique(AxleDifferential);
+		}
+		UVehicleWheelComponent* Left = nullptr;
+		UVehicleWheelComponent* Right = nullptr;
+		Axle->GetWheels(Left, Right);
+		for (UVehicleWheelComponent* Wheel : {Left, Right})
+		{
+			if (!Wheel) continue;
+			if (!Wheel->IsRegistered() || (bAssemblyHasBegunPlay && !Wheel->HasBegunPlay()))
+			{
+				bCanClaim = false;
+				bDependencyNotReady = true;
+				break;
+			}
+			if (ClaimedWheels.Contains(Wheel) || !Wheel->PhysicsOwnership.CanClaim(Candidate))
+			{
+				bCanClaim = false;
+				break;
+			}
+			ClaimedWheels.Add(Wheel);
+		}
+		if (!bCanClaim) break;
+	}
+	// Preview registration precedes GeneratePowerUnit/BeginPlay. Once play starts,
+	// the complete primary power unit must remain registered before any entry can resume.
+	const auto AssemblyBridge = GetPowerUnitBridge();
+	auto PreflightPowerComponent = [&](auto* Component)
+	{
+		if (!Component) { bDependencyNotReady |= bAssemblyHasBegunPlay; return !bAssemblyHasBegunPlay; }
+		if (!Component->IsRegistered() || (bAssemblyHasBegunPlay && !Component->HasBegunPlay()))
+		{
+			bDependencyNotReady = true;
+			return false;
+		}
+		if (!Component->PhysicsOwnership.CanClaim(Candidate)) return false;
+		if (!Component->CanBindPowerUnitBridge()
+			&& (!AssemblyBridge || Component->PowerUnitBridge.Pin() != AssemblyBridge)) return false;
+		ClaimedPowerOwnerships.Add(&Component->PhysicsOwnership);
+		return true;
+	};
+	bCanClaim = bCanClaim && PreflightPowerComponent(Engine.Get())
+		&& PreflightPowerComponent(Clutch.Get()) && PreflightPowerComponent(Gearbox.Get());
+	if (UVehicleDifferentialComponent* CentralDifferential = TransferCase.Get())
+	{
+		if (!CentralDifferential->IsRegistered() || (bAssemblyHasBegunPlay && !CentralDifferential->HasBegunPlay()))
+		{
+			bCanClaim = false;
+			bDependencyNotReady = true;
+		}
+		DependentDifferentials.AddUnique(CentralDifferential);
+	}
+	else if (bAssemblyHasBegunPlay) { bCanClaim = false; bDependencyNotReady = true; }
+	if (!bFixedRuntimeReady) { bCanClaim = false; bDependencyNotReady = true; }
+	if (AssemblyBridge)
+	{
+		// Re-registering the same components preserves owned simulation state.
+		// Replacing a bound power component needs a separate quiescent bridge rebuild.
+		bCanClaim &= Engine.Get() == BoundPowerUnitEngine.Get() && Clutch.Get() == BoundPowerUnitClutch.Get()
+			&& Gearbox.Get() == BoundPowerUnitGearbox.Get();
+	}
+	if (!bCanClaim)
+	{
+		// No partial claims. Keep a dependency-invalidated entry available for a later GT retry.
+		if (PreviousStep && !PreviousStep->IsStopped())
+		{
+			if (bDependencyNotReady) PreviousStep->InvalidateBindingAndWait();
+			else PreviousStep->StopAndWait();
+		}
+		else if (bDependencyNotReady && (!PreviousStep || !PreviousStep->IsBindingInvalidated()))
+		{
+			// This explicit registration requests a new epoch even if its children are not ready.
+			// Keep the old permanently stopped entry closed; only the fresh pending entry may retry.
+			Candidate->InvalidateBindingAndWait();
+			FScopeLock Lock(&PhysicsStepMutex);
+			PhysicsStep = Candidate;
+		}
+		return false;
+	}
+	if (FixedRuntime)
+	{
+		UWorld* World = GetWorld();
+		auto Host = World ? FModuleManager::GetModuleChecked<FKinetiForgeModule>(TEXT("KinetiForge"))
+			.AcquirePhysicsScene(World->GetPhysicsScene()) : nullptr;
+		// Register disabled; no solver callback may enter until all ownership claims have been published.
+		auto RegisteredStep = Host ? Host->RegisterStep(
+			[FixedRuntime](float DeltaTime, const FVehiclePhysicsExecutionContext& Context)
+			{ FixedRuntime->Update(DeltaTime, Context); }, false,
+			VehicleAsyncTickComponent->bUpdatePhysicsOnGameThread
+				? EVehiclePhysicsExecutionLane::FrozenGameThread : EVehiclePhysicsExecutionLane::Worker) : nullptr;
+		if (!RegisteredStep)
+		{
+			Candidate->InvalidateBindingAndWait();
+			FScopeLock Lock(&PhysicsStepMutex);
+			PhysicsStep = Candidate;
+			return false;
+		}
+		if (PhysicsScene && ScenePhysicsStep) PhysicsScene->UnregisterStep(ScenePhysicsStep);
+		PhysicsScene = MoveTemp(Host);
+		ScenePhysicsStep = RegisteredStep;
+		Candidate = MoveTemp(RegisteredStep);
+	}
+	for (auto* Axle : ClaimedAxles) Axle->PhysicsOwnership.Claim(Candidate);
+	for (auto* Wheel : ClaimedWheels) Wheel->PhysicsOwnership.Claim(Candidate);
+	for (auto* Ownership : ClaimedPowerOwnerships) Ownership->Claim(Candidate);
+	for (auto* Differential : DependentDifferentials) Differential->AddPhysicsDependent(Candidate);
+	if (PreviousStep && PreviousStep != Candidate) PreviousStep->InvalidateBindingAndWait();
+	// A destroyed axle differential must not leave the isolated axle using its last parameter snapshot.
+	for (auto* Axle : ClaimedAxles) Axle->SubmitRuntimeSettings();
+	Candidate->SetAutomaticUpdateEnabled(bUpdatePhysicsAutomatically);
+	{
+		FScopeLock Lock(&PhysicsStepMutex);
+		PhysicsStep = Candidate;
+	}
+	return true;
+}
+
+void UVehicleDriveAssemblyComponent::StopPhysicsUpdates()
+{
+	check(IsInGameThread());
+	if (const auto Step = GetPhysicsStep()) Step->StopAndWait();
+	if (PhysicsScene && ScenePhysicsStep) PhysicsScene->UnregisterStep(ScenePhysicsStep);
+	ScenePhysicsStep.Reset();
+	PhysicsScene.Reset();
+	if (VehicleAsyncTickComponent.IsValid()) VehicleAsyncTickComponent->UnRegisterDriveAssembly(this);
+}
+
+void UVehicleDriveAssemblyComponent::RefreshInvalidatedPhysicsBinding()
+{
+	check(IsInGameThread());
+	const auto Step = GetPhysicsStep();
+	if (!Step || !Step->IsBindingInvalidated() || !IsRegistered() || !HasBegunPlay()) return;
+	if (VehicleAsyncTickComponent.IsValid())
+	{
+		if (VehicleAsyncTickComponent->IsRegistered()) VehicleAsyncTickComponent->RegisterDriveAssembly(this);
+	}
+	else PreparePhysicsStepRegistration();
+}
+
+void UVehicleDriveAssemblyComponent::OnUnregister()
+{
+	StopPhysicsUpdates();
+	Super::OnUnregister();
+}
+
+void UVehicleDriveAssemblyComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	StopPhysicsUpdates();
+	Super::EndPlay(EndPlayReason);
+}
+
+void UVehicleDriveAssemblyComponent::BeginDestroy()
+{
+	// Also cover an unregistered component that never received BeginPlay/OnComponentDestroyed.
+	StopPhysicsUpdates();
+	Super::BeginDestroy();
 }
 
 void UVehicleDriveAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
+	StopPhysicsUpdates();
 	UVehicleUtilities::DestroyAutoGeneratedComponents(AutoGeneratedComponents);
 
 	if (VehicleAsyncTickComponent.IsValid())
@@ -130,189 +443,55 @@ void UVehicleDriveAssemblyComponent::GetLifetimeReplicatedProps(TArray<FLifetime
 
 void UVehicleDriveAssemblyComponent::UpdateInput(float InDeltaTime)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_UpdateInput);
+	check(IsInGameThread());
+	if (!IsInGameThread() || GetPowerUnitBridge()) return; // The simulation owns its pipeline; GT only submits commands and reads results.
+	FVehicleInputSolver::Update(CaptureInputRuntimeSettings(), InputValues, CaptureInputStepContext(), InDeltaTime);
+}
 
-	if (UVehicleGearboxComponent* GearboxRaw = Gearbox.Get())
-	{
-		if (AutoGearboxConfig.bAutomaticGearbox && AutoGearboxConfig.bArcadeAutoGearbox)
-		{
-			InputValues.bSwitchThrottleAndBrake = GearboxRaw->GetCurrentGear() < 0;
-		}
-	}
-	else
-	{
-		InputValues.bSwitchThrottleAndBrake = false;
-	}
-
-	UpdateThrottle(InDeltaTime);
-	UpdateBrake(InDeltaTime);
-	UpdateClutch(InDeltaTime);
-	UpdateSteering(InDeltaTime);
-	UpdateHandbrake(InDeltaTime);
+void UVehicleDriveAssemblyComponent::UpdateInputAxis(EVehicleInputAxis Axis, float InDeltaTime)
+{
+	check(IsInGameThread());
+	if (!IsInGameThread() || GetPowerUnitBridge()) return;
+	FVehicleInputSolver::UpdateAxis(CaptureInputRuntimeSettings(), InputValues, CaptureInputStepContext(), Axis, InDeltaTime);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateThrottle(float InDeltaTime)
 {
-	float RealThrottleInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Brake : InputValues.Raw.Throttle;
-	
-	if (UVehicleGearboxComponent* GearboxRaw = Gearbox.Get())
-	{
-		//if not in gear and should rev-match
-		if (GearboxRaw->GetShouldRevMatch() &&
-			RealThrottleInput < InputAssistConfig.RevMatchMaxThrottle && 
-			FMath::Abs(LocalLinearVelocity.X) > 0.5 && 
-			InputAssistConfig.bRevMatching)
-		{
-			const float Rate = 5.f;
-			InputValues.Smoothened.Throttle += UVehicleUtilities::SafeDivide(InDeltaTime * Rate, GearboxRaw->GetConfig().ShiftDelay);
-			InputValues.Smoothened.Throttle = FMath::Min(InputValues.Smoothened.Throttle, InputAssistConfig.RevMatchMaxThrottle);
-		}
-		//if not in gear and no rev-matching and not sequential
-		else if (!GearboxRaw->GetIsInGear() &&
-			InputAssistConfig.bAutomaticClutch && 
-			!GearboxRaw->GetConfig().bSequentialGearbox)
-		{
-			InputValues.Smoothened.Throttle = 0.f;
-		}
-		else
-		{
-			InputValues.Smoothened.Throttle = FVehicleInputAxisConfig::InterpInputValueConstant(
-				InputValues.Smoothened.Throttle, 
-				RealThrottleInput, InDeltaTime, 
-				InputConfig.Throttle.InterpSpeed
-			);
-			InputValues.Smoothened.Throttle *= !(InputAssistConfig.bEVClutchLogic && GearboxRaw->GetCurrentGearRatio() == 0.f);
-		}
-	}
-	else
-	{
-		InputValues.Smoothened.Throttle = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Throttle, RealThrottleInput, InDeltaTime, InputConfig.Throttle.InterpSpeed);
-	}
-	InputValues.Smoothened.Throttle = FMath::Clamp(InputValues.Smoothened.Throttle, 0.f, 1.f);
-
-	if (IsValid(InputConfig.Throttle.ResponseCurve))
-	{
-		InputValues.Final.Throttle = InputConfig.Throttle.ResponseCurve->GetFloatValue(InputValues.Smoothened.Throttle);
-	}
-	else
-	{
-		InputValues.Final.Throttle = InputValues.Smoothened.Throttle;
-	}
-	InputValues.Final.Throttle = FMath::Clamp(InputValues.Final.Throttle, 0.f, 1.f);
+	UpdateInputAxis(EVehicleInputAxis::Throttle, InDeltaTime);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateBrake(float InDeltaTime)
 {
-	float RealBrakeInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Throttle : InputValues.Raw.Brake;
-
-	//update brake
-	InputValues.Smoothened.Brake = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Brake, RealBrakeInput, InDeltaTime, InputConfig.Brake.InterpSpeed);
-	InputValues.Smoothened.Brake = FMath::Clamp(InputValues.Smoothened.Brake, 0.f, 1.f);
-
-	if (IsValid(InputConfig.Brake.ResponseCurve))
-	{
-		InputValues.Final.Brake = InputConfig.Brake.ResponseCurve->GetFloatValue(InputValues.Smoothened.Brake);
-	}
-	else
-	{
-		InputValues.Final.Brake = InputValues.Smoothened.Brake;
-	}
-	InputValues.Final.Brake = FMath::Clamp(InputValues.Final.Brake, 0.f, 1.f);
+	UpdateInputAxis(EVehicleInputAxis::Brake, InDeltaTime);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateClutch(float InDeltaTime)
 {
-	UVehicleGearboxComponent* GearboxRaw = Gearbox.Get();
-	UVehicleEngineComponent * EngineRaw = Engine.Get();
-
-	if (InputAssistConfig.bEVClutchLogic)
-	{
-		InputValues.Smoothened.Clutch = 0.f;
-	}
-	else if (InputAssistConfig.bAutomaticClutch && GearboxRaw && EngineRaw)
-	{
-		//check if clutch has to be engaged
-		bool bNotInGearAndNotSequential = !(GearboxRaw->GetIsInGear() || GearboxRaw->GetConfig().bSequentialGearbox);
-		float TargetClutchValue = (InputValues.Raw.Handbrake > 0.9 || bNotInGearAndNotSequential) ? 1.f : InputValues.Raw.Clutch;
-
-		//take engine rpm into account
-		float Bias = FMath::GetMappedRangeValueClamped(InputAssistConfig.AutoClutchRange, FVector2f(1, 0), EngineRaw->GetRPM());
-		TargetClutchValue = FMath::Clamp(TargetClutchValue + Bias, 0.f, 1.f);
-		InputValues.Smoothened.Clutch = FMath::Min(InputValues.Smoothened.Clutch + Bias, TargetClutchValue);
-
-		//get interp speed, when changing gear, clutch should engage faster than gear changes
-		FVector2f FinalInterpSpeed;
-		float Rate = 10.f;
-		FinalInterpSpeed.Y = InputConfig.Clutch.InterpSpeed.Y;
-		FinalInterpSpeed.X = bNotInGearAndNotSequential ? UVehicleUtilities::SafeDivide(Rate, GearboxRaw->GetConfig().ShiftDelay) : InputConfig.Clutch.InterpSpeed.X;
-
-		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, TargetClutchValue, InDeltaTime, FinalInterpSpeed);
-	}
-	else
-	{
-		InputValues.Smoothened.Clutch = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Clutch, InputValues.Raw.Clutch, InDeltaTime, InputConfig.Clutch.InterpSpeed);
-	}
-	InputValues.Smoothened.Clutch = FMath::Clamp(InputValues.Smoothened.Clutch, 0.f, 1.f);
-
-	if (IsValid(InputConfig.Clutch.ResponseCurve))
-	{
-		InputValues.Final.Clutch = InputConfig.Clutch.ResponseCurve->GetFloatValue(InputValues.Smoothened.Clutch);
-	}
-	else
-	{
-		InputValues.Final.Clutch = InputValues.Smoothened.Clutch;
-	}
-	InputValues.Final.Clutch = FMath::Clamp(InputValues.Final.Clutch, 0.f, 1.f);
+	UpdateInputAxis(EVehicleInputAxis::Clutch, InDeltaTime);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateSteering(float InDeltaTime)
 {
-	float RealSteeringInput = InputValues.Raw.Steering;
-	float Scale = 1.f;
-
-	//reduce the steering value when driving at high speed
-	if (InputConfig.HighSpeedSteeringScale)
-	{
-		Scale = InputConfig.HighSpeedSteeringScale->GetFloatValue(FMath::Abs(LocalLinearVelocity.X));
-	}
-
-	InputValues.Smoothened.Steering = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Steering, RealSteeringInput, InDeltaTime, InputConfig.Steering.InterpSpeed);
-	InputValues.Smoothened.Steering = FMath::Clamp(InputValues.Smoothened.Steering, -1.f, 1.f);
-
-	if (IsValid(InputConfig.Steering.ResponseCurve))
-	{
-		float CurveValue = InputConfig.Steering.ResponseCurve->GetFloatValue(FMath::Abs(InputValues.Smoothened.Steering));
-		InputValues.Final.Steering = CurveValue * FMath::Sign(InputValues.Smoothened.Steering) * Scale;
-	}
-	else
-	{
-		InputValues.Final.Steering = InputValues.Smoothened.Steering * Scale;
-	}
-	InputValues.Final.Steering = FMath::Clamp(InputValues.Final.Steering, -1.f, 1.f);
+	UpdateInputAxis(EVehicleInputAxis::Steering, InDeltaTime);
 }
 
 void UVehicleDriveAssemblyComponent::UpdateHandbrake(float InDeltaTime)
 {
-	float RealThrottleInput = InputValues.bSwitchThrottleAndBrake ? InputValues.Raw.Brake : InputValues.Raw.Throttle;
+	UpdateInputAxis(EVehicleInputAxis::Handbrake, InDeltaTime);
+}
 
-	//update handbrake
-	float HandbrakeTarget = InputValues.Raw.Handbrake;
-	if (InputAssistConfig.bAutoHold
-		&& FMath::Abs(LocalLinearVelocity.X) < 0.1
-		&& RealThrottleInput < SMALL_NUMBER
-		&& !bIsInAir)HandbrakeTarget = 1.f;
-	InputValues.Smoothened.Handbrake = FVehicleInputAxisConfig::InterpInputValueConstant(InputValues.Smoothened.Handbrake, HandbrakeTarget, InDeltaTime, InputConfig.Handbrake.InterpSpeed);
-	InputValues.Smoothened.Handbrake = FMath::Clamp(InputValues.Smoothened.Handbrake, 0.f, 1.f);
-
-	if (IsValid(InputConfig.Handbrake.ResponseCurve))
-	{
-		InputValues.Final.Handbrake = InputConfig.Handbrake.ResponseCurve->GetFloatValue(InputValues.Smoothened.Handbrake);
-	}
-	else
-	{
-		InputValues.Final.Handbrake = InputValues.Smoothened.Handbrake;
-	}
-	InputValues.Final.Handbrake = FMath::Clamp(InputValues.Final.Handbrake, 0.f, 1.f);
+FVehicleInputStepContext UVehicleDriveAssemblyComponent::CaptureInputStepContext() const
+{
+	check(IsInGameThread());
+	FVehicleInputStepContext Context;
+	Context.bHasGearbox = Gearbox.IsValid();
+	Context.bHasEngine = Engine.IsValid();
+	Context.GearboxConfig = GetGearboxConfigForInput();
+	Context.GearboxState = GetGearboxStateForInput();
+	Context.EngineRPM = GetEngineRPMForInput();
+	Context.LocalLongitudinalVelocity = LocalLinearVelocity.X;
+	Context.bIsInAir = bIsInAir;
+	return Context;
 }
 
 void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
@@ -322,7 +501,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 
 	AutoGearboxCount += InDeltaTime;
 	//reset timer
-	//±£¡ÙŒÛ≤Ó
+	//‰øùÁïôËØØÂ∑Æ
 	bool AutoGearboxTimerOverFlowed = AutoGearboxCount > 0.f;
 	AutoGearboxCount -= AutoGearboxConfig.AutomaticGearboxRefreshTime * AutoGearboxTimerOverFlowed;
 
@@ -401,7 +580,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 		EngineRaw->GetMaxRPM(),
 		SpeedRangeOfEachGear);
 
-	//»Áπ˚º±…≤≥µ ±£¨“≤œ£Õ˚æ°‘ÁΩµµµ£¨∑¢∂Øª˙–≠÷˙÷∆∂Ø
+	//Â¶ÇÊûúÊÄ•ÂàπËΩ¶Êó∂Ôºå‰πüÂ∏åÊúõÂ∞ΩÊó©ÈôçÊ°£ÔºåÂèëÂä®Êú∫ÂçèÂä©Âà∂Âä®
 	float Input = FMath::Max(InputValues.Final.Throttle, InputValues.Final.Brake);
 
 	float UpShiftTime = AutoGearboxConfig.UpShiftRPM;
@@ -465,9 +644,9 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 	//check sign
 	if (LocalLinearVelocity.X < 0)TargetGear = -TargetGear;
 
-	// 1. ƒø±ÍµµŒª≤ªµ»”⁄µ±«∞µµŒª≤≈ƒ‹ªªµ≤
-	// 2. ƒø±ÍµµŒª∫Õµ±«∞µµŒª∑ΩœÚœ‡Õ¨≤≈ƒ‹ªªµ≤
-	// 3. À…ø™…≤≥µ ±≤≈ƒ‹…˝µµ
+	// 1. ÁõÆÊ†áÊ°£‰Ωç‰∏çÁ≠â‰∫éÂΩìÂâçÊ°£‰ΩçÊâçËÉΩÊç¢Êå°
+	// 2. ÁõÆÊ†áÊ°£‰ΩçÂíåÂΩìÂâçÊ°£‰ΩçÊñπÂêëÁõ∏ÂêåÊâçËÉΩÊç¢Êå°
+	// 3. ÊùæÂºÄÂàπËΩ¶Êó∂ÊâçËÉΩÂçáÊ°£
 	if (GearboxRaw->GetCurrentGear() != TargetGear
 		&& TargetGear * GearboxRaw->GetCurrentGear() > 0
 		&& !(GearingUp && InputValues.Final.Brake > SMALL_NUMBER))
@@ -481,18 +660,7 @@ void UVehicleDriveAssemblyComponent::UpdateAutomaticGearbox(float InDeltaTime)
 void UVehicleDriveAssemblyComponent::ServerInputThrottle_Implementation(float InValue, bool bDirectInput)
 {
 	InValue = FMath::Clamp(InValue, 0.f, 1.f);
-	InputValues.Raw.Throttle = InValue;
-	if (bDirectInput)
-	{
-		if (InputValues.bSwitchThrottleAndBrake)
-		{
-			InputValues.Smoothened.Brake = InValue;
-		}
-		else
-		{
-			InputValues.Smoothened.Throttle = InValue;
-		}
-	}
+	ApplyInputCommand(EVehicleInputAxis::Throttle, InValue, bDirectInput);
 	MultiCastInputThrottle(InValue, bDirectInput);
 }
 
@@ -502,36 +670,14 @@ void UVehicleDriveAssemblyComponent::MultiCastInputThrottle_Implementation(float
 	APawn* p = Cast<APawn>(GetOwner());
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
-		InputValues.Raw.Throttle = InValue;
-		if (bDirectInput)
-		{
-			if (InputValues.bSwitchThrottleAndBrake)
-			{
-				InputValues.Smoothened.Brake = InValue;
-			}
-			else
-			{
-				InputValues.Smoothened.Throttle = InValue;
-			}
-		}
+		ApplyInputCommand(EVehicleInputAxis::Throttle, InValue, bDirectInput);
 	}
 }
 
 void UVehicleDriveAssemblyComponent::ServerInputBrake_Implementation(float InValue, bool bDirectInput)
 {
 	InValue = FMath::Clamp(InValue, 0.f, 1.f);
-	InputValues.Raw.Brake = InValue;
-	if (bDirectInput)
-	{
-		if (InputValues.bSwitchThrottleAndBrake)
-		{
-			InputValues.Smoothened.Throttle = InValue;
-		}
-		else
-		{
-			InputValues.Smoothened.Brake = InValue;
-		}
-	}
+	ApplyInputCommand(EVehicleInputAxis::Brake, InValue, bDirectInput);
 	MultiCastInputBrake(InValue, bDirectInput);
 }
 
@@ -541,29 +687,14 @@ void UVehicleDriveAssemblyComponent::MultiCastInputBrake_Implementation(float In
 	APawn* p = Cast<APawn>(GetOwner());
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
-		InputValues.Raw.Brake = InValue;
-		if (bDirectInput)
-		{
-			if (InputValues.bSwitchThrottleAndBrake)
-			{
-				InputValues.Smoothened.Throttle = InValue;
-			}
-			else
-			{
-				InputValues.Smoothened.Brake = InValue;
-			}
-		}
+		ApplyInputCommand(EVehicleInputAxis::Brake, InValue, bDirectInput);
 	}
 }
 
 void UVehicleDriveAssemblyComponent::ServerInputClutch_Implementation(float InValue, bool bDirectInput)
 {
 	InValue = FMath::Clamp(InValue, 0.f, 1.f);
-	InputValues.Raw.Clutch = InValue;
-	if (bDirectInput)
-	{
-		InputValues.Smoothened.Clutch = InValue;
-	}
+	ApplyInputCommand(EVehicleInputAxis::Clutch, InValue, bDirectInput);
 	MultiCastInputClutch(InValue, bDirectInput);
 }
 
@@ -573,22 +704,14 @@ void UVehicleDriveAssemblyComponent::MultiCastInputClutch_Implementation(float I
 	APawn* p = Cast<APawn>(GetOwner());
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
-		InputValues.Raw.Clutch = InValue;
-		if (bDirectInput)
-		{
-			InputValues.Smoothened.Clutch = InValue;
-		}
+		ApplyInputCommand(EVehicleInputAxis::Clutch, InValue, bDirectInput);
 	}
 }
 
 void UVehicleDriveAssemblyComponent::ServerInputSteering_Implementation(float InValue, bool bDirectInput)
 {
 	InValue = FMath::Clamp(InValue, -1.f, 1.f);
-	InputValues.Raw.Steering = InValue;
-	if (bDirectInput)
-	{
-		InputValues.Smoothened.Steering = InValue;
-	}
+	ApplyInputCommand(EVehicleInputAxis::Steering, InValue, bDirectInput);
 	MultiCastInputSteering(InValue, bDirectInput);
 }
 
@@ -598,21 +721,13 @@ void UVehicleDriveAssemblyComponent::MultiCastInputSteering_Implementation(float
 	APawn* p = Cast<APawn>(GetOwner());
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
-		InputValues.Raw.Steering = InValue;
-		if (bDirectInput)
-		{
-			InputValues.Smoothened.Steering = InValue;
-		}
+		ApplyInputCommand(EVehicleInputAxis::Steering, InValue, bDirectInput);
 	}
 }
 
 void UVehicleDriveAssemblyComponent::ServerInputHandbrake_Implementation(float InValue, bool bDirectInput)
 {
-	InputValues.Raw.Handbrake = InValue;
-	if (bDirectInput)
-	{
-		InputValues.Smoothened.Handbrake = InValue;
-	}
+	ApplyInputCommand(EVehicleInputAxis::Handbrake, InValue, bDirectInput);
 	MultiCastInputHandbrake(InValue, bDirectInput);
 }
 
@@ -621,11 +736,7 @@ void UVehicleDriveAssemblyComponent::MultiCastInputHandbrake_Implementation(floa
 	APawn* p = Cast<APawn>(GetOwner());
 	if (p && !p->IsLocallyControlled() && !p->HasAuthority())
 	{
-		InputValues.Raw.Handbrake = InValue;
-		if (bDirectInput)
-		{
-			InputValues.Smoothened.Handbrake = InValue;
-		}
+		ApplyInputCommand(EVehicleInputAxis::Handbrake, InValue, bDirectInput);
 	}
 }
 
@@ -726,7 +837,21 @@ void UVehicleDriveAssemblyComponent::OnRep_ServerVehicleEngineOperationMode()
 // Called every frame
 void UVehicleDriveAssemblyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_GameThreadTick);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	// A deferred bridge may become ready after child BeginPlay. Initialize it before
+	// rebinding so the first eligible GT refresh can publish a complete scene entry.
+	if (bPowerUnitBridgeRequested)
+	{
+		if (!GetPowerUnitBridge().IsValid() && !bPowerUnitBridgeInitializationFailed) InitializePowerUnitBridge();
+		RefreshPowerUnitBridge();
+	}
+	if (BoundAssemblyBodies != CaptureAssemblyBodyIdentities())
+	{
+		if (const auto Step = GetPhysicsStep()) Step->InvalidateBindingAndWait();
+	}
+	RefreshInvalidatedPhysicsBinding();
+	if (const auto Step = GetPhysicsStep()) Step->SetAutomaticUpdateEnabled(bUpdatePhysicsAutomatically);
 
 	// ...
 	if (Engine.IsValid() && Gearbox.IsValid() && Chassis.IsValid())
@@ -741,157 +866,26 @@ void UVehicleDriveAssemblyComponent::TickComponent(float DeltaTime, ELevelTick T
 
 void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_UpdatePhysics);
-
-	PhysicsDeltaTime = InDeltaTime;
-
-	if (!(Engine.IsValid() && Clutch.IsValid() && Gearbox.IsValid() && TransferCase.IsValid()))
+	// Preserve the float-only Blueprint API, borrowing only the solver of the actual
+	// callback dispatching this thread. Do not resolve a solver from an arbitrary GT call.
+	if (const auto* Context = FVehiclePhysicsExecutionContext::GetCurrent())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("The drivetrain is not complete"));
+		UpdatePhysics(InDeltaTime, *Context);
 		return;
 	}
-
-	// get pointers
-	UVehicleEngineComponent* EngineRaw = Engine.Get();
-	UVehicleClutchComponent* ClutchRaw = Clutch.Get();
-	UVehicleGearboxComponent* GearboxRaw = Gearbox.Get();
-	UVehicleDifferentialComponent* TransferCaseRaw = TransferCase.Get();
-	TArray<UVehicleAxleAssemblyComponent*, TInlineAllocator<8>> AxlesRaw;
-
-	for (TWeakObjectPtr<UVehicleAxleAssemblyComponent> AxlePtr : Axles)
+	if (auto* Solver = AsyncTickPhysics::GetCurrentSolver())
 	{
-		if (UVehicleAxleAssemblyComponent* AxleRaw = AxlePtr.Get())
-		{
-			AxlesRaw.Add(AxleRaw);
-		}
+		const FVehiclePhysicsExecutionContext Context(*static_cast<Chaos::FPBDRigidsSolver*>(Solver));
+		UpdatePhysics(InDeltaTime, Context);
+		return;
 	}
+	if (IsInGameThread()) RefreshInvalidatedPhysicsBinding(); // GT may prepare a new binding; executing it still requires a real callback context.
+	if (const auto Step = GetPhysicsStep()) Step->TryExecute(InDeltaTime);
+}
 
-	// get substeps
-	int32 SubSteps = FMath::CeilToInt32(UVehicleUtilities::SafeDivide(InDeltaTime, SubstepDeltaTime));
-	SubSteps = FMath::Max(SubSteps, 1);
-
-	float RealSubstepDeltaTime = InDeltaTime / (float)SubSteps;
-
-	/**
-	* ==================== PreStep ====================
-	*/
-	for (UVehicleAxleAssemblyComponent* Axle : AxlesRaw)
-	{
-		if (Axle)
-		{
-			Axle->PreStepAxle(
-				InDeltaTime,
-				InputValues.Final.Steering
-			);
-		}
-	}
-
-	/**
-	* ==================== SubStep ====================
-	*/
-	for (int i = 0; i < SubSteps; i++)
-	{
-		UpdateInput(RealSubstepDeltaTime);
-
-		// update engine
-		float ClutchTorque = (NumOfDriveAxles > 0) ? ClutchRaw->GetCluchTorque() : 0.f;
-		// sequential transmission disables spark when shifting up
-		bool bDisableSpark = GearboxRaw->GetShouldCutSpark();
-		EngineRaw->UpdatePhysics(RealSubstepDeltaTime, InputValues.Final.Throttle, ClutchTorque, bDisableSpark);
-
-		// get gearbox output torque
-		float GearboxOutputTorque = 0.f;
-		GearboxRaw->UpdateOutputShaft(ClutchTorque, GearboxOutputTorque);
-
-		// update transfercase
-		float SumAxleInertia = 0.f;
-		float GearboxOutputShaftAngularVelocity = 0.f;
-		float EffectiveDriveShaftStiffness = 0.f;
-		NumOfDriveAxles = TransferCaseRaw->SubstepTransferCase(
-			AxlesRaw,
-			RealSubstepDeltaTime,
-			GearboxOutputTorque,
-			InputValues.Final.Brake,
-			InputValues.Final.Handbrake,
-			InputAssistConfig.bBurnOutAssist
-			&& InputValues.Final.Throttle > 0.9
-			&& InputValues.Final.Brake > 0.9
-			&& LocalLinearVelocity.X < 1.f,
-			GearboxOutputShaftAngularVelocity,
-			SumAxleInertia,
-			EffectiveDriveShaftStiffness
-		);
-
-		// get gearbox inputshaft angular velocity
-		float GearboxInputShaftVelocity = 0.f;
-		float GearboxInputShaftEffectiveInertia = 0.f; // already defined
-		float CurrentGearboxRatio = 0.f;
-		GearboxRaw->UpdateInputShaft(
-			GearboxOutputShaftAngularVelocity,
-			SumAxleInertia,
-			EffectiveDriveShaftStiffness,
-			GearboxInputShaftVelocity,
-			GearboxInputShaftEffectiveInertia,
-			EffectiveDriveShaftStiffness,
-			CurrentGearboxRatio
-		);
-
-		// get clutch torque for next frame
-		ClutchRaw->UpdatePhysics(
-			RealSubstepDeltaTime,
-			InputValues.Final.Clutch,
-			GearboxInputShaftVelocity,
-			GearboxInputShaftEffectiveInertia,
-			CurrentGearboxRatio,
-			EffectiveDriveShaftStiffness,
-			EngineRaw->GetAngularVelocity(),
-			EngineRaw->GetEngineInertia(),
-			EngineRaw->GetMaxEngineTorque()
-		);
-	}
-
-	/**
-	* ==================== PostStep ====================
-	*/
-	for (UVehicleAxleAssemblyComponent* Axle : AxlesRaw)
-	{
-		if (Axle)
-		{
-			Axle->PostStepAxle();
-		}
-	}
-
-	// get velocity
-	NumOfWheelsOnGround = 0;
-	FVector3f SumLocalLinVel = FVector3f(0.f);
-	FVector3f SumWorldLinVel = FVector3f(0.f);
-	for (UVehicleAxleAssemblyComponent* Axle : AxlesRaw)
-	{
-		if (!Axle)continue;
-
-		// calculate linear velocity
-		FVector3f LocalVel;
-		FVector3f WorldVel;
-		int32 AxleNumGroundedWheels = Axle->GetNumOfWheelsOnGround();
-		NumOfWheelsOnGround += AxleNumGroundedWheels;
-		Axle->GetLinearVelocity(LocalVel, WorldVel);
-		LocalVel *= AxleNumGroundedWheels;
-		WorldVel *= AxleNumGroundedWheels;
-		SumLocalLinVel += LocalVel;
-		SumWorldLinVel += WorldVel;
-	}
-	bIsInAir = !NumOfWheelsOnGround;
-	float NumGroundedWheelsInv = UVehicleUtilities::SafeDivide(1.f, (float)NumOfWheelsOnGround);
-	LocalLinearVelocity = SumLocalLinVel * NumGroundedWheelsInv;
-	WorldLinearVelocity = SumWorldLinVel * NumGroundedWheelsInv;
-	LocalVelocityClamped = LocalLinearVelocity.SquaredLength() > 0.01f ? LocalLinearVelocity : FVector3f(0.f);
-
-	// get acceleration
-	FVector3f LastAbsVelocity = AbsoluteWorldLinearVelocity;
-	AbsoluteWorldLinearVelocity = 0.01f * (FVector3f)UAsyncTickFunctions::ATP_GetLinearVelocity(Chassis.Get());
-	WorldAcceleration = UVehicleUtilities::SafeDivide(AbsoluteWorldLinearVelocity - LastAbsVelocity, InDeltaTime);
-	FQuat4f ChassisRot = (FQuat4f)UAsyncTickFunctions::ATP_GetTransform(Chassis.Get()).GetRotation();
-	LocalAcceleration = ChassisRot.UnrotateVector(WorldAcceleration);
+void UVehicleDriveAssemblyComponent::UpdatePhysics(float InDeltaTime, const FVehiclePhysicsExecutionContext& Context)
+{
+	if (const auto Step = GetPhysicsStep()) Step->TryExecute(InDeltaTime, Context);
 }
 
 void UVehicleDriveAssemblyComponent::InputThrottle(float InValue, bool bDirectInput)
@@ -899,18 +893,7 @@ void UVehicleDriveAssemblyComponent::InputThrottle(float InValue, bool bDirectIn
 	InValue = FMath::Clamp(InValue, 0.f, 1.f);
 	if (!GetOwner()->HasAuthority())
 	{
-		InputValues.Raw.Throttle = InValue;
-		if (bDirectInput)
-		{
-			if (InputValues.bSwitchThrottleAndBrake)
-			{
-				InputValues.Smoothened.Brake = InValue;
-			}
-			else
-			{
-				InputValues.Smoothened.Throttle = InValue;
-			}
-		}
+		ApplyInputCommand(EVehicleInputAxis::Throttle, InValue, bDirectInput);
 	}
 	ServerInputThrottle(InValue, bDirectInput);
 }
@@ -920,18 +903,7 @@ void UVehicleDriveAssemblyComponent::InputBrake(float InValue, bool bDirectInput
 	InValue = FMath::Clamp(InValue, 0.f, 1.f);
 	if (!GetOwner()->HasAuthority())
 	{
-		InputValues.Raw.Brake = InValue;
-		if (bDirectInput)
-		{
-			if (InputValues.bSwitchThrottleAndBrake)
-			{
-				InputValues.Smoothened.Throttle = InValue;
-			}
-			else
-			{
-				InputValues.Smoothened.Brake = InValue;
-			}
-		}
+		ApplyInputCommand(EVehicleInputAxis::Brake, InValue, bDirectInput);
 	}
 	ServerInputBrake(InValue, bDirectInput);
 }
@@ -941,11 +913,7 @@ void UVehicleDriveAssemblyComponent::InputClutch(float InValue, bool bDirectInpu
 	InValue = FMath::Clamp(InValue, 0.f, 1.f);
 	if (!GetOwner()->HasAuthority())
 	{
-		InputValues.Raw.Clutch = InValue;
-		if (bDirectInput)
-		{
-			InputValues.Smoothened.Clutch = InValue;
-		}
+		ApplyInputCommand(EVehicleInputAxis::Clutch, InValue, bDirectInput);
 	}
 	ServerInputClutch(InValue, bDirectInput);
 }
@@ -955,11 +923,7 @@ void UVehicleDriveAssemblyComponent::InputSteering(float InValue, bool bDirectIn
 	InValue = FMath::Clamp(InValue, -1.f, 1.f);
 	if (!GetOwner()->HasAuthority())
 	{
-		InputValues.Raw.Steering = InValue;
-		if (bDirectInput)
-		{
-			InputValues.Smoothened.Steering = InValue;
-		}
+		ApplyInputCommand(EVehicleInputAxis::Steering, InValue, bDirectInput);
 	}
 	ServerInputSteering(InValue, bDirectInput);
 }
@@ -968,11 +932,7 @@ void UVehicleDriveAssemblyComponent::InputHandbrake(float InValue, bool bDirectI
 {
 	if (!GetOwner()->HasAuthority())
 	{
-		InputValues.Raw.Handbrake = InValue;
-		if (bDirectInput)
-		{
-			InputValues.Smoothened.Handbrake = InValue;
-		}
+		ApplyInputCommand(EVehicleInputAxis::Handbrake, InValue, bDirectInput);
 	}
 	ServerInputHandbrake(InValue, bDirectInput);
 }
@@ -1335,6 +1295,211 @@ TArray<UPrimitiveComponent*> UVehicleDriveAssemblyComponent::GetRayCastHitCompon
 	return HitComps;
 }
 
+TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> UVehicleDriveAssemblyComponent::GetPowerUnitBridge() const
+{
+	FScopeLock Lock(&PowerUnitBridgeMutex);
+	return PowerUnitBridge;
+}
+
+FVehicleInputRuntimeSettings UVehicleDriveAssemblyComponent::CaptureInputRuntimeSettings() const
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Input_CaptureSettings);
+	check(IsInGameThread());
+	FVehicleInputRuntimeSettings Settings;
+	const auto CopyCurve = [](UCurveFloat* Source, FVehicleInputCurve& Destination)
+	{
+		Destination.bEnabled = IsValid(Source);
+		if (Destination.bEnabled)
+		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Input_CopyCurve);
+			Destination.Curve = Source->FloatCurve;
+		}
+	};
+	const auto CopyAxis = [&CopyCurve](const FVehicleInputAxisConfig& Source, FVehicleInputAxisRuntimeConfig& Destination)
+	{
+		Destination.InterpSpeed = Source.InterpSpeed;
+		CopyCurve(Source.ResponseCurve, Destination.ResponseCurve);
+	};
+	CopyAxis(InputConfig.Throttle, Settings.Throttle);
+	CopyAxis(InputConfig.Brake, Settings.Brake);
+	CopyAxis(InputConfig.Clutch, Settings.Clutch);
+	CopyAxis(InputConfig.Steering, Settings.Steering);
+	CopyAxis(InputConfig.Handbrake, Settings.Handbrake);
+	CopyCurve(InputConfig.HighSpeedSteeringScale, Settings.HighSpeedSteeringScale);
+	Settings.Assist = InputAssistConfig;
+	Settings.bAutomaticGearbox = AutoGearboxConfig.bAutomaticGearbox;
+	Settings.bArcadeAutoGearbox = AutoGearboxConfig.bArcadeAutoGearbox;
+	Settings.SubstepDeltaTime = SubstepDeltaTime;
+	return Settings;
+}
+
+void UVehicleDriveAssemblyComponent::ApplyInputCommand(EVehicleInputAxis Axis, float Input, bool bDirectInput)
+{
+	const FVehicleInputCommand Command{Axis, Input, bDirectInput, InputValues.bSwitchThrottleAndBrake};
+	// The legacy caller still owns its pipeline. In the isolated lane this is only a GT view.
+	FVehicleInputSolver::ApplyCommand(InputValues, Command);
+	RequestedInputRaw = InputValues.Raw;
+	if (bPowerUnitBridgeRequested)
+	{
+		check(IsInGameThread());
+		if (TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> Bridge = GetPowerUnitBridge())
+		{
+			Bridge->RequestInput(Command);
+		}
+		// Before deferred initialization, InputValues itself supplies the one-time seed.
+	}
+}
+
+bool UVehicleDriveAssemblyComponent::InitializePowerUnitBridge()
+{
+	check(IsInGameThread());
+	if (GetPowerUnitBridge().IsValid()) return true;
+	UVehicleEngineComponent* EngineRaw = Engine.Get();
+	UVehicleClutchComponent* ClutchRaw = Clutch.Get();
+	UVehicleGearboxComponent* GearboxRaw = Gearbox.Get();
+	UVehicleDifferentialComponent* TransferCaseRaw = TransferCase.Get();
+	if (!EngineRaw || !ClutchRaw || !GearboxRaw || !TransferCaseRaw) return false;
+	// Existing components may BeginPlay after this assembly; defer until all initial caches are ready.
+	if (!EngineRaw->HasBegunPlay() || !ClutchRaw->HasBegunPlay() || !GearboxRaw->HasBegunPlay()) return false;
+	bool bSharedPowerComponent = false;
+	TArray<UVehicleDriveAssemblyComponent*> OtherAssemblies;
+	if (AActor* Owner = GetOwner()) Owner->GetComponents(OtherAssemblies);
+	for (UVehicleDriveAssemblyComponent* Other : OtherAssemblies)
+	{
+		if (Other == this) continue;
+		bSharedPowerComponent |= Other->GetEngine() == EngineRaw || Other->GetClutch() == ClutchRaw || Other->GetGearbox() == GearboxRaw;
+		bSharedPowerComponent |= (Other->bUseExistingEngineComponent && Other->EngineComponentName == EngineRaw->GetFName())
+			|| (Other->bUseExistingClutchComponent && Other->ClutchComponentName == ClutchRaw->GetFName())
+			|| (Other->bUseExistingGearboxComponent && Other->GearboxComponentName == GearboxRaw->GetFName());
+	}
+	if (bSharedPowerComponent || !EngineRaw->CanBindPowerUnitBridge()
+		|| !ClutchRaw->CanBindPowerUnitBridge() || !GearboxRaw->CanBindPowerUnitBridge())
+	{
+		bPowerUnitBridgeInitializationFailed = true;
+		UE_LOG(LogTemp, Warning, TEXT("%s: isolated power-unit runtime cannot own components shared by another DriveAssembly. Use distinct power components for each assembly."), *GetName());
+		return false;
+	}
+
+	FVehiclePowerUnitRuntime Runtime;
+	FVehicleEngineRuntimeSettings EngineSettings = EngineRaw->CaptureRuntimeSettings();
+	Runtime.EngineParameters = EngineSettings.Parameters;
+	Runtime.TurboConfig = EngineSettings.TurboConfig;
+	Runtime.ExhaustConfig = EngineSettings.ExhaustConfig;
+	Runtime.TorqueLUT = MoveTemp(EngineSettings.TorqueLUT);
+	Runtime.ClutchConfig = ClutchRaw->GetConfig();
+	Runtime.GearboxConfig = GearboxRaw->GetConfig();
+	Runtime.GearboxState = GearboxRaw->CaptureRuntimeSettingsState();
+	if (!Runtime.Initialize())
+	{
+		bPowerUnitBridgeInitializationFailed = true;
+		UE_LOG(LogTemp, Warning, TEXT("%s: isolated power-unit runtime requires valid forward/reverse gear counts."), *GetName());
+		return false;
+	}
+	// Seed once. Subsequent settings must never overwrite integrating state with a displayed result.
+	Runtime.EngineState = EngineRaw->GetEngineState();
+	Runtime.ClutchState = ClutchRaw->GetClutchState();
+	FVehicleDriveInputRuntime DriveInput;
+	DriveInput.Settings = CaptureInputRuntimeSettings();
+	DriveInput.InputValues = InputValues;
+	RequestedInputRaw = InputValues.Raw;
+	DriveInput.Telemetry.PhysicsDeltaTime = PhysicsDeltaTime;
+	DriveInput.Telemetry.NumOfWheelsOnGround = NumOfWheelsOnGround;
+	DriveInput.Telemetry.NumOfDriveAxles = NumOfDriveAxles;
+	DriveInput.Telemetry.bIsInAir = bIsInAir;
+	DriveInput.Telemetry.AbsoluteWorldLinearVelocity = AbsoluteWorldLinearVelocity;
+	DriveInput.Telemetry.LocalLinearVelocity = LocalLinearVelocity;
+	DriveInput.Telemetry.WorldLinearVelocity = WorldLinearVelocity;
+	DriveInput.Telemetry.LocalVelocityClamped = LocalVelocityClamped;
+	DriveInput.Telemetry.WorldAcceleration = WorldAcceleration;
+	DriveInput.Telemetry.LocalAcceleration = LocalAcceleration;
+	TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> NewBridge =
+		MakeShared<FVehiclePowerUnitBridge, ESPMode::ThreadSafe>(MoveTemp(Runtime), MoveTemp(DriveInput), TransferCaseRaw->GetConfig());
+	const bool bEngineBound = EngineRaw->BindPowerUnitBridge(NewBridge);
+	const bool bClutchBound = ClutchRaw->BindPowerUnitBridge(NewBridge);
+	const bool bGearboxBound = GearboxRaw->BindPowerUnitBridge(NewBridge);
+	check(bEngineBound && bClutchBound && bGearboxBound);
+	if (!bEngineBound || !bClutchBound || !bGearboxBound)
+	{
+		bPowerUnitBridgeInitializationFailed = true;
+		return false;
+	}
+	{
+		FScopeLock Lock(&PowerUnitBridgeMutex);
+		BoundPowerUnitEngine = EngineRaw;
+		BoundPowerUnitClutch = ClutchRaw;
+		BoundPowerUnitGearbox = GearboxRaw;
+		PowerUnitBridge = MoveTemp(NewBridge);
+	}
+	SubmitTransferCaseRuntimeSettings();
+	return true;
+}
+
+void UVehicleDriveAssemblyComponent::SubmitTransferCaseRuntimeSettings()
+{
+	check(IsInGameThread());
+	if (const auto Bridge = GetPowerUnitBridge())
+	{
+		if (UVehicleDifferentialComponent* TransferCaseRaw = TransferCase.Get())
+		{
+			TransferCaseRaw->AddConfigurationConsumer(this);
+			Bridge->SubmitTransferCaseConfig(TransferCaseRaw->GetConfig());
+		}
+	}
+}
+
+void UVehicleDriveAssemblyComponent::RefreshPowerUnitBridge()
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_RefreshPowerUnitBridge);
+	check(IsInGameThread());
+	TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> Bridge = GetPowerUnitBridge();
+	if (!Bridge.IsValid()) return;
+	const FVehiclePowerUnitResult Result = Bridge->ReadResult();
+	InputValues = Result.InputValues;
+	InputValues.Raw = RequestedInputRaw; // Older output must not undo pending player/network commands.
+	PhysicsDeltaTime = Result.Telemetry.PhysicsDeltaTime;
+	NumOfWheelsOnGround = Result.Telemetry.NumOfWheelsOnGround;
+	NumOfDriveAxles = Result.Telemetry.NumOfDriveAxles;
+	bIsInAir = Result.Telemetry.bIsInAir;
+	AbsoluteWorldLinearVelocity = Result.Telemetry.AbsoluteWorldLinearVelocity;
+	LocalLinearVelocity = Result.Telemetry.LocalLinearVelocity;
+	WorldLinearVelocity = Result.Telemetry.WorldLinearVelocity;
+	LocalVelocityClamped = Result.Telemetry.LocalVelocityClamped;
+	WorldAcceleration = Result.Telemetry.WorldAcceleration;
+	LocalAcceleration = Result.Telemetry.LocalAcceleration;
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_SubmitConfigSnapshots);
+	Bridge->SubmitInputSettings(CaptureInputRuntimeSettings());
+	SubmitTransferCaseRuntimeSettings();
+	if (UVehicleEngineComponent* EngineRaw = Engine.Get())
+	{
+		EngineRaw->RefreshPublishedRuntimeState();
+		Bridge->SubmitEngineSettings(EngineRaw->CaptureRuntimeSettings());
+	}
+	if (UVehicleClutchComponent* ClutchRaw = Clutch.Get())
+	{
+		ClutchRaw->RefreshPublishedRuntimeState();
+		Bridge->SubmitClutchSettings(ClutchRaw->GetConfig());
+	}
+	if (UVehicleGearboxComponent* GearboxRaw = Gearbox.Get()) GearboxRaw->SubmitRuntimeSettings();
+}
+
+FVehicleGearboxRuntimeState UVehicleDriveAssemblyComponent::GetGearboxStateForInput() const
+{
+	if (UVehicleGearboxComponent* GearboxRaw = Gearbox.Get()) return GearboxRaw->CaptureRuntimeSettingsState();
+	return FVehicleGearboxRuntimeState();
+}
+
+FVehicleGearboxConfig UVehicleDriveAssemblyComponent::GetGearboxConfigForInput() const
+{
+	if (UVehicleGearboxComponent* GearboxRaw = Gearbox.Get()) return GearboxRaw->GetConfig();
+	return FVehicleGearboxConfig();
+}
+
+float UVehicleDriveAssemblyComponent::GetEngineRPMForInput() const
+{
+	if (UVehicleEngineComponent* EngineRaw = Engine.Get()) return EngineRaw->GetRPM();
+	return 0.f;
+}
+
 bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 {
 	AActor* Owner = GetOwner();
@@ -1441,7 +1606,7 @@ bool UVehicleDriveAssemblyComponent::GeneratePowerUnit()
 				if (TransferCase.IsValid())
 				{
 					FVehicleLimitedSlipDifferentialConfig DefaultTransferCaseConfig
-						= FVehicleLimitedSlipDifferentialConfig(1.f, 0.f);
+						= FVehicleLimitedSlipDifferentialConfig{1.f, 0.f};
 					TransferCase->SetConfig(DefaultTransferCaseConfig);
 				}
 

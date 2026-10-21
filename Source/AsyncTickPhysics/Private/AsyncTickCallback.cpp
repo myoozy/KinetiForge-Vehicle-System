@@ -1,4 +1,15 @@
 #include "AsyncTickCallback.h"
+#include "AsyncTickPhysicsExecution.h"
+
+namespace
+{
+	thread_local Chaos::FPhysicsSolverBase* CurrentAsyncTickSolver = nullptr;
+}
+
+Chaos::FPhysicsSolverBase* AsyncTickPhysics::GetCurrentSolver()
+{
+	return CurrentAsyncTickSolver;
+}
 
 void FAsyncPhysicsCallback::OnPreSimulate_Internal()
 {
@@ -14,6 +25,8 @@ void FAsyncPhysicsCallback::OnPreSimulate_Internal()
 	if(World == nullptr)
 		return;
 
+	// Expose only the solver that invoked this callback, during legacy event dispatch.
+	TGuardValue<Chaos::FPhysicsSolverBase*> SolverScope(CurrentAsyncTickSolver, GetSolver());
 	const TArray<TWeakObjectPtr<AAsyncTickPawn>>& Pawns = Input->Pawns;
 	const TArray<TWeakObjectPtr<UAsyncTickActorComponent>>& ActorComponents = Input->ActorComponents;
 	

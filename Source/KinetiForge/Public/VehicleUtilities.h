@@ -8,6 +8,7 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
+#include "VehicleDrivetrainMath.h"
 #include "VehicleUtilities.generated.h"
 
 namespace Chaos
@@ -134,13 +135,13 @@ public:
     template<typename T>
     static FORCEINLINE T SafeDivide(const T& A, const T& B, const T DefaultValue = T(0))
     {
-        return FMath::Abs(B) > SMALL_NUMBER ? A / B : DefaultValue;
+        return VehicleDrivetrainMath::DivideOrDefault(A, B, DefaultValue);
     }
 
     template<typename T>
     static FORCEINLINE UE::Math::TVector<T> SafeDivide(const UE::Math::TVector<T>& A, const float& B)
     {
-        return FMath::Abs(B) > SMALL_NUMBER ? A / B : UE::Math::TVector<T>(0.f);
+        return VehicleDrivetrainMath::DivideOrDefault(A, B, UE::Math::TVector<T>(0.f));
     }
 
     template<typename T>
@@ -419,7 +420,7 @@ public:
         // get tangent
         float RightTangent = (Val_High - Val_Low) * FloatLastIdx;
 
-        return FVehicleLUT_EvalResult(Value, RightTangent);
+        return FVehicleLUT_EvalResult{Value, RightTangent};
     }
 
     FORCEINLINE FVehicleLUT_EvalResult FastEval(const float Time, const FVector2f& TimeInterval) const
@@ -489,7 +490,7 @@ public:
         // Chain Rule: Multiply by the scaling factor of the index to restore the tangent to its correct spatial proportion.
         const float RightTangent = Tangent_t * FloatLastIdx;
 
-        return FVehicleLUT_EvalResult(Value, RightTangent);
+        return FVehicleLUT_EvalResult{Value, RightTangent};
     }
 
     FORCEINLINE FVehicleLUT_EvalResult CubicEval(const float Time, const FVector2f& TimeInterval) const

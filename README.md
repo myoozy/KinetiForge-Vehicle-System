@@ -2,6 +2,8 @@
 
 High-performance, modular vehicle physics system for Unreal Engine 5, fully implemented in C++ with real-time tunable parameters.
 
+For the C++ simulation architecture, callback requirements and maintenance entry points, see the [runtime maintenance guide](Docs/RuntimeMaintenance.md).
+
 * Demonstration videos:
   - [Demonstration video (Jun. 2026 on YouTube)](https://www.youtube.com/watch?v=iipOBL2fKQ0/)
   - [Demonstration video (Jun. 2026 on BiliBili)](https://www.bilibili.com/video/BV1HDjA69EGE/)

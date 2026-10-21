@@ -2,17 +2,178 @@
 
 
 #include "VehicleAxleAssemblyComponent.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "VehicleWheelComponent.h"
 #include "VehicleDifferentialComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
 #include "VehicleUtilities.h"
+#include "VehicleAxleSolver.h"
+#include "VehicleAxleBridge.h"
+#include "Misc/ScopeLock.h"
+
+TSharedPtr<FVehicleAxleBridge, ESPMode::ThreadSafe> UVehicleAxleAssemblyComponent::GetAxleBridge() const
+{
+	return AxleBridge;
+}
+
+FVehicleAxleRuntimeSettings UVehicleAxleAssemblyComponent::CaptureRuntimeSettings() const
+{
+	check(IsInGameThread());
+	FVehicleAxleRuntimeSettings Settings;
+	Settings.AxleConfig = AxleConfig;
+	Settings.SteeringConfig = AxleSteeringConfig;
+	Settings.SteeringAssistConfig = SteeringAssistConfig;
+	Settings.TCSConfig = TCSConfig;
+	Settings.Layout = AxleLayout;
+	Settings.SuspensionType = SuspensionType;
+	if (UVehicleDifferentialComponent* Diff = Differential.Get())
+	{
+		Settings.bHasDifferential = true;
+		Settings.DifferentialConfig = Diff->GetConfig();
+	}
+	return Settings;
+}
+
+bool UVehicleAxleAssemblyComponent::BindIsolatedAxleRuntime()
+{
+	check(IsInGameThread());
+	if (!IsRegistered() || IsBeingDestroyed()) return false;
+	UVehicleWheelComponent* Wheels[] = { LeftWheel.Get(), RightWheel.Get() };
+	for (auto* Wheel : Wheels) if (Wheel && (!Wheel->IsRegistered() || Wheel->IsBeingDestroyed())) return false;
+	// A fixed axle may not take ownership of wheels already assigned to another axle.
+	TArray<UVehicleAxleAssemblyComponent*> OtherAxles;
+	if (AActor* Owner = GetOwner()) Owner->GetComponents(OtherAxles);
+	for (auto* Other : OtherAxles)
+	{
+		if (Other == this) continue;
+		for (auto* Wheel : Wheels)
+			if (Wheel && (Other->LeftWheel.Get() == Wheel || Other->RightWheel.Get() == Wheel)) return false;
+	}
+	return GetAxleBridge().IsValid();
+}
+
+void UVehicleAxleAssemblyComponent::SubmitRuntimeSettings()
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_SubmitRuntimeSettings);
+	if (TSharedPtr<FVehicleAxleBridge, ESPMode::ThreadSafe> Bridge = GetAxleBridge())
+	{
+		check(IsInGameThread());
+		if (UVehicleDifferentialComponent* Diff = Differential.Get()) Diff->AddConfigurationConsumer(this);
+		Bridge->SubmitSettings(CaptureRuntimeSettings());
+	}
+}
+
+const FVehicleAxleSimState& UVehicleAxleAssemblyComponent::GetStateForCaller() const
+{
+	return IsInGameThread() ? State : GetAxleBridge()->GetRuntimeForSimulation().State;
+}
+
+FVehicleAxleSimState& UVehicleAxleAssemblyComponent::GetSimulationState()
+{
+	return GetAxleBridge()->GetRuntimeForSimulation().State;
+}
+
+const FVehicleAxleConfig& UVehicleAxleAssemblyComponent::GetSimulationAxleConfig()
+{
+	return GetAxleBridge()->GetRuntimeForSimulation().Settings.AxleConfig;
+}
+
+void UVehicleAxleAssemblyComponent::RefreshPublishedAxleState()
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_RefreshPublishedState);
+	check(IsInGameThread());
+	TSharedPtr<FVehicleAxleBridge, ESPMode::ThreadSafe> Bridge = GetAxleBridge();
+	if (!Bridge) return;
+	const FVehicleAxleResult Result = Bridge->ReadResult();
+	if (LastAxlePublicationSequence == Result.PublicationSequence) return;
+	LastAxlePublicationSequence = Result.PublicationSequence;
+	State = Result.State;
+	if (Result.AppliedP3Sequence < RequestedP3Sequence) State.P3MotorTorque = RequestedP3MotorTorque;
+	if (Result.AppliedWheelBaseSequence < RequestedWheelBaseSequence) State.WheelBase = RequestedWheelBase;
+}
+
+void UVehicleAxleAssemblyComponent::SetAxleConfig(const FVehicleAxleConfig& NewConfig)
+{
+	AxleConfig = NewConfig;
+	SubmitRuntimeSettings();
+}
+
+void UVehicleAxleAssemblyComponent::SetAxleSteeringConfig(const FVehicleAxleSteeringConfig& NewConfig)
+{
+	AxleSteeringConfig = NewConfig;
+	SubmitRuntimeSettings();
+}
+
+void UVehicleAxleAssemblyComponent::SetSteeringAssistConfig(const FVehicleSteeringAssistConfig& NewConfig)
+{
+	SteeringAssistConfig = NewConfig;
+	SubmitRuntimeSettings();
+}
+
+void UVehicleAxleAssemblyComponent::SetTCSConfig(const FVehicleTCSConfig& NewConfig)
+{
+	TCSConfig = NewConfig;
+	SubmitRuntimeSettings();
+}
+
+void UVehicleAxleAssemblyComponent::SetAxleSuspensionType(EVehicleAxleSuspensionType NewType)
+{
+	SuspensionType = NewType;
+	SubmitRuntimeSettings();
+}
+
+void UVehicleAxleAssemblyComponent::SetP3MotorTorque(float Torque)
+{
+	if (TSharedPtr<FVehicleAxleBridge, ESPMode::ThreadSafe> Bridge = GetAxleBridge())
+	{
+		if (IsInGameThread())
+		{
+			RequestedP3MotorTorque = State.P3MotorTorque = Torque;
+			RequestedP3Sequence = Bridge->RequestP3MotorTorque(Torque);
+		}
+		else Bridge->GetRuntimeForSimulation().State.P3MotorTorque = Torque;
+		return;
+	}
+}
+
+void UVehicleAxleAssemblyComponent::SetWheelBase(float WheelBase)
+{
+	if (TSharedPtr<FVehicleAxleBridge, ESPMode::ThreadSafe> Bridge = GetAxleBridge())
+	{
+		if (IsInGameThread())
+		{
+			RequestedWheelBase = State.WheelBase = WheelBase;
+			RequestedWheelBaseSequence = Bridge->RequestWheelBase(WheelBase);
+		}
+		else Bridge->GetRuntimeForSimulation().State.WheelBase = WheelBase;
+		return;
+	}
+}
+
+FVehicleAxleWheelInput UVehicleAxleAssemblyComponent::CaptureWheelTransmissionInput(UVehicleWheelComponent* Wheel)
+{
+	if (!Wheel) return FVehicleAxleWheelInput();
+	return Wheel->CaptureSimulationTransmissionInput();
+}
+
+float UVehicleAxleAssemblyComponent::CaptureSimulationTrackWidth(float FallbackWidth, UVehicleWheelComponent* Left, UVehicleWheelComponent* Right)
+{
+	if (!(Left && Right)) return FallbackWidth;
+	const float LeftY = FTransform3f(Left->GetSimulationRelativeTransform()).TransformPositionNoScale(
+		Left->GetSimulationDesignedHubTransform().GetLocation()).Y;
+	const float RightY = FTransform3f(Right->GetSimulationRelativeTransform()).TransformPositionNoScale(
+		Right->GetSimulationDesignedHubTransform().GetLocation()).Y;
+	return FMath::Abs(RightY - LeftY);
+}
 
 // Sets default values for this component's properties
 UVehicleAxleAssemblyComponent::UVehicleAxleAssemblyComponent()
 {
+	AxleBridge = MakeShared<FVehicleAxleBridge, ESPMode::ThreadSafe>(FVehicleAxleRuntime{});
 	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
 	// off to improve performance if you don't need them.
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = true; // GT publication/config transfer only; manual physics stays manual.
 	// ...
 }
 
@@ -20,30 +181,64 @@ UVehicleAxleAssemblyComponent::UVehicleAxleAssemblyComponent()
 // Called when the game starts
 void UVehicleAxleAssemblyComponent::BeginPlay()
 {
+	PhysicsOwnership.InvalidateOwnerAndWait();
 	Super::BeginPlay();
 
 	// ...
-	SearchExistingWheels();
+	// OnRegister already established generated wheels. BeginPlay only re-resolves
+	// referenced wheels, whose components may not exist until the world starts.
+	if (bUseExistingWheelComponent)
+	{
+		InitializeWheels();
+	}
 	GenerateDifferential();
 	WheelCoordinator = UVehicleWheelCoordinatorComponent::FindWheelCoordinator(Chassis.Get());
 	if (WheelCoordinator.IsValid())WheelCoordinator->RegisterAxle(this);
+	SubmitRuntimeSettings();
 }
 
 void UVehicleAxleAssemblyComponent::OnRegister()
 {
+	bManualPhysicsReady.Store(false);
+	PhysicsOwnership.InvalidateOwnerAndWait();
 	Super::OnRegister();
 
 	//...
 	Chassis = UVehicleUtilities::FindPhysicalParent(this);
 	//PreviewWheelMesh();
 	InitializeWheels();
+	SubmitRuntimeSettings();
+	bManualPhysicsReady.Store(true);
 }
 
 void UVehicleAxleAssemblyComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
+	bManualPhysicsReady.Store(false);
+	PhysicsOwnership.InvalidateOwnerAndWait();
 	UVehicleUtilities::DestroyAutoGeneratedComponents(AutoGeneratedComponents);
 	//...
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
+}
+
+void UVehicleAxleAssemblyComponent::OnUnregister()
+{
+	bManualPhysicsReady.Store(false);
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::OnUnregister();
+}
+
+void UVehicleAxleAssemblyComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	bManualPhysicsReady.Store(false);
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::EndPlay(EndPlayReason);
+}
+
+void UVehicleAxleAssemblyComponent::BeginDestroy()
+{
+	bManualPhysicsReady.Store(false);
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::BeginDestroy();
 }
 
 void UVehicleAxleAssemblyComponent::UpdateSteering(
@@ -51,127 +246,38 @@ void UVehicleAxleAssemblyComponent::UpdateSteering(
 	UVehicleWheelComponent* WheelL,
 	UVehicleWheelComponent* WheelR)
 {
-	InSteeringInput = FMath::Clamp(InSteeringInput, -1.f, 1.f);
-	float InsideWheelSteeringAngle = InSteeringInput * AxleSteeringConfig.MaxSteeringAngle;
-
-	if (AxleSteeringConfig.bAckermannSteering 
-		&& State.WheelBase > SMALL_NUMBER 
-		&& State.NumOfWheels == 2)
-	{
-		// approximate the track width
-		float TrackWidth = GetTrackWidth(WheelL, WheelR);
-
-		//clamp angle to avoid divided by 0
-		InsideWheelSteeringAngle = FMath::Clamp(InsideWheelSteeringAngle, -89, 89);
-		if (FMath::IsNearlyZero(InsideWheelSteeringAngle))	//if no steering
-		{
-			State.LeftWheelSteeringAngle = State.RightWheelSteeringAngle = 0.f;
-		}
-		else
-		{
-			float SteeringSign = FMath::Sign(InsideWheelSteeringAngle);
-
-			float UnsignedOutsideWheelAngle = 0.f;
-			float UnsignedInsideWheelAngle = FMath::Abs(InsideWheelSteeringAngle);
-
-			float InsideSteerRad = FMath::DegreesToRadians(UnsignedInsideWheelAngle);
-			float TanInside = FMath::Tan(InsideSteerRad);
-			float TanOutSide = State.WheelBase / (State.WheelBase / TanInside + TrackWidth);
-			float OutsideSteerRad = FMath::Atan(TanOutSide);
-			UnsignedOutsideWheelAngle = FMath::RadiansToDegrees(OutsideSteerRad);
-			UnsignedOutsideWheelAngle = FMath::Lerp(UnsignedInsideWheelAngle, UnsignedOutsideWheelAngle, AxleSteeringConfig.AckermannRatio);
-			
-
-			if (InSteeringInput > 0)
-			{
-				State.LeftWheelSteeringAngle = UnsignedOutsideWheelAngle * SteeringSign;
-				State.RightWheelSteeringAngle = UnsignedInsideWheelAngle * SteeringSign;
-			}
-			else
-			{
-				State.LeftWheelSteeringAngle = UnsignedInsideWheelAngle * SteeringSign;
-				State.RightWheelSteeringAngle = UnsignedOutsideWheelAngle * SteeringSign;
-			}
-		}
-	}
-	else
-	{
-		State.LeftWheelSteeringAngle = State.RightWheelSteeringAngle = InsideWheelSteeringAngle;
-	}
+	const auto Bridge = GetAxleBridge();
+	FVehicleAxleSimState& StepState = GetSimulationState();
+	const FVehicleAxleSteeringConfig& SteeringConfig = Bridge->GetRuntimeForSimulation().Settings.SteeringConfig;
+	const FVehicleAxleConfig& StepAxleConfig = Bridge->GetRuntimeForSimulation().Settings.AxleConfig;
+	// approximate the track width
+	FVehicleAxleSolver::UpdateSteering(StepState, SteeringConfig, InSteeringInput,
+		CaptureSimulationTrackWidth(StepAxleConfig.TrackWidth, WheelL, WheelR));
 }
 
 void UVehicleAxleAssemblyComponent::UpdateSteeringAssist(
 	float DeltaTime, 
 	float InSteeringInput)
 {
-	if (SteeringAssistConfig.bSteeringAssistEnabled)
-	{
-		float TargetInput = 0.f;
-
-		FVector2D LocalVelocity2D = FVector2D(State.LocalLinearVelocity.X, State.LocalLinearVelocity.Y);
-		FVector2D LocalVelocityDirection = LocalVelocity2D.GetSafeNormal();
-
-		//get the slip angle of the Chassis
-		float ChassisSlipAngle = FMath::Asin(LocalVelocityDirection.Y);
-		ChassisSlipAngle = FMath::RadiansToDegrees(ChassisSlipAngle);
-
-		if (State.LocalLinearVelocity.X > SteeringAssistConfig.ActivationSpeed
-			&& FMath::Abs(ChassisSlipAngle) > SteeringAssistConfig.ActivationAngle)
-		{
-			TargetInput  = FMath::GetMappedRangeValueClamped(
-				FVector2D(-AxleSteeringConfig.MaxSteeringAngle, AxleSteeringConfig.MaxSteeringAngle), 
-				FVector2D(-1.f, 1.f), 
-				ChassisSlipAngle * SteeringAssistConfig.Level
-			);
-		}
-
-		if (SteeringAssistConfig.MaxSteerRate > SMALL_NUMBER)
-		{
-			State.SteeringAssistInput = FMath::FInterpConstantTo(
-				State.SteeringAssistInput,
-				TargetInput,
-				DeltaTime,
-				SteeringAssistConfig.MaxSteerRate
-			);
-		}
-		else
-		{
-			// teleport if max steer rate is not valid
-			State.SteeringAssistInput = TargetInput;
-		}
-
-		State.SteeringAssistInput = FMath::Clamp(State.SteeringAssistInput, -1.f, 1.f);
-		State.RealSteeringValue = FMath::Clamp(InSteeringInput + State.SteeringAssistInput, -1.f, 1.f);
-	}
-	else
-	{
-		State.SteeringAssistInput = 0.f;
-		State.RealSteeringValue = InSteeringInput;
-	}
+	const auto Bridge = GetAxleBridge();
+	FVehicleAxleSimState& StepState = GetSimulationState();
+	const FVehicleAxleSteeringConfig& SteeringConfig = Bridge->GetRuntimeForSimulation().Settings.SteeringConfig;
+	const FVehicleSteeringAssistConfig& AssistConfig = Bridge->GetRuntimeForSimulation().Settings.SteeringAssistConfig;
+	FVehicleAxleSolver::UpdateSteeringAssist(StepState, SteeringConfig, AssistConfig, DeltaTime, InSteeringInput);
 }
 
 void UVehicleAxleAssemblyComponent::UpdateLinearVelocity(
 	UVehicleWheelComponent* WheelL, 
 	UVehicleWheelComponent* WheelR)
 {
-	FVector3f LeftWorldVel = FVector3f(0.f);
-	FVector3f RightWorldVel = FVector3f(0.f);
-	FQuat4f ChassisRot = FQuat4f();
-	if (WheelL)
-	{
-		LeftWorldVel = WheelL->GetWorldLinearVelocity();
-		ChassisRot = (FQuat4f)WheelL->GetChassisAsyncWorldTransform().GetRotation();
-	}
-	if (WheelR)
-	{
-		RightWorldVel = WheelR->GetWorldLinearVelocity();
-		ChassisRot = (FQuat4f)WheelR->GetChassisAsyncWorldTransform().GetRotation();
-	}
-	State.WorldLinearVelocity = State.NumOfWheels ? 
-		FVector3f(LeftWorldVel + RightWorldVel) / State.NumOfWheels : FVector3f(0.f);
-
-	ChassisRot.Normalize();
-	State.LocalLinearVelocity = ChassisRot.UnrotateVector(State.WorldLinearVelocity);
+	FVehicleAxleSimState& StepState = GetSimulationState();
+	const FVehicleSuspensionSimState* LeftState = WheelL ? &WheelL->GetSimulationSuspensionState() : nullptr;
+	const FVehicleSuspensionSimState* RightState = WheelR ? &WheelR->GetSimulationSuspensionState() : nullptr;
+	FQuat4f LeftRotation, RightRotation;
+	if (WheelL) LeftRotation = (FQuat4f)WheelL->GetSimulationChassisTransform().GetRotation();
+	if (WheelR) RightRotation = (FQuat4f)WheelR->GetSimulationChassisTransform().GetRotation();
+	FVehicleAxleSolver::UpdateLinearVelocity(StepState, LeftState, WheelL ? &LeftRotation : nullptr,
+		RightState, WheelR ? &RightRotation : nullptr);
 }
 
 void UVehicleAxleAssemblyComponent::UpdateTCS(
@@ -179,29 +285,13 @@ void UVehicleAxleAssemblyComponent::UpdateTCS(
 	UVehicleWheelComponent* WheelR, 
 	float TargetDriveTorque)
 {
-	float SumSlipRatio = 0.f;
-	if (WheelL)SumSlipRatio += FMath::Abs(WheelL->GetPredictedSlipRatio());
-	if (WheelR)SumSlipRatio += FMath::Abs(WheelR->GetPredictedSlipRatio());
-	float AvrgSlipRatio = SumSlipRatio / State.NumOfWheels;
-
-	State.bTCSTriggered =
-		TCSConfig.bTractionControlSystemEnabled
-		&& State.NumOfWheelOnGround
-		&& State.LocalLinearVelocity.X * TargetDriveTorque > SMALL_NUMBER
-		&& FMath::Abs(State.LocalLinearVelocity.X) > TCSConfig.ActivationSpeed
-		&& AvrgSlipRatio > TCSConfig.OptimalSlip;
-
-	if (State.bTCSTriggered)
-	{
-		float Error = AvrgSlipRatio - TCSConfig.OptimalSlip;
-		float TcsFactor = 1.0f - (Error * TCSConfig.Sensitivity);
-		TcsFactor = FMath::Clamp(TcsFactor, 0.0f, 1.0f);
-		State.AxleDriveTorque = TargetDriveTorque * TcsFactor;
-
-		return;
-	}
-
-	State.AxleDriveTorque = TargetDriveTorque;
+	const auto Bridge = GetAxleBridge();
+	FVehicleAxleSimState& StepState = GetSimulationState();
+	const FVehicleTCSConfig& StepTCSConfig = Bridge->GetRuntimeForSimulation().Settings.TCSConfig;
+	const FVehicleAxleWheelInput LeftInput = CaptureWheelTransmissionInput(WheelL);
+	const FVehicleAxleWheelInput RightInput = CaptureWheelTransmissionInput(WheelR);
+	FVehicleAxleSolver::UpdateTCS(StepState, StepTCSConfig,
+		WheelL ? &LeftInput : nullptr, WheelR ? &RightInput : nullptr, TargetDriveTorque);
 }
 
 float UVehicleAxleAssemblyComponent::GetTrackWidth(
@@ -227,30 +317,31 @@ void UVehicleAxleAssemblyComponent::PreStepSolidAxleSuspension(
 	UVehicleWheelComponent* WheelL,
 	UVehicleWheelComponent* WheelR)
 {
+	const FVehicleAxleConfig& StepAxleConfig = GetSimulationAxleConfig();
 	FVehicleSuspensionSimContext Ctx_L;
 	FVehicleSuspensionSimContext Ctx_R;
 
-	float HubZ_R = WheelR->GetHubChassisLocation().Z;
-	float HubZ_L = WheelL->GetHubChassisLocation().Z;
+	float HubZ_R = WheelR->GetSimulationSuspensionState().HubChassisLocation.Z;
+	float HubZ_L = WheelL->GetSimulationSuspensionState().HubChassisLocation.Z;
 
 	WheelL->StartPreStepSolidAxleSuspension(Ctx_L, InMacroDeltaTime, SteerAngleLeft, ActiveSwaybarStiffness, HubZ_R);
 	WheelR->StartPreStepSolidAxleSuspension(Ctx_R, InMacroDeltaTime, SteerAngleRight, ActiveSwaybarStiffness, HubZ_L);
 
-	float TrackWidth = GetTrackWidth();
+	float TrackWidth = CaptureSimulationTrackWidth(StepAxleConfig.TrackWidth, WheelL, WheelR);
 	float AxleHalfWidth = (
 		TrackWidth
-		- WheelL->GetSuspensionKinematicsConfig().HubOffsetFromLowerJoint.Y
-		- WheelR->GetSuspensionKinematicsConfig().HubOffsetFromLowerJoint.Y
+		- WheelL->GetSimulationKinematicsConfig().HubOffsetFromLowerJoint.Y
+		- WheelR->GetSimulationKinematicsConfig().HubOffsetFromLowerJoint.Y
 		) * 0.5f;
 
-	FVector3f LeftTopMount = WheelL->GetTopMountChassisLocation();
-	FVector3f RightTopMount = WheelR->GetTopMountChassisLocation();
+	FVector3f LeftTopMount = WheelL->GetSimulationTopMountChassisLocation();
+	FVector3f RightTopMount = WheelR->GetSimulationTopMountChassisLocation();
 
 	FVector3f AxleCenter = FVector3f::ZeroVector;
 	FQuat4f AxleRotation = FQuat4f::Identity;
 
-	float StrutRealLength_L = Ctx_L.StrutCurrentLength + WheelL->GetSuspensionKinematicsConfig().MinStrutLength;
-	float StrutRealLength_R = Ctx_R.StrutCurrentLength + WheelR->GetSuspensionKinematicsConfig().MinStrutLength;
+	float StrutRealLength_L = Ctx_L.StrutCurrentLength + WheelL->GetSimulationKinematicsConfig().MinStrutLength;
+	float StrutRealLength_R = Ctx_R.StrutCurrentLength + WheelR->GetSimulationKinematicsConfig().MinStrutLength;
 
 	FVehicleSuspensionSolver::SolveSolidAxlePosture(
 		LeftTopMount, RightTopMount,
@@ -275,7 +366,10 @@ void UVehicleAxleAssemblyComponent::PreStepSolidAxleSuspension(
 // Called every frame
 void UVehicleAxleAssemblyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_GameThreadTick);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	RefreshPublishedAxleState();
+	SubmitRuntimeSettings();
 
 	// ...
 }
@@ -295,6 +389,7 @@ void UVehicleAxleAssemblyComponent::CopyAxleConfig(const UVehicleAxleAssemblyCom
 	Target->AxleSteeringConfig = Source->AxleSteeringConfig;
 	Target->SteeringAssistConfig = Source->SteeringAssistConfig;
 	Target->TCSConfig = Source->TCSConfig;
+	Target->SubmitRuntimeSettings();
 
 	if (bReInitializeWheel)
 	{
@@ -312,67 +407,98 @@ void UVehicleAxleAssemblyComponent::ApplyInitialOverrides(const FVehicleAxleSpaw
 	if (AxleTemplate.bDisableHandbrake)AxleConfig.bAffectedByHandbrake = false;
 	if (AxleTemplate.bDisableTractionControl)TCSConfig.bTractionControlSystemEnabled = false;
 	if (AxleTemplate.TorqueWeightOverride >= 0)AxleConfig.TorqueWeight = AxleTemplate.TorqueWeightOverride;
+	SubmitRuntimeSettings();
 }
 
 void UVehicleAxleAssemblyComponent::PreStepAxle(
 	float InMacroDeltaTime, 
 	float InSteeringInput)
 {
+	const auto Bridge = GetAxleBridge();
+	if (Bridge) Bridge->ConsumeInputs();
+	FVehicleAxleSimState& StepState = GetSimulationState();
+	const FVehicleAxleSteeringConfig& SteeringConfig = Bridge->GetRuntimeForSimulation().Settings.SteeringConfig;
+	const FVehicleAxleConfig& StepAxleConfig = Bridge->GetRuntimeForSimulation().Settings.AxleConfig;
+	const EVehicleAxleSuspensionType StepSuspensionType = Bridge->GetRuntimeForSimulation().Settings.SuspensionType;
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_PhysicsPreStep);
 
 	UVehicleWheelComponent* WheelL = LeftWheel.Get();
 	UVehicleWheelComponent* WheelR = RightWheel.Get();
 
-	State.NumOfWheels = (int32)(WheelL != nullptr) + (int32)(WheelR != nullptr);
-	if (State.NumOfWheels <= 0)
+	StepState.NumOfWheels = (int32)(WheelL != nullptr) + (int32)(WheelR != nullptr);
+	if (StepState.NumOfWheels <= 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: No Valid Wheels"));
 		return;
 	}
 
+	if (WheelL) WheelL->PrepareSimulationStepInputs();
+	if (WheelR) WheelR->PrepareSimulationStepInputs();
 	UpdateLinearVelocity(WheelL, WheelR);
 
-	if (AxleSteeringConfig.bAffectedBySteering)
+	if (SteeringConfig.bAffectedBySteering)
 	{
 		UpdateSteeringAssist(InMacroDeltaTime, InSteeringInput);
-		UpdateSteering(State.RealSteeringValue, WheelL, WheelR);
+		UpdateSteering(StepState.RealSteeringValue, WheelL, WheelR);
 	}
 
-	if (State.NumOfWheels == 2)
+	if (StepState.NumOfWheels == 2)
 	{
 		float HubZ_R = 0.f;
 		float HubZ_L = 0.f;
-		switch (SuspensionType)
+		switch (StepSuspensionType)
 		{
 		default:
 		case EVehicleAxleSuspensionType::Independent:
-			HubZ_R = WheelR->GetHubChassisLocation().Z;
-			HubZ_L = WheelL->GetHubChassisLocation().Z;
-			WheelL->PreStepIndependentSuspension(
-				InMacroDeltaTime,
-				State.LeftWheelSteeringAngle,
-				AxleConfig.SwaybarStiffness,
-				HubZ_R
-			);
-			WheelR->PreStepIndependentSuspension(
-				InMacroDeltaTime,
-				State.RightWheelSteeringAngle,
-				AxleConfig.SwaybarStiffness,
-				HubZ_L
-			);
+			HubZ_R = WheelR->GetSimulationSuspensionState().HubChassisLocation.Z;
+			HubZ_L = WheelL->GetSimulationSuspensionState().HubChassisLocation.Z;
+			{
+				FVehicleWheelIndependentSuspensionStep LeftStep;
+				FVehicleWheelIndependentSuspensionStep RightStep;
+				const bool bPreparedLeft = WheelL->StartPreStepIndependentSuspension(
+					InMacroDeltaTime, StepState.LeftWheelSteeringAngle, LeftStep);
+				const bool bPreparedRight = WheelR->StartPreStepIndependentSuspension(
+					InMacroDeltaTime, StepState.RightWheelSteeringAngle, RightStep);
+				if (bPreparedLeft && bPreparedRight)
+				{
+					FVehicleSuspensionIntegrationInput LeftInput = WheelL->GetPreparedIndependentSuspensionInput(LeftStep);
+					FVehicleSuspensionIntegrationInput RightInput = WheelR->GetPreparedIndependentSuspensionInput(RightStep);
+					FVehicleSuspensionSolver::IntegratePairedIndependentSuspension(
+						LeftInput, RightInput, StepAxleConfig.SwaybarStiffness);
+					FVehicleSuspensionSolver::PrepareIndependentSuspensionGeometry(
+						LeftInput.Context, LeftInput.WheelRadius, LeftInput.KinematicsConfig, LeftInput.CachedLUTs);
+					FVehicleSuspensionSolver::PrepareIndependentSuspensionGeometry(
+						RightInput.Context, RightInput.WheelRadius, RightInput.KinematicsConfig, RightInput.CachedLUTs);
+					const float FinalLeftHubZ = LeftInput.Context.HubChassisTransform.GetLocation().Z;
+					const float FinalRightHubZ = RightInput.Context.HubChassisTransform.GetLocation().Z;
+					WheelL->FinalizePreStepIndependentSuspension(
+						StepAxleConfig.SwaybarStiffness, FinalRightHubZ, LeftStep, true);
+					WheelR->FinalizePreStepIndependentSuspension(
+						StepAxleConfig.SwaybarStiffness, FinalLeftHubZ, RightStep, true);
+				}
+				else
+				{
+					if (bPreparedLeft)
+						WheelL->FinalizePreStepIndependentSuspension(
+							StepAxleConfig.SwaybarStiffness, HubZ_R, LeftStep, false);
+					if (bPreparedRight)
+						WheelR->FinalizePreStepIndependentSuspension(
+							StepAxleConfig.SwaybarStiffness, HubZ_L, RightStep, false);
+				}
+			}
 			break;
 		case EVehicleAxleSuspensionType::Solid:
 			PreStepSolidAxleSuspension(
 				InMacroDeltaTime,
-				State.LeftWheelSteeringAngle,
-				State.RightWheelSteeringAngle,
-				AxleConfig.SwaybarStiffness,
+				StepState.LeftWheelSteeringAngle,
+				StepState.RightWheelSteeringAngle,
+				StepAxleConfig.SwaybarStiffness,
 				WheelL,
 				WheelR
 			);
 			break;
 		}
-		State.NumOfWheelOnGround = WheelL->GetIsWheelOnGround() + WheelR->GetIsWheelOnGround();
+		StepState.NumOfWheelOnGround = WheelL->GetSimulationSuspensionState().bWheelOnGround + WheelR->GetSimulationSuspensionState().bWheelOnGround;
 		WheelL->PreStepWheel(InMacroDeltaTime);
 		WheelR->PreStepWheel(InMacroDeltaTime);
 	}
@@ -382,11 +508,11 @@ void UVehicleAxleAssemblyComponent::PreStepAxle(
 		{
 			WheelL->PreStepIndependentSuspension(
 				InMacroDeltaTime,
-				State.LeftWheelSteeringAngle,
+				StepState.LeftWheelSteeringAngle,
 				0.f,
 				0.f
 			);
-			State.NumOfWheelOnGround = WheelL->GetIsWheelOnGround();
+			StepState.NumOfWheelOnGround = WheelL->GetSimulationSuspensionState().bWheelOnGround;
 			WheelL->PreStepWheel(InMacroDeltaTime);
 		}
 
@@ -394,11 +520,11 @@ void UVehicleAxleAssemblyComponent::PreStepAxle(
 		{
 			WheelR->PreStepIndependentSuspension(
 				InMacroDeltaTime,
-				State.RightWheelSteeringAngle,
+				StepState.RightWheelSteeringAngle,
 				0.f,
 				0.f
 			);
-			State.NumOfWheelOnGround = WheelR->GetIsWheelOnGround();
+			StepState.NumOfWheelOnGround = WheelR->GetSimulationSuspensionState().bWheelOnGround;
 			WheelR->PreStepWheel(InMacroDeltaTime);
 		}
 	}
@@ -413,103 +539,36 @@ void UVehicleAxleAssemblyComponent::SubstepAxle(
 	float& OutAngularVelocity,
 	float& OutDriveShaftStiffness)
 {
+	const auto Bridge = GetAxleBridge();
+	FVehicleAxleSimState& StepState = GetSimulationState();
+	const FVehicleAxleConfig& StepAxleConfig = Bridge->GetRuntimeForSimulation().Settings.AxleConfig;
+	const FVehicleTCSConfig& StepTCSConfig = Bridge->GetRuntimeForSimulation().Settings.TCSConfig;
+	const EVehicleAxleLayout StepLayout = Bridge->GetRuntimeForSimulation().Settings.Layout;
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_PhysicsSubstep);
 
 	UVehicleWheelComponent* WheelL = LeftWheel.Get();
 	UVehicleWheelComponent* WheelR = RightWheel.Get();
-	UVehicleDifferentialComponent* Diff = Differential.Get();
-
-	// number of living wheels
-	State.NumOfWheels = (WheelL ? 1 : 0) + (WheelR ? 1 : 0);
-
-	// get brake torque
-	State.BrakeTorque = AxleConfig.MaxBrakeTorque * FMath::Clamp(InBrakeInput, 0.f, 1.f);
-	State.HandbrakeTorque = AxleConfig.bAffectedByHandbrake ?
-		AxleConfig.MaxHandbrakeTorque * FMath::Clamp(InHandbrakeInput, 0.f, 1.f) : 0.f;
-
-	const bool bNotPowerAxle = AxleConfig.TorqueWeight <= SMALL_NUMBER && FMath::IsNearlyZero(State.P3MotorTorque);
-	const bool bWheelNotDriven = bNotPowerAxle || (Diff == nullptr) || (State.NumOfWheels == 0);
-
-	// 1. data preparation
-	State.LeftDriveTorque = 0.f;
-	State.RightDriveTorque = 0.f;
-	State.ReflectedInertiaOnWheel = 0.f;
-
-	// 2. torque distribution and inertia calculation
-	if (bWheelNotDriven)
-	{
-		// losing power or differential broken
-		State.AxleDriveTorque = bNotPowerAxle ? 0.f : InDriveTorque;
-		State.AxleEffectiveInertia = AxleConfig.DriveShaftInertia;
-		float AngAcc = UVehicleUtilities::SafeDivide(State.AxleDriveTorque, State.AxleEffectiveInertia);
-		State.AxleAngularVelocity += AngAcc * InSubstepDeltaTime;
-	}
-	else
-	{
-		UpdateTCS(WheelL, WheelR, InDriveTorque + State.P3MotorTorque);
-
-		if (State.NumOfWheels == 2)
-		{
-			// two wheels: limited-slip-differential
-			Diff->UpdateOutputShaft(
-				State.AxleDriveTorque,
-				WheelL->GetAngularVelocity(), WheelR->GetAngularVelocity(),
-				WheelL->GetEffectiveInertia(), WheelR->GetEffectiveInertia(),
-				InSubstepDeltaTime, AxleConfig.DriveShaftInertia,
-				State.LeftDriveTorque, State.RightDriveTorque, State.ReflectedInertiaOnWheel
-			);
-		}
-		else // single wheel
-		{
-			const float DiffGearRatio = Diff->GetConfig().GearRatio;
-			State.ReflectedInertiaOnWheel = AxleConfig.DriveShaftInertia * DiffGearRatio * DiffGearRatio;
-
-			if (AxleLayout == EVehicleAxleLayout::TwoWheels)
-			{
-				// open diff
-				Diff->GetOpenDiffOutputTorque(State.AxleDriveTorque, State.LeftDriveTorque, State.RightDriveTorque);
-			}
-			else
-			{
-				// if there was initially only one wheel
-				State.LeftDriveTorque = State.RightDriveTorque = DiffGearRatio * State.AxleDriveTorque;
-			}
-		}
-	}
+	const FVehicleLimitedSlipDifferentialConfig* DiffConfig = Bridge->GetRuntimeForSimulation().Settings.bHasDifferential
+		? &Bridge->GetRuntimeForSimulation().Settings.DifferentialConfig : nullptr;
+	FVehicleAxleWheelInput LeftInput = CaptureWheelTransmissionInput(WheelL);
+	FVehicleAxleWheelInput RightInput = CaptureWheelTransmissionInput(WheelR);
+	const bool bWheelNotDriven = FVehicleAxleSolver::PrepareTransmissionStep(StepState,
+		StepAxleConfig, StepTCSConfig, StepLayout, DiffConfig,
+		WheelL ? &LeftInput : nullptr, WheelR ? &RightInput : nullptr,
+		InSubstepDeltaTime, InDriveTorque, InBrakeInput, InHandbrakeInput);
 
 	// 3. wheel substepping
-	if (WheelL) WheelL->SubStepWheel(InSubstepDeltaTime, State.LeftDriveTorque, State.BrakeTorque, State.HandbrakeTorque, State.ReflectedInertiaOnWheel);
-	if (WheelR) WheelR->SubStepWheel(InSubstepDeltaTime, State.RightDriveTorque, State.BrakeTorque, State.HandbrakeTorque, State.ReflectedInertiaOnWheel);
+	if (WheelL) WheelL->SubStepWheel(InSubstepDeltaTime, StepState.LeftDriveTorque, StepState.BrakeTorque, StepState.HandbrakeTorque, StepState.ReflectedInertiaOnWheel);
+	if (WheelR) WheelR->SubStepWheel(InSubstepDeltaTime, StepState.RightDriveTorque, StepState.BrakeTorque, StepState.HandbrakeTorque, StepState.ReflectedInertiaOnWheel);
 
-	// 4. get axle effective inertia and angular velocity
-	if (!bWheelNotDriven)
-	{
-		float ReflectedInertiaOfWheels = 0.f;
-
-		if (State.NumOfWheels == 2)
-		{
-			Diff->UpdateInputShaft(
-				WheelL->GetAngularVelocity(), WheelR->GetAngularVelocity(),
-				WheelL->GetIntrinsicInertia(), WheelR->GetIntrinsicInertia(), // only the inertia of the wheel itself
-				State.AxleAngularVelocity, ReflectedInertiaOfWheels
-			);
-		}
-		else
-		{
-			// single wheel
-			const float DiffGearRatio = Diff->GetConfig().GearRatio;
-			UVehicleWheelComponent* ActiveWheel = WheelL ? WheelL : WheelR;
-			State.AxleAngularVelocity = ActiveWheel->GetAngularVelocity() * DiffGearRatio;
-			ReflectedInertiaOfWheels = UVehicleUtilities::SafeDivide(ActiveWheel->GetIntrinsicInertia(), DiffGearRatio * DiffGearRatio);
-		}
-
-		State.AxleEffectiveInertia = ReflectedInertiaOfWheels + AxleConfig.DriveShaftInertia;
-	}
-
-	// 5. output effective inertia and angular velocity
-	OutAxleEffectiveInertia = State.AxleEffectiveInertia;
-	OutAngularVelocity = State.AxleAngularVelocity;
-	OutDriveShaftStiffness = bWheelNotDriven ? 0.f : AxleConfig.DriveShaftTorsionalStiffness;
+	// Feedback must observe this substep, never the preceding published display result.
+	LeftInput = CaptureWheelTransmissionInput(WheelL);
+	RightInput = CaptureWheelTransmissionInput(WheelR);
+	const float EffectiveDriveShaftStiffness = FVehicleAxleSolver::FinalizeTransmissionStep(StepState,
+		StepAxleConfig, DiffConfig, WheelL ? &LeftInput : nullptr, WheelR ? &RightInput : nullptr, bWheelNotDriven);
+	OutAxleEffectiveInertia = StepState.AxleEffectiveInertia;
+	OutAngularVelocity = StepState.AxleAngularVelocity;
+	OutDriveShaftStiffness = EffectiveDriveShaftStiffness;
 }
 
 void UVehicleAxleAssemblyComponent::PostStepAxle()
@@ -527,42 +586,39 @@ void UVehicleAxleAssemblyComponent::PostStepAxle()
 	{
 		WheelR->PostStepApplyForce();
 	}
+	GetAxleBridge()->PublishResult();
+	if (IsInGameThread()) RefreshPublishedAxleState();
 }
 
 void UVehicleAxleAssemblyComponent::InitializeWheels()
 {
-	GenerateWheels();
+	check(IsInGameThread());
+	// A different wheel can share the old body's identity. Retire the captured assembly
+	// before changing slots rather than relying on the Drive's body-rebuild polling.
+	PhysicsOwnership.InvalidateOwnerAndWait();
 
-	UVehicleWheelComponent* WheelL = LeftWheel.Get();
-	UVehicleWheelComponent* WheelR = RightWheel.Get();
+	// Single entry point for every wheel-set change. Reconcile only touches slots whose
+	// state actually differs, so calling this repeatedly (registration, BeginPlay,
+	// Blueprint refresh) converges instead of accumulating or destroying components.
+	ReconcileWheelSlots();
 
-	if (IsValid(WheelClass))
+	// The template only configures wheels this axle generated. A referenced wheel
+	// keeps the settings its owner authored for it.
+	if (!bUseExistingWheelComponent && IsValid(WheelClass))
 	{
-		const UVehicleWheelComponent* TemplateWheel = Cast<UVehicleWheelComponent>(WheelClass->GetDefaultObject());
-		if (WheelL)
+		if (const UVehicleWheelComponent* TemplateWheel = Cast<UVehicleWheelComponent>(WheelClass->GetDefaultObject()))
 		{
-			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, WheelL);
-		}
-		if (WheelR)
-		{
-			UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, WheelR);
+			if (LeftWheel.IsValid()) UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, LeftWheel.Get());
+			if (RightWheel.IsValid()) UVehicleWheelComponent::CopyWheelConfig(TemplateWheel, RightWheel.Get());
 		}
 	}
 
-	UpdateTrackWidth();
+	// Track width is an axle-owned decision; manual wheels stay where their owner put them.
+	PlaceManagedWheels();
 
-	if (WheelL)
-	{
-		WheelL->InitializeWheel();
-	}
-	if (WheelR)
-	{
-		WheelR->InitializeWheel();
-	}
-	if (WheelL && WheelR)
-	{
-		ApplySolidAxleStateDirect();
-	}
+	if (LeftWheel.IsValid()) LeftWheel->InitializeWheel();
+	if (RightWheel.IsValid()) RightWheel->InitializeWheel();
+	if (HasBothWheels()) ApplySolidAxleStateDirect();
 }
 
 void UVehicleAxleAssemblyComponent::UpdatePhysics(
@@ -575,13 +631,22 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 	float& OutAngularVelocity,
 	float& OutDriveShaftStiffness)
 {
+	if (!bManualPhysicsReady.Load() || !FMath::IsFinite(InPhysicsDeltaTime) || InPhysicsDeltaTime <= 0.f
+		|| !IsRegistered() || IsBeingDestroyed() || PhysicsOwnership.HasActiveOwner()) return;
+	const AActor* Owner = GetOwner();
+	if (Owner && Owner->IsActorBeingDestroyed()) return;
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_AxleAssembly_UpdatePhysics);
 
-	if (!Chassis.IsValid())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AxleAssembly: No Valid Chassis"));
-		return;
-	}
+	UPrimitiveComponent* Body = Chassis.Get();
+	if (!Body || !Body->IsRegistered() || Body->IsBeingDestroyed()
+		|| !UVehicleUtilities::GetInternalHandle(Body)) return;
+	UVehicleWheelComponent* WheelL = LeftWheel.Get();
+	UVehicleWheelComponent* WheelR = RightWheel.Get();
+	// Preflight the complete set before consuming inputs or advancing either wheel.
+	// An absent side still supports the existing single-wheel path.
+	if ((!WheelL && !WheelR) || (WheelL && WheelL == WheelR)
+		|| (WheelL && !WheelL->CanUpdateManualPhysics(InPhysicsDeltaTime))
+		|| (WheelR && !WheelR->CanUpdateManualPhysics(InPhysicsDeltaTime))) return;
 
 	PreStepAxle(InPhysicsDeltaTime, InSteeringInput);
 	SubstepAxle(InPhysicsDeltaTime,
@@ -593,57 +658,9 @@ void UVehicleAxleAssemblyComponent::UpdatePhysics(
 void UVehicleAxleAssemblyComponent::SetWheelPosition(float NewTrackWidth)
 {
 	NewTrackWidth = FMath::Abs(NewTrackWidth);
-
-	UPrimitiveComponent* ChassisPtr = Chassis.Get();
-	if (!ChassisPtr)Chassis = UVehicleUtilities::FindPhysicalParent(this);
-
-	// attach itself to chassis
-	if (ChassisPtr && GetAttachParent() != ChassisPtr)
-	{
-		AttachToComponent(ChassisPtr, FAttachmentTransformRules::KeepWorldTransform);
-	}
-
-	//set left wheel
-	if (LeftWheel.IsValid())
-	{
-		if (Chassis.IsValid() && LeftWheel->GetAttachParent() != Chassis)
-		{
-			LeftWheel->AttachToComponent(Chassis.Get(), FAttachmentTransformRules::KeepRelativeTransform);
-		}
-
-		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, -VehicleWheelComponentSetupRotation.Yaw, -VehicleWheelComponentSetupRotation.Roll)).GetNormalized();
-		FVector WheelCompPos = GetRelativeLocation();
-		WheelCompPos.Y += -1.f * NewTrackWidth * 0.5f;
-		LeftWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
-
-		LeftWheel->CacheDesignedHubTransform();
-
-		const FVector DesignedHubLocalLocation = (FVector)LeftWheel->GetDesignedHubLocalTransform().GetLocation(); // in the space of wheel component
-		const FVector HubOffset = WheelCompRot.RotateVector(DesignedHubLocalLocation);
-		WheelCompPos -= HubOffset;
-		LeftWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
-	}
-
-	//set right wheel
-	if (RightWheel.IsValid())
-	{
-		if (Chassis.IsValid() && RightWheel->GetAttachParent() != Chassis)
-		{
-			RightWheel->AttachToComponent(Chassis.Get(), FAttachmentTransformRules::KeepRelativeTransform);
-		}
-
-		FQuat WheelCompRot = FQuat(FRotator(VehicleWheelComponentSetupRotation.Pitch, VehicleWheelComponentSetupRotation.Yaw, VehicleWheelComponentSetupRotation.Roll)).GetNormalized();
-		FVector WheelCompPos = GetRelativeLocation();
-		WheelCompPos.Y += +1.f * NewTrackWidth * 0.5f;
-		RightWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
-
-		RightWheel->CacheDesignedHubTransform();
-
-		const FVector DesignedHubLocalLocation = (FVector)RightWheel->GetDesignedHubLocalTransform().GetLocation(); // in the space of wheel component
-		const FVector HubOffset = WheelCompRot.RotateVector(DesignedHubLocalLocation);
-		WheelCompPos -= HubOffset;
-		RightWheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
-	}
+	EnsureAxleAttachedToChassis();
+	PlaceWheel(EWheelSide::Left, NewTrackWidth);
+	PlaceWheel(EWheelSide::Right, NewTrackWidth);
 }
 
 void UVehicleAxleAssemblyComponent::UpdateTrackWidth()
@@ -679,21 +696,21 @@ void UVehicleAxleAssemblyComponent::UpdateSolidAxleAnim(
 	FVector AxleDirLocal = (RightLocal - LeftLocal).GetSafeNormal();
 	FVector AxleCenterLocal = (RightLocal + LeftLocal) * 0.5f;
 
-	// µÚÒ»²½£º°ÑÍø¸ñÌåµÄÖ÷Öá£¨Èç Y Öá£©¶ÔÆëµ½×óÓÒÂÖµÄÁ¬ÏßÉÏ
+	// ç¬¬ä¸€æ­¥ï¼šæŠŠç½‘æ ¼ä½“çš„ä¸»è½´ï¼ˆå¦‚ Y è½´ï¼‰å¯¹é½åˆ°å·¦å³è½®çš„è¿žçº¿ä¸Š
 	FQuat Q1 = FQuat::FindBetweenNormals(InMeshRightVector, AxleDirLocal);
 
-	// ´ËÊ±£¬Íø¸ñÌå¿ÉÄÜÑØ×Å³µÖá·¢ÉúÁËÈÎÒâ½Ç¶ÈµÄ¡°×Ô×ª¡±¡£
-	// ÎÒÃÇ°ÑËüµÄ¸±Öá£¨Èç X Öá£©¾­¹ýµÚÒ»²½Ðý×ªºóµÄÊµ¼Ê³¯ÏòÄÃ³öÀ´£º
+	// æ­¤æ—¶ï¼Œç½‘æ ¼ä½“å¯èƒ½æ²¿ç€è½¦è½´å‘ç”Ÿäº†ä»»æ„è§’åº¦çš„â€œè‡ªè½¬â€ã€‚
+	// æˆ‘ä»¬æŠŠå®ƒçš„å‰¯è½´ï¼ˆå¦‚ X è½´ï¼‰ç»è¿‡ç¬¬ä¸€æ­¥æ—‹è½¬åŽçš„å®žé™…æœå‘æ‹¿å‡ºæ¥ï¼š
 	FVector RotatedForward = Q1.RotateVector(InMeshForwardVector);
 
-	// ÎÒÃÇÏ£ÍûËüµÄ¸±Öá¾¡Á¿Ö¸Ïòµ×ÅÌµÄÕýÇ°·½ (1, 0, 0)¡£
-	// °Ñ (1, 0, 0) Í¶Ó°µ½´¹Ö±ÓÚ³µÖáµÄÆ½ÃæÉÏ£¬µÃµ½ÀíÏëµÄ³¯Ïò£º
+	// æˆ‘ä»¬å¸Œæœ›å®ƒçš„å‰¯è½´å°½é‡æŒ‡å‘åº•ç›˜çš„æ­£å‰æ–¹ (1, 0, 0)ã€‚
+	// æŠŠ (1, 0, 0) æŠ•å½±åˆ°åž‚ç›´äºŽè½¦è½´çš„å¹³é¢ä¸Šï¼Œå¾—åˆ°ç†æƒ³çš„æœå‘ï¼š
 	FVector TargetForward = FVector::VectorPlaneProject(FVector(1.f, 0.f, 0.f), AxleDirLocal).GetSafeNormal();
 
-	// µÚ¶þ²½£ºËã³öÏû³ý×Ô×ªµÄ¾ÀÕý Quat
+	// ç¬¬äºŒæ­¥ï¼šç®—å‡ºæ¶ˆé™¤è‡ªè½¬çš„çº æ­£ Quat
 	FQuat Q2 = FQuat::FindBetweenNormals(RotatedForward, TargetForward);
 
-	// ºÏ²¢Á½²½Ðý×ª£ºÏÈ×ö Q1£¬ÔÙ×ö Q2 (×¢ÒâËÄÔªÊý³Ë·¨´ÓÓÒÏò×ó¶Á)
+	// åˆå¹¶ä¸¤æ­¥æ—‹è½¬ï¼šå…ˆåš Q1ï¼Œå†åš Q2 (æ³¨æ„å››å…ƒæ•°ä¹˜æ³•ä»Žå³å‘å·¦è¯»)
 	FQuat FinalLocalRotation = Q2 * Q1;
 
 	FVector FinalLocalLocation = AxleCenterLocal;
@@ -794,8 +811,8 @@ void UVehicleAxleAssemblyComponent::ApplySuspensionStateDirect(float InExtension
 
 void UVehicleAxleAssemblyComponent::GetLinearVelocity(FVector3f& OutLocalVelocity, FVector3f& OutWorldVelocity)
 {
-	OutLocalVelocity = State.LocalLinearVelocity;
-	OutWorldVelocity = State.WorldLinearVelocity;
+	OutLocalVelocity = GetStateForCaller().LocalLinearVelocity;
+	OutWorldVelocity = GetStateForCaller().WorldLinearVelocity;
 }
 
 FVector3f UVehicleAxleAssemblyComponent::GetAxleCenter()
@@ -817,122 +834,202 @@ FVector3f UVehicleAxleAssemblyComponent::GetAxleCenter()
 	}
 }
 
-bool UVehicleAxleAssemblyComponent::GenerateWheels()
+bool UVehicleAxleAssemblyComponent::IsWheelRequired(EWheelSide Side) const
 {
-	UVehicleWheelComponent* WheelL = LeftWheel.Get();
-	UVehicleWheelComponent* WheelR = RightWheel.Get();
-
-	// if use Component
-	if (bUseExistingWheelComponent)
-	{
-		if (WheelL)
-		{
-			WheelL->DestroyComponent();
-		}
-		if (WheelR)
-		{
-			WheelR->DestroyComponent();
-		}
-		return false;
-	}
-
-	//Destroy unused wheels
-	if (WheelL && AxleLayout == EVehicleAxleLayout::SingleRight)
-	{
-		WheelL->DestroyComponent();
-	}
-	if (WheelR && AxleLayout == EVehicleAxleLayout::SingleLeft)
-	{
-		WheelR->DestroyComponent();
-	}
-
-	UObject* Outer = nullptr;
-	if (AActor* Owner = GetOwner())Outer = Owner;
-
-	if (!IsValid(Outer))return false;
-
-	FString ThisName = FString();
-	GetName(ThisName);
-
-	//Generate left wheel
-	if (!WheelL && AxleLayout != EVehicleAxleLayout::SingleRight)
-	{
-		FName Name = FName(ThisName + "_Wheel_L");
-		LeftWheel = FindObject<UVehicleWheelComponent>(Outer, *Name.ToString());
-		if (!LeftWheel.IsValid())
-		{
-			LeftWheel = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
-				Outer,
-				nullptr,
-				Name
-			);
-			AutoGeneratedComponents.AddUnique(LeftWheel);
-		}
-	}
-
-	//Generate right wheel
-	if (!WheelR && AxleLayout != EVehicleAxleLayout::SingleLeft)
-	{
-		FName Name = FName(ThisName + "_Wheel_R");
-		RightWheel = FindObject<UVehicleWheelComponent>(Outer, *Name.ToString());
-		if (!RightWheel.IsValid())
-		{
-			RightWheel = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
-				Outer,
-				nullptr,
-				Name
-			);
-			AutoGeneratedComponents.AddUnique(RightWheel);
-		}
-	}
-
 	switch (AxleLayout)
 	{
-	default:
-	case EVehicleAxleLayout::TwoWheels:
-		return LeftWheel.IsValid() && RightWheel.IsValid();
-		break;
 	case EVehicleAxleLayout::SingleLeft:
-		return LeftWheel.IsValid();
-		break;
+		return Side == EWheelSide::Left;
 	case EVehicleAxleLayout::SingleRight:
-		return RightWheel.IsValid();
-		break;
+		return Side == EWheelSide::Right;
+	case EVehicleAxleLayout::TwoWheels:
+	default:
+		return true;
 	}
 }
 
-bool UVehicleAxleAssemblyComponent::SearchExistingWheels()
+FName UVehicleAxleAssemblyComponent::GetGeneratedWheelName(EWheelSide Side) const
+{
+	FString ThisName;
+	GetName(ThisName);
+	const TCHAR* Suffix = (Side == EWheelSide::Left) ? TEXT("_Wheel_L") : TEXT("_Wheel_R");
+	return FName(ThisName + Suffix);
+}
+
+TWeakObjectPtr<UVehicleWheelComponent>& UVehicleAxleAssemblyComponent::WheelSlotRef(EWheelSide Side)
+{
+	if (Side == EWheelSide::Left) return LeftWheel;
+	return RightWheel;
+}
+
+bool UVehicleAxleAssemblyComponent::IsWheelGenerated(EWheelSide Side) const
+{
+	return (Side == EWheelSide::Left) ? bLeftWheelGenerated : bRightWheelGenerated;
+}
+
+void UVehicleAxleAssemblyComponent::SetWheelGenerated(EWheelSide Side, bool bGenerated)
+{
+	if (Side == EWheelSide::Left) bLeftWheelGenerated = bGenerated;
+	else bRightWheelGenerated = bGenerated;
+}
+
+bool UVehicleAxleAssemblyComponent::HasBothWheels() const
+{
+	return LeftWheel.IsValid() && RightWheel.IsValid();
+}
+
+void UVehicleAxleAssemblyComponent::EnsureAxleAttachedToChassis()
+{
+	UPrimitiveComponent* ChassisPtr = Chassis.Get();
+	if (!ChassisPtr)
+	{
+		Chassis = UVehicleUtilities::FindPhysicalParent(this);
+		ChassisPtr = Chassis.Get();
+	}
+	if (ChassisPtr && GetAttachParent() != ChassisPtr)
+	{
+		AttachToComponent(ChassisPtr, FAttachmentTransformRules::KeepWorldTransform);
+	}
+}
+
+void UVehicleAxleAssemblyComponent::PlaceWheel(EWheelSide Side, float TrackWidth)
+{
+	UVehicleWheelComponent* Wheel = WheelSlotRef(Side).Get();
+	if (!Wheel) return;
+
+	UPrimitiveComponent* ChassisPtr = Chassis.Get();
+	if (ChassisPtr && Wheel->GetAttachParent() != ChassisPtr)
+	{
+		Wheel->AttachToComponent(ChassisPtr, FAttachmentTransformRules::KeepRelativeTransform);
+	}
+
+	const float SideSign = (Side == EWheelSide::Left) ? -1.f : 1.f;
+	const FRotator SetupRotation = (Side == EWheelSide::Left)
+		? FRotator(VehicleWheelComponentSetupRotation.Pitch,
+			-VehicleWheelComponentSetupRotation.Yaw,
+			-VehicleWheelComponentSetupRotation.Roll)
+		: VehicleWheelComponentSetupRotation;
+	const FQuat WheelCompRot = FQuat(SetupRotation).GetNormalized();
+
+	FVector WheelCompPos = GetRelativeLocation();
+	WheelCompPos.Y += SideSign * TrackWidth * 0.5f;
+	Wheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
+	Wheel->CacheDesignedHubTransform();
+
+	const FVector DesignedHubLocalLocation = (FVector)Wheel->GetDesignedHubLocalTransform().GetLocation();
+	const FVector HubOffset = WheelCompRot.RotateVector(DesignedHubLocalLocation);
+	WheelCompPos -= HubOffset;
+	Wheel->SetRelativeTransform(FTransform(WheelCompRot, WheelCompPos));
+}
+
+void UVehicleAxleAssemblyComponent::PlaceManagedWheels()
+{
+	EnsureAxleAttachedToChassis();
+	// Manual wheels are positioned by their owner; only generated slots follow the axle.
+	if (bUseExistingWheelComponent) return;
+	PlaceWheel(EWheelSide::Left, AxleConfig.TrackWidth);
+	PlaceWheel(EWheelSide::Right, AxleConfig.TrackWidth);
+}
+
+void UVehicleAxleAssemblyComponent::DestroyGeneratedWheel(EWheelSide Side)
+{
+	UVehicleWheelComponent* Wheel = WheelSlotRef(Side).Get();
+	if (!Wheel) return;
+	// Drop the bookkeeping entry before destruction so a dead weak pointer never lingers.
+	AutoGeneratedComponents.RemoveAll([Wheel](const TWeakObjectPtr<UActorComponent>& Entry)
+	{
+		return Entry.Get() == Wheel;
+	});
+	// DestroyComponent keeps the object findable by name until GC. Free the deterministic
+	// slot name first, otherwise a same-frame re-create would adopt the pending-kill object.
+	const FName FreedName = MakeUniqueObjectName(Wheel->GetOuter(), Wheel->GetClass(),
+		FName(Wheel->GetName() + TEXT("_Destroyed")));
+	Wheel->Rename(*FreedName.ToString(), nullptr, REN_DontCreateRedirectors | REN_NonTransactional);
+	Wheel->DestroyComponent();
+	WheelSlotRef(Side).Reset();
+	SetWheelGenerated(Side, false);
+}
+
+void UVehicleAxleAssemblyComponent::ResolveWheelSlot(EWheelSide Side)
 {
 	AActor* Owner = GetOwner();
-	if (bUseExistingWheelComponent && IsValid(Owner))
+	if (!IsValid(Owner)) return;
+
+	TWeakObjectPtr<UVehicleWheelComponent>& Slot = WheelSlotRef(Side);
+
+	if (bUseExistingWheelComponent)
 	{
-		if (!LeftWheel.IsValid())
+		// "Use existing" is a lookup only: this axle never creates or destroys these wheels.
+		const FName ConfiguredName = (Side == EWheelSide::Left) ? LeftWheelComponentName : RightWheelComponentName;
+		if (!ConfiguredName.IsNone())
 		{
-			LeftWheel = UVehicleUtilities::GetComponentByName<UVehicleWheelComponent>(Owner, LeftWheelComponentName);
+			Slot = UVehicleUtilities::GetComponentByName<UVehicleWheelComponent>(Owner, ConfiguredName);
 		}
-		if (!RightWheel.IsValid())
-		{
-			RightWheel = UVehicleUtilities::GetComponentByName<UVehicleWheelComponent>(Owner, RightWheelComponentName);
-		}
-		bool bIsLeftValid = LeftWheel.IsValid();
-		if (bIsLeftValid)
-		{
-			LeftWheel->InitializeWheel();
-		}
-		bool bIsRightValid = RightWheel.IsValid();
-		if (bIsRightValid)
-		{
-			RightWheel->InitializeWheel();
-		}
-		if (bIsLeftValid && bIsRightValid)
-		{
-			ApplySolidAxleStateDirect();
-		}
-		return bIsLeftValid && bIsRightValid;
+		SetWheelGenerated(Side, false);
+		return;
 	}
-	else
+
+	// Generated slots use a deterministic name so a saved level converges on one wheel
+	// per slot instead of accumulating a new component on every registration.
+	const FName GeneratedName = GetGeneratedWheelName(Side);
+	if (UVehicleWheelComponent* Existing = FindObject<UVehicleWheelComponent>(Owner, *GeneratedName.ToString()))
 	{
-		return LeftWheel.IsValid() && RightWheel.IsValid();
+		if (IsValid(Existing))
+		{
+			Slot = Existing;
+			SetWheelGenerated(Side, false); // Pre-existing objects are adopted, not owned.
+			return;
+		}
+	}
+
+	if (UVehicleWheelComponent* Created = UVehicleUtilities::CreateComponentByClass<UVehicleWheelComponent>(
+		Owner, nullptr, GeneratedName))
+	{
+		Slot = Created;
+		SetWheelGenerated(Side, true);
+		AutoGeneratedComponents.AddUnique(Created);
+	}
+}
+
+void UVehicleAxleAssemblyComponent::ReconcileWheelSlots()
+{
+	for (EWheelSide Side : { EWheelSide::Left, EWheelSide::Right })
+	{
+		TWeakObjectPtr<UVehicleWheelComponent>& Slot = WheelSlotRef(Side);
+
+		if (!Slot.IsValid())
+		{
+			Slot.Reset();
+			SetWheelGenerated(Side, false);
+		}
+
+		if (!IsWheelRequired(Side))
+		{
+			// The layout no longer needs this side. Only a generated wheel is destroyed;
+			// a referenced one stays in the world, it just stops being part of this axle.
+			if (Slot.IsValid() && IsWheelGenerated(Side)) DestroyGeneratedWheel(Side);
+			Slot.Reset();
+			SetWheelGenerated(Side, false);
+			continue;
+		}
+
+		const FName DesiredName = bUseExistingWheelComponent
+			? ((Side == EWheelSide::Left) ? LeftWheelComponentName : RightWheelComponentName)
+			: GetGeneratedWheelName(Side);
+		// A live component is not necessarily the wheel requested by the current setup.
+		// Retire owned wheels on a mode/name change; release external references without touching them.
+		if (Slot.IsValid() && ((bUseExistingWheelComponent && IsWheelGenerated(Side))
+			|| Slot->GetFName() != DesiredName || Slot->GetOwner() != GetOwner()))
+		{
+			if (IsWheelGenerated(Side)) DestroyGeneratedWheel(Side);
+			else
+			{
+				Slot.Reset();
+				SetWheelGenerated(Side, false);
+			}
+		}
+
+		if (!Slot.IsValid()) ResolveWheelSlot(Side);
 	}
 }
 

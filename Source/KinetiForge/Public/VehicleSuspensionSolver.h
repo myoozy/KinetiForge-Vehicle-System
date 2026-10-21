@@ -7,11 +7,25 @@
 
 class UVehicleWheelComponent;
 
+/** Borrowed only for one suspension step; no UObject or ownership is retained. */
+struct KINETIFORGE_API FVehicleSuspensionIntegrationInput
+{
+	FVehicleSuspensionSimContext& Context;
+	const FVehicleChassisSimState& ChassisState;
+	float WorldGravityZ;
+	float WheelRadius;
+	float WheelInertia;
+	const FVehicleSuspensionKinematicsConfig& KinematicsConfig;
+	const FVehicleSuspensionSpringConfig& SpringConfig;
+	const FVehicleSuspensionCachedLUTs& CachedLUTs;
+};
+
 /**
  * 
  */
 class KINETIFORGE_API FVehicleSuspensionSolver
 {
+	friend struct FVehicleSuspensionContactLegacyProbe;
 public:
 	FVehicleSuspensionSolver();
 	~FVehicleSuspensionSolver();
@@ -20,6 +34,76 @@ public:
 	void SetSprungMass(
 		const FVehicleSuspensionSpringConfig& SpringConfig,
 		const float NewSprungMass);
+	/** Same mass normalization for the legacy solver and caller-owned suspension state. */
+	static void SetSprungMass(FVehicleSuspensionSimState& OutputState, float NewSprungMass);
+
+	/** Copies previous values and prepares geometry; never queries or publishes State.
+	 * Caller supplies Context.PhysicsDeltaTime. Config curves are not dereferenced here. */
+	static void PrepareSuspensionContext(
+		const FVehicleSuspensionSimState& PreviousState,
+		FVehicleSuspensionSimContext& Context,
+		const FTransform& ComponentRelativeTransform,
+		const FTransform& ChassisWorldTransform,
+		const FVehicleSuspensionKinematicsConfig& KinematicsConfig,
+		float SteeringAngle);
+
+	/** Scalar legacy integrator, including its zero-unsprung-mass fallback.
+	 * Contact query and velocity must already be prepared. Only Context is advanced. */
+	static void IntegrateSingleWheelSuspension(
+		FVehicleSuspensionSimContext& Context,
+		const FVehicleChassisSimState& ChassisState,
+		float WorldGravityZ, float WheelRadius, float WheelInertia,
+		const FVehicleSuspensionKinematicsConfig& KinematicsConfig,
+		const FVehicleSuspensionSpringConfig& SpringConfig,
+		const FVehicleSuspensionCachedLUTs& CachedLUTs,
+		float ActiveSwaybarStiffness, float OtherHubChassisZ);
+
+	/** Two unsprung coordinates, advanced together with implicit cross stiffness.
+	 * Inputs must describe the same positive macro timestep. Zero bar uses the legacy scalar path.
+	 * A massless side follows its query limit and supplies a prescribed boundary to the other side. */
+	static void IntegratePairedIndependentSuspension(
+		const FVehicleSuspensionIntegrationInput& Left,
+		const FVehicleSuspensionIntegrationInput& Right, float ActiveSwaybarStiffness);
+
+	/** Pair callers prepare BOTH final geometries before reading the opposite final hub height. */
+	static void PrepareIndependentSuspensionGeometry(FVehicleSuspensionSimContext& Context,
+		float WheelRadius, const FVehicleSuspensionKinematicsConfig& KinematicsConfig,
+		const FVehicleSuspensionCachedLUTs& CachedLUTs);
+	static void FinalizePreparedIndependentSuspension(
+		FVehicleSuspensionSimContext& Context, FVehicleSuspensionSimState& OutputState,
+		float WheelRadius, const FVector3f& TireForce,
+		const FVehicleSuspensionKinematicsConfig& KinematicsConfig,
+		const FVehicleSuspensionSpringConfig& SpringConfig,
+		const FTransform& ChassisWorldTransform,
+		const FVehicleChassisSimState& ChassisState, float WorldGravityZ,
+		const FVehicleSuspensionCachedLUTs& CachedLUTs,
+		float ActiveSwaybarStiffness, float OtherHubChassisZ);
+
+	/** Computes geometry/forces after integration, then writes the caller-owned output.
+	 * Initialize OutputState from the previous state; externally managed sprung mass is retained. */
+	static void FinalizeIndependentSuspension(
+		FVehicleSuspensionSimContext& Context, FVehicleSuspensionSimState& OutputState,
+		float WheelRadius, const FVector3f& TireForce,
+		const FVehicleSuspensionKinematicsConfig& KinematicsConfig,
+		const FVehicleSuspensionSpringConfig& SpringConfig,
+		const FTransform& ChassisWorldTransform,
+		const FVehicleChassisSimState& ChassisState, float WorldGravityZ,
+		const FVehicleSuspensionCachedLUTs& CachedLUTs,
+		float ActiveSwaybarStiffness, float OtherHubChassisZ);
+
+	/** Solid axle posture is supplied by the axle's existing paired geometry solve.
+	 * Initialize OutputState from the previous state to retain externally managed sprung mass. */
+	static void FinalizeSolidAxleSuspension(
+		FVehicleSuspensionSimContext& Context, FVehicleSuspensionSimState& OutputState,
+		float WheelRadius, const FVehicleSuspensionKinematicsConfig& KinematicsConfig,
+		const FVehicleSuspensionSpringConfig& SpringConfig,
+		const FTransform& ChassisWorldTransform,
+		const FVehicleChassisSimState& ChassisState, float WorldGravityZ,
+		const FVehicleSuspensionCachedLUTs& CachedLUTs,
+		float ActiveSwaybarStiffness, float OtherHubChassisZ, float AxleHalfWidth,
+		const FVector3f& AxleChassisCenter, const FQuat4f& AxleChassisRotation,
+		const FVector3f& TireForce);
+
 	void UpdateSuspension(
 		const float WheelRadius,
 		const float WheelWidth,
@@ -48,6 +132,7 @@ public:
 		const FVehicleChassisSimState& ChassisState,
 		const UWorld* CurrentWorld,
 		const float WorldGravityZ,
+		const float InDeltaTime,
 		const float InSteeringAngle,
 		const float ActiveSwaybarStiffness,
 		const float OtherHubChassisZ,
@@ -101,7 +186,7 @@ public:
 		const FVector3f& AxleChassisCenter,
 		const FQuat4f& AxleChassisRotation
 	);
-	void DrawSuspension(
+	static void DrawSuspension(
 		UVehicleWheelComponent* WheelComponent,
 		float Duration = -1, 
 		float Thickness = 0, 
@@ -110,7 +195,7 @@ public:
 		bool bDrawRayCast = true,
 		bool bSolidAxle = false,
 		UVehicleWheelComponent* OtherWheel = nullptr);
-	void DrawSuspensionForce(
+	static void DrawSuspensionForce(
 		UVehicleWheelComponent* WheelComponent,
 		float Duration = -1,
 		float Thickness = 5, 
@@ -120,6 +205,9 @@ public:
 		const FVehicleSuspensionKinematicsConfig& KineConfig);
 
 	static void CacheLUTs(FVehicleSuspensionCachedLUTs& LUTs, const FVehicleSuspensionKinematicsConfig& KineConfig);
+	/** GT snapshot preparation after Initialize; copying retains custom query filtering. */
+	const FCollisionQueryParams& GetQueryParams() const { return QueryParams; }
+	const FCollisionResponseParams& GetResponseParams() const { return ResponseParams; }
 
 	static float GetVector2dAngleDegrees(FVector2D V2D);//Abandoned
 	static FVector2D ComputeCircleIntersection(FVector2D A, float RA, float R0, bool ReturnX1 = true); //Abandoned //Compute the intersection of the circle on point A and the point on (0, 0)
@@ -209,76 +297,6 @@ private:
 	);
 	static void ComputeRayCastLocation(
 		FVehicleSuspensionSimContext& Ctx,
-		const FVehicleSuspensionKinematicsConfig& Config
-	);
-	static bool ShouldDoRefinedTrace(
-		FVehicleSuspensionSimContext& Ctx,
-		const float HalfWheelWidth,
-		const FVehicleSuspensionKinematicsConfig& Config
-	);
-	static void ComputeHitDistance(
-		FVehicleSuspensionSimContext& Ctx,
-		const float WheelRadius,
-		const float EquivalentSphereTraceRadius
-	);
-	static void UpdateStrutLength(
-		FVehicleSuspensionSimContext& Ctx,
-		const FVehicleChassisSimState& ChassisState,
-		const float WorldGravityZ,
-		const float WheelRadius,
-		const float WheelInertia,
-		const FVehicleSuspensionKinematicsConfig& KineConfig,
-		const FVehicleSuspensionSpringConfig& SpringConfig,
-		const FVehicleSuspensionCachedLUTs& LUTs,
-		const float ActiveSwaybarStiffness,
-		const float OtherHubChassisZ
-	);
-	static void CacheImpactFriction(
-		FVehicleSuspensionSimContext& Ctx
-	);
-	static float SuspensionLineTrace(
-		FVehicleSuspensionSimContext& Ctx,
-		const UWorld* World,
-		const float WheelRadius,
-		const float HalfWheelWidth,
-		const FCollisionQueryParams& QueryParams,
-		const FCollisionResponseParams& ResponseParams,
-		const FVehicleSuspensionKinematicsConfig& Config
-	);
-	static float SuspensionSphereTrace(
-		FVehicleSuspensionSimContext& Ctx,
-		const UWorld* World,
-		const float WheelRadius,
-		const float HalfWheelWidth,
-		const FCollisionQueryParams& QueryParams,
-		const FCollisionResponseParams& ResponseParams,
-		const FVehicleSuspensionKinematicsConfig& Config
-	);
-	static float SuspensionBoxTrace(
-		FVehicleSuspensionSimContext& Ctx,
-		const UWorld* World,
-		const float WheelRadius,
-		const float HalfWheelWidth,
-		const FCollisionQueryParams& QueryParams,
-		const FCollisionResponseParams& ResponseParams,
-		const FVehicleSuspensionKinematicsConfig& Config
-	);
-	static float SuspensionSphereTraceNoRefinement(
-		FVehicleSuspensionSimContext& Ctx,
-		const UWorld* World,
-		const float WheelRadius,
-		const float HalfWheelWidth,
-		const FCollisionQueryParams& QueryParams,
-		const FCollisionResponseParams& ResponseParams,
-		const FVehicleSuspensionKinematicsConfig& Config
-	);
-	static float SuspensionMultiSphereTrace(
-		FVehicleSuspensionSimContext& Ctx,
-		const UWorld* World,
-		const float WheelRadius,
-		const float HalfWheelWidth,
-		const FCollisionQueryParams& QueryParams,
-		const FCollisionResponseParams& ResponseParams,
 		const FVehicleSuspensionKinematicsConfig& Config
 	);
 	static void SuspensionRayCast(

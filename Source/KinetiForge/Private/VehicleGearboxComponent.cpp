@@ -3,6 +3,8 @@
 
 #include "VehicleGearboxComponent.h"
 #include "VehicleUtilities.h"
+#include "VehicleTransmissionSolver.h"
+#include "VehiclePowerUnitBridge.h"
 
 // Sets default values for this component's properties
 UVehicleGearboxComponent::UVehicleGearboxComponent()
@@ -17,6 +19,7 @@ UVehicleGearboxComponent::UVehicleGearboxComponent()
 // Called when the game starts
 void UVehicleGearboxComponent::BeginPlay()
 {
+	PhysicsOwnership.InvalidateOwnerAndWait();
 	Super::BeginPlay();
 
 	// ...
@@ -32,28 +35,16 @@ void UVehicleGearboxComponent::StartShift(int32 InTargetGear, bool bImmediate)
 	}
 
 	//check if target gear is valid
-	if (InTargetGear == CurrentGear
-		|| InTargetGear > GearRatios.Num()
-		|| InTargetGear < -ReverseGearRatios.Num()
-		|| !bIsInGear)
-		return;
+	FVehicleGearboxRuntimeState RuntimeState = CaptureRuntimeState();
+	if (!FVehicleGearboxSolver::BeginShift(Config, RuntimeState,
+		GearRatios.Num(), ReverseGearRatios.Num(), InTargetGear)) return;
 
 	//if GetWorld()=false, can't set timer, if ShiftDelay to small, immediate
 	bImmediate = bImmediate || !IsValid(GetWorld()) || Config.ShiftDelay < SMALL_NUMBER;
 
 	//Sequential gearbox can only shift one gear once
-	if (Config.bSequentialGearbox)InTargetGear = FMath::Clamp(InTargetGear, CurrentGear - 1, CurrentGear + 1);
-
 	//prepare shift
-	TargetGear = InTargetGear;
-	CurrentGearRatio = 0.f;
-	bIsInGear = false;
-	int32 AbsTargetGear = FMath::Abs(TargetGear);
-	int32 AbsCurrentGear = FMath::Abs(CurrentGear);
-	bool bShiftingUp = AbsTargetGear > AbsCurrentGear;
-	bool bShiftingDown = AbsTargetGear < AbsCurrentGear;
-	bShouldRevMatch = bShiftingDown && TargetGear != 0;
-	bShouldCutSpark = Config.bSequentialGearbox && bShiftingUp && AbsTargetGear != 1;
+	ApplyRuntimeState(RuntimeState);
 
 	//start shift
 	if (bImmediate)
@@ -75,12 +66,9 @@ void UVehicleGearboxComponent::StartShift(int32 InTargetGear, bool bImmediate)
 
 void UVehicleGearboxComponent::FinalizeShift()
 {
-	CurrentGear = TargetGear;
-	bIsInGear = true;
-	bShouldRevMatch = false;
-	bShouldCutSpark = false;
-	CurrentGearRatio = GetGearRatio(CurrentGear);
-	TargetGear = 0;
+	FVehicleGearboxRuntimeState RuntimeState = CaptureRuntimeState();
+	FVehicleGearboxSolver::CompleteShift(Config, RuntimeState, GearRatios, ReverseGearRatios);
+	ApplyRuntimeState(RuntimeState);
 
 	if (ShiftFinishedCallback.IsBound())
 	{
@@ -113,7 +101,8 @@ void UVehicleGearboxComponent::UpdateOutputShaft(
 	float& OutTorque
 )
 {
-	OutTorque = (InClutchTorque + P2MotorTorque) * CurrentGearRatio * Config.Efficiency;
+	OutTorque = FVehicleGearPathSolver::CalculateOutputTorque(
+		InClutchTorque + P2MotorTorque, CurrentGearRatio, Config.Efficiency);
 	//OutReflectedInertia = Config.InputShaftInertia * CurrentGearRatio * CurrentGearRatio;
 }
 
@@ -127,20 +116,18 @@ void UVehicleGearboxComponent::UpdateInputShaft(
 	float& OutCurrentGearRatio
 )
 {
-	OutClutchVelocity = InAxleVelocity * CurrentGearRatio;
-	const float GearRatioSquareInv = UVehicleUtilities::SafeDivide(1.f, CurrentGearRatio * CurrentGearRatio);
-	OutReflectedInertia = InAxleInertia * GearRatioSquareInv;
-	OutReflectedDriveShaftStiffness = InDriveShaftStiffness * GearRatioSquareInv;
+	const FVehicleGearPathReflection Reflection = FVehicleGearPathSolver::ReflectOutputShaft(
+		InAxleVelocity, InAxleInertia, InDriveShaftStiffness, CurrentGearRatio);
+	OutClutchVelocity = Reflection.InputAngularVelocity;
+	OutReflectedInertia = Reflection.ReflectedInertia;
+	OutReflectedDriveShaftStiffness = Reflection.ReflectedDriveShaftStiffness;
 	OutCurrentGearRatio = CurrentGearRatio;		
 }
 
 float UVehicleGearboxComponent::GetGearRatio(int InTarget)
 {
 	//InTarget = FMath::Clamp(InTarget, -ReverseGearRatios.Num(), GearRatios.Num());
-	if (InTarget > Config.NumberOfGears || InTarget < -Config.NumOfReverseGears)return 0;
-	if (InTarget > 0)return GearRatios[InTarget - 1];
-	if (InTarget < 0)return ReverseGearRatios[-InTarget - 1];
-	return 0.0f;
+	return FVehicleGearboxSolver::GetGearRatio(Config, GearRatios, ReverseGearRatios, InTarget);
 }
 
 void UVehicleGearboxComponent::CalculateSpeedRangeOfEachGear(
@@ -152,84 +139,23 @@ void UVehicleGearboxComponent::CalculateSpeedRangeOfEachGear(
 {
 	if (IsGearDataDirty())CalculateGearRatios();
 
-	int32 NumGears = FMath::Max(Config.NumberOfGears, Config.NumOfReverseGears);
-	OutSpeedRanges.SetNum(NumGears + 1);
-	OutSpeedRanges[0] = FVector2D(0);
-
-	float RPMToRad = PI * 0.0333333333333f;
-	float avgRPM = InEffectiveWheelRadius * RPMToRad * 0.01;
-
-	for (int32 i = 1; i <= NumGears; i++)
-	{
-		FVector2D SpeedRangeOfCurrentGear;
-		float GearRatio = GetGearRatio(i);
-		SpeedRangeOfCurrentGear.X = UVehicleUtilities::SafeDivide(InEngineIdleRPM * avgRPM, GearRatio);
-		SpeedRangeOfCurrentGear.Y = UVehicleUtilities::SafeDivide(InEngineMaxRPM * avgRPM, GearRatio);
-
-		OutSpeedRanges[i] = SpeedRangeOfCurrentGear;
-	}
+	FVehicleGearboxSolver::CalculateSpeedRanges(Config, GearRatios, ReverseGearRatios,
+		InEffectiveWheelRadius, InEngineIdleRPM, InEngineMaxRPM, OutSpeedRanges);
 }
 
 bool UVehicleGearboxComponent::CalculateGearRatios()
 {
-	if (Config.NumberOfGears < 1 || Config.NumOfReverseGears < 1)return false;
-
 	//make sure positive
-	Config.FirstGear = FMath::Abs(Config.FirstGear);
-	Config.TopGear = FMath::Abs(Config.TopGear);
-	Config.GearRatioBias = FMath::Clamp(FMath::Abs(Config.GearRatioBias), 0.f, 1.f);
 	//make sure topgear is smaller than first gear
-	Config.TopGear = FMath::Min(Config.TopGear, Config.FirstGear);
-
 	//clear all gears
-	GearRatios.SetNum(Config.NumberOfGears);
-	ReverseGearRatios.SetNum(Config.NumOfReverseGears);
-
-	if (Config.NumberOfGears >= Config.NumOfReverseGears)
-	{
-		return CalculateGearRatios(GearRatios, ReverseGearRatios);
-	}
-	else
-	{
-		return CalculateGearRatios(ReverseGearRatios, GearRatios, true);
-	}
+	return FVehicleGearboxSolver::CalculateGearRatios(Config, GearRatios, ReverseGearRatios);
 }
 
 bool UVehicleGearboxComponent::CalculateGearRatios(TArray<float>& LargerArray, TArray<float>& SmallerArray, bool bInverseSign)
 {
-	int32 LargerLength = LargerArray.Num();
-	int32 SmallerLength = SmallerArray.Num();
-
-	if (LargerLength < SmallerLength)return false;
-
-	float sign = 1;
-	if (bInverseSign)sign = -1;
-
-	if (LargerLength > 1)
-	{
-		for (int i = 0; i < LargerLength; ++i)
-		{
-			float t = (float)i / (float)(LargerLength - 1);	//normalize the factor, min = 0. max = 1
-			//calculate bias
-			float AdjustedT = FMath::Pow(t, 1.f - Config.GearRatioBias);
-			LargerArray[i] = (Config.FirstGear + (Config.TopGear - Config.FirstGear) * AdjustedT) * sign;
-		}
-	}
-	else if(LargerLength == 1)
-	{
-		LargerArray[0] = Config.FirstGear * sign;
-	}
-	else
-	{
-		return false;
-	}
-
-	for (int i = 0; i < SmallerLength; ++i)
-	{
-		SmallerArray[i] = -LargerArray[i];
-	}
-
-	return true;
+	//normalize the factor, min = 0. max = 1
+	//calculate bias
+	return FVehicleGearboxSolver::CalculateGearRatios(Config, LargerArray, SmallerArray, bInverseSign);
 }
 
 bool UVehicleGearboxComponent::IsGearDataDirty()
@@ -249,4 +175,102 @@ bool UVehicleGearboxComponent::IsGearDataDirty()
 	{
 		return false;
 	}
+}
+
+FVehicleGearboxRuntimeState UVehicleGearboxComponent::CaptureRuntimeState() const
+{
+	FVehicleGearboxRuntimeState RuntimeState;
+	RuntimeState.CurrentGearRatio = CurrentGearRatio;
+	RuntimeState.P2MotorTorque = P2MotorTorque;
+	RuntimeState.CurrentGear = CurrentGear;
+	RuntimeState.TargetGear = TargetGear;
+	RuntimeState.bIsInGear = bIsInGear;
+	RuntimeState.bShouldRevMatch = bShouldRevMatch;
+	RuntimeState.bShouldCutSpark = bShouldCutSpark;
+	return RuntimeState;
+}
+
+void UVehicleGearboxComponent::ApplyRuntimeState(const FVehicleGearboxRuntimeState& RuntimeState)
+{
+	CurrentGearRatio = RuntimeState.CurrentGearRatio;
+	P2MotorTorque = RuntimeState.P2MotorTorque;
+	CurrentGear = RuntimeState.CurrentGear;
+	TargetGear = RuntimeState.TargetGear;
+	bIsInGear = RuntimeState.bIsInGear;
+	bShouldRevMatch = RuntimeState.bShouldRevMatch;
+	bShouldCutSpark = RuntimeState.bShouldCutSpark;
+	SubmitRuntimeSettings();
+}
+
+void UVehicleGearboxComponent::SetConfig(const FVehicleGearboxConfig& NewConfig)
+{
+	check(IsInGameThread());
+	Config = NewConfig;
+	CalculateGearRatios();
+	// Configuration changes update the engaged path without completing/restarting a pending shift.
+	CurrentGearRatio = bIsInGear ? GetGearRatio(CurrentGear) : 0.f;
+	SubmitRuntimeSettings();
+}
+
+void UVehicleGearboxComponent::SetP2MotorTorque(float NewTorque)
+{
+	P2MotorTorque = NewTorque;
+	SubmitRuntimeSettings();
+}
+
+bool UVehicleGearboxComponent::CanBindPowerUnitBridge() const
+{
+	check(IsInGameThread());
+	return !bPowerUnitBridgeBound;
+}
+
+bool UVehicleGearboxComponent::BindPowerUnitBridge(TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> InBridge)
+{
+	check(IsInGameThread());
+	if (!CanBindPowerUnitBridge() || !InBridge.IsValid()) return false;
+	PowerUnitBridge = InBridge;
+	bPowerUnitBridgeBound = true;
+	SubmitRuntimeSettings();
+	return true;
+}
+
+void UVehicleGearboxComponent::SubmitRuntimeSettings()
+{
+	if (!bPowerUnitBridgeBound) return;
+	check(IsInGameThread());
+	if (TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> Bridge = PowerUnitBridge.Pin())
+	{
+		Bridge->SubmitGearboxSettings(Config, CaptureRuntimeState());
+	}
+}
+
+
+void UVehicleGearboxComponent::OnRegister()
+{
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::OnRegister();
+}
+
+void UVehicleGearboxComponent::OnUnregister()
+{
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::OnUnregister();
+}
+
+void UVehicleGearboxComponent::BeginDestroy()
+{
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::BeginDestroy();
+}
+
+void UVehicleGearboxComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::EndPlay(EndPlayReason);
+}
+
+void UVehicleGearboxComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
+{
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }

@@ -3,7 +3,7 @@
 
 #include "VehicleSuspensionSolver.h"
 #include "VehicleWheelComponent.h"
-#include "AsyncTickFunctions.h"
+#include "VehicleSuspensionContactBridge.h"
 #include "VehicleUtilities.h"
 
 FVehicleSuspensionSolver::FVehicleSuspensionSolver()
@@ -48,14 +48,148 @@ void FVehicleSuspensionSolver::SetSprungMass(
 	const FVehicleSuspensionSpringConfig& SpringConfig,
 	const float NewSprungMass)
 {
+	SetSprungMass(State, NewSprungMass);
+}
+
+void FVehicleSuspensionSolver::SetSprungMass(FVehicleSuspensionSimState& OutputState, float NewSprungMass)
+{
 	if (NewSprungMass <= 0)
 	{
-		State.StaticSprungMass = 0;
+		OutputState.StaticSprungMass = 0;
 	}
 	else
 	{
-		State.StaticSprungMass = NewSprungMass;
+		OutputState.StaticSprungMass = NewSprungMass;
 	}
+}
+
+void FVehicleSuspensionSolver::PrepareSuspensionContext(
+	const FVehicleSuspensionSimState& PreviousState, FVehicleSuspensionSimContext& Context,
+	const FTransform& ComponentRelativeTransform, const FTransform& ChassisWorldTransform,
+	const FVehicleSuspensionKinematicsConfig& KinematicsConfig, float SteeringAngle)
+{
+	CopyStateToContext(PreviousState, Context);
+	Context.SteeringAngle = SteeringAngle;
+	PrepareSimulation(Context, ComponentRelativeTransform, ChassisWorldTransform, KinematicsConfig);
+	ComputeRayCastLocation(Context, KinematicsConfig);
+}
+
+void FVehicleSuspensionSolver::FinalizeIndependentSuspension(
+	FVehicleSuspensionSimContext& Ctx, FVehicleSuspensionSimState& OutputState,
+	float WheelRadius, const FVector3f& TireForce,
+	const FVehicleSuspensionKinematicsConfig& KineConfig,
+	const FVehicleSuspensionSpringConfig& SpringConfig,
+	const FTransform& AsyncChassisWorldTransform,
+	const FVehicleChassisSimState& ChassisState, float WorldGravityZ,
+	const FVehicleSuspensionCachedLUTs& LUTs,
+	float ActiveSwaybarStiffness, float OtherHubChassisZ)
+{
+	PrepareIndependentSuspensionGeometry(Ctx, WheelRadius, KineConfig, LUTs);
+	FinalizePreparedIndependentSuspension(Ctx, OutputState, WheelRadius, TireForce,
+		KineConfig, SpringConfig, AsyncChassisWorldTransform, ChassisState, WorldGravityZ,
+		LUTs, ActiveSwaybarStiffness, OtherHubChassisZ);
+}
+
+void FVehicleSuspensionSolver::PrepareIndependentSuspensionGeometry(
+	FVehicleSuspensionSimContext& Ctx, float WheelRadius,
+	const FVehicleSuspensionKinematicsConfig& KineConfig, const FVehicleSuspensionCachedLUTs& LUTs)
+{
+	switch (KineConfig.SuspensionType)
+	{
+	default:
+	case EVehicleIndependentSuspensionType::StraightLine:
+		ComputeStraightSuspension(Ctx, WheelRadius, KineConfig, LUTs);
+		break;
+	case EVehicleIndependentSuspensionType::Macpherson:
+		ComputeMacpherson(Ctx, WheelRadius, KineConfig, LUTs);
+		break;
+	case EVehicleIndependentSuspensionType::DoubleWishbone:
+		ComputeDoubleWishbone(Ctx, WheelRadius, KineConfig, LUTs);
+		break;
+	}
+}
+
+void FVehicleSuspensionSolver::FinalizePreparedIndependentSuspension(
+	FVehicleSuspensionSimContext& Ctx, FVehicleSuspensionSimState& OutputState,
+	float WheelRadius, const FVector3f& TireForce,
+	const FVehicleSuspensionKinematicsConfig& KineConfig,
+	const FVehicleSuspensionSpringConfig& SpringConfig,
+	const FTransform& AsyncChassisWorldTransform,
+	const FVehicleChassisSimState& ChassisState, float WorldGravityZ,
+	const FVehicleSuspensionCachedLUTs& LUTs,
+	float ActiveSwaybarStiffness, float OtherHubChassisZ)
+{
+	ComputeAntiPitchRollGeometry(
+		Ctx,
+		ChassisState,
+		false,
+		KineConfig.SuspensionType,
+		WheelRadius,
+		LUTs,
+		AsyncChassisWorldTransform,
+		TireForce
+	);
+
+	ComputeSuspensionForce(
+		Ctx,
+		WorldGravityZ,
+		WheelRadius,
+		ChassisState,
+		SpringConfig,
+		KineConfig,
+		LUTs,
+		ActiveSwaybarStiffness,
+		OtherHubChassisZ
+	);
+
+	CopyContextToState(Ctx, OutputState);
+}
+
+void FVehicleSuspensionSolver::FinalizeSolidAxleSuspension(
+	FVehicleSuspensionSimContext& Ctx, FVehicleSuspensionSimState& OutputState,
+	float WheelRadius, const FVehicleSuspensionKinematicsConfig& KineConfig,
+	const FVehicleSuspensionSpringConfig& SpringConfig,
+	const FTransform& AsyncChassisWorldTransform,
+	const FVehicleChassisSimState& ChassisState, float WorldGravityZ,
+	const FVehicleSuspensionCachedLUTs& LUTs,
+	float ActiveSwaybarStiffness, float OtherHubChassisZ, float AxleHalfWidth,
+	const FVector3f& AxleChassisCenter, const FQuat4f& AxleChassisRotation,
+	const FVector3f& TireForce)
+{
+	ComputeSolidAxle(
+		Ctx,
+		WheelRadius,
+		KineConfig,
+		AxleHalfWidth,
+		AxleChassisCenter,
+		AxleChassisRotation
+	);
+
+	ComputeAntiPitchRollGeometry(
+		Ctx,
+		ChassisState,
+		true,
+		KineConfig.SuspensionType,
+		WheelRadius,
+		LUTs,
+		AsyncChassisWorldTransform,
+		TireForce
+	);
+
+	// get suspension force
+	ComputeSuspensionForce(
+		Ctx,
+		WorldGravityZ,
+		WheelRadius,
+		ChassisState,
+		SpringConfig,
+		KineConfig,
+		LUTs,
+		ActiveSwaybarStiffness,
+		OtherHubChassisZ
+	);
+
+	CopyContextToState(Ctx, OutputState);
 }
 
 void FVehicleSuspensionSolver::UpdateSuspension(
@@ -76,82 +210,18 @@ void FVehicleSuspensionSolver::UpdateSuspension(
 	const float OtherHubChassisZ)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_UpdateSuspension);
-
 	FVehicleSuspensionSimContext Ctx;
-
-	CopyStateToContext(State, Ctx);
-
 	Ctx.PhysicsDeltaTime = InDeltaTime;
-	Ctx.SteeringAngle = InSteeringAngle;
-
-	PrepareSimulation(
-		Ctx,
-		ComponentRelativeTransform,
-		AsyncChassisWorldTransform,
-		KineConfig
-	);
-
-	ComputeRayCastLocation(Ctx, KineConfig);
-
-	SuspensionRayCast(
-		Ctx, 
-		CurrentWorld, 
-		WheelRadius, 
-		WheelWidth * 0.5f, 
-		WheelInertia,
-		QueryParams, 
-		ResponseParams, 
-		KineConfig
-	);
-
-	CalculateImpactPointWorldVelocity(
-		Ctx,
-		ChassisState
-	);
-
-	UpdateStrutLength(Ctx, ChassisState, WorldGravityZ,
-		WheelRadius, WheelInertia, 
-		KineConfig, SpringConfig, CachedLUTs,
+	PrepareSuspensionContext(State, Ctx, ComponentRelativeTransform,
+		AsyncChassisWorldTransform, KineConfig, InSteeringAngle);
+	SuspensionRayCast(Ctx, CurrentWorld, WheelRadius, WheelWidth * 0.5f,
+		WheelInertia, QueryParams, ResponseParams, KineConfig);
+	CalculateImpactPointWorldVelocity(Ctx, ChassisState);
+	IntegrateSingleWheelSuspension(Ctx, ChassisState, WorldGravityZ, WheelRadius,
+		WheelInertia, KineConfig, SpringConfig, CachedLUTs, ActiveSwaybarStiffness, OtherHubChassisZ);
+	FinalizeIndependentSuspension(Ctx, State, WheelRadius, TireForce, KineConfig, SpringConfig,
+		AsyncChassisWorldTransform, ChassisState, WorldGravityZ, CachedLUTs,
 		ActiveSwaybarStiffness, OtherHubChassisZ);
-
-	switch (KineConfig.SuspensionType)
-	{
-	default:
-	case EVehicleIndependentSuspensionType::StraightLine:
-		ComputeStraightSuspension(Ctx, WheelRadius, KineConfig, CachedLUTs);
-		break;
-	case EVehicleIndependentSuspensionType::Macpherson:
-		ComputeMacpherson(Ctx, WheelRadius, KineConfig, CachedLUTs);
-		break;
-	case EVehicleIndependentSuspensionType::DoubleWishbone:
-		ComputeDoubleWishbone(Ctx, WheelRadius, KineConfig, CachedLUTs);
-		break;
-	}
-
-	ComputeAntiPitchRollGeometry(
-		Ctx,
-		ChassisState,
-		false,
-		KineConfig.SuspensionType,
-		WheelRadius,
-		CachedLUTs,
-		AsyncChassisWorldTransform,
-		TireForce
-	);
-
-	ComputeSuspensionForce(
-		Ctx, 
-		WorldGravityZ,
-		WheelRadius,
-		ChassisState,
-		SpringConfig, 
-		KineConfig, 
-		CachedLUTs,
-		ActiveSwaybarStiffness,
-		OtherHubChassisZ
-	);
-
-	CopyContextToState(Ctx, State);
 	CopyContextToHitResult(Ctx, RayCastResult);
 }
 
@@ -166,36 +236,23 @@ void FVehicleSuspensionSolver::StartUpdateSolidAxle(
 	const FVehicleChassisSimState& ChassisState,
 	const UWorld* CurrentWorld,
 	const float WorldGravityZ,
+	const float InDeltaTime,
 	const float InSteeringAngle,
 	const float ActiveSwaybarStiffness,
 	const float OtherHubChassisZ,
 	FVehicleSuspensionSimContext& Ctx)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_UpdateSuspension);
-
-	CopyStateToContext(State, Ctx);
-
-	Ctx.SteeringAngle = InSteeringAngle;
-
-	PrepareSimulation(
-		Ctx,
-		ComponentRelativeTransform,
-		AsyncChassisWorldTransform,
-		KineConfig
-	);
-
-	ComputeRayCastLocation(Ctx, KineConfig);
-	SuspensionRayCast(Ctx, CurrentWorld, WheelRadius, WheelWidth * 0.5f, WheelInertia, QueryParams, ResponseParams, KineConfig);
-
-	CalculateImpactPointWorldVelocity(
-		Ctx,
-		ChassisState
-	);
-
-	UpdateStrutLength(Ctx, ChassisState, WorldGravityZ,
-		WheelRadius, WheelInertia,
-		KineConfig, SpringConfig, CachedLUTs, 
-		ActiveSwaybarStiffness, OtherHubChassisZ);
+	// The unsprung integrator derives the strut velocity from the limit change over this timestep,
+	// so it must see the real macrostep before it runs, not only in Finalize.
+	Ctx.PhysicsDeltaTime = InDeltaTime;
+	PrepareSuspensionContext(State, Ctx, ComponentRelativeTransform,
+		AsyncChassisWorldTransform, KineConfig, InSteeringAngle);
+	SuspensionRayCast(Ctx, CurrentWorld, WheelRadius, WheelWidth * 0.5f,
+		WheelInertia, QueryParams, ResponseParams, KineConfig);
+	CalculateImpactPointWorldVelocity(Ctx, ChassisState);
+	IntegrateSingleWheelSuspension(Ctx, ChassisState, WorldGravityZ, WheelRadius,
+		WheelInertia, KineConfig, SpringConfig, CachedLUTs, ActiveSwaybarStiffness, OtherHubChassisZ);
 }
 
 void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
@@ -215,43 +272,11 @@ void FVehicleSuspensionSolver::FinalizeUpdateSolidAxle(
 	FVehicleSuspensionSimContext& Ctx)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_UpdateSuspension);
-
 	Ctx.PhysicsDeltaTime = InDeltaTime;
-
-	ComputeSolidAxle(
-		Ctx,
-		WheelRadius,
-		KineConfig,
-		AxleHalfWidth,
-		AxleChassisCenter,
-		AxleChassisRotation
-	);
-
-	ComputeAntiPitchRollGeometry(
-		Ctx,
-		ChassisState,
-		true,
-		KineConfig.SuspensionType,
-		WheelRadius,
-		CachedLUTs,
-		AsyncChassisWorldTransform,
-		TireForce
-	);
-
-	// get suspension force
-	ComputeSuspensionForce(
-		Ctx, 
-		WorldGravityZ,
-		WheelRadius, 
-		ChassisState,
-		SpringConfig, 
-		KineConfig, 
-		CachedLUTs,
-		ActiveSwaybarStiffness,
-		OtherHubChassisZ
-	);
-
-	CopyContextToState(Ctx, State);
+	FinalizeSolidAxleSuspension(Ctx, State, WheelRadius, KineConfig, SpringConfig,
+		AsyncChassisWorldTransform, ChassisState, WorldGravityZ, CachedLUTs,
+		ActiveSwaybarStiffness, OtherHubChassisZ, AxleHalfWidth, AxleChassisCenter,
+		AxleChassisRotation, TireForce);
 	CopyContextToHitResult(Ctx, RayCastResult);
 }
 
@@ -259,15 +284,15 @@ void FVehicleSuspensionSolver::RoughlyInitializeState(const FTransform& Componen
 {
 	float SideSign = ComponentRelativeTransform.GetLocation().Y >= 0.f ? 1.f : -1.f;
 
-	// 1. ‘⁄◊Èº˛±æµÿø’º‰∂®“ÂÀ˛∂•
+	// 1. Âú®ÁªÑ‰ª∂Êú¨Âú∞Á©∫Èó¥ÂÆö‰πâÂ°îÈ°∂
 	FVector3f TopMountLocalPos = KineConfig.TopMountLocalLocation;
 	TopMountLocalPos.Y *= SideSign;
 
-	// 2. —ÿ◊≈◊Èº˛◊‘…Ìµƒæ÷≤ø Up ÷·£®ªÚ’ﬂ∞⁄±€πÏº£√Ê£©œÚœ¬◊ˆ≥ı ºπ¿º∆£¨∂¯≤ª «µ◊≈Ã Z ÷·
+	// 2. Ê≤øÁùÄÁªÑ‰ª∂Ëá™Ë∫´ÁöÑÂ±ÄÈÉ® Up ËΩ¥ÔºàÊàñËÄÖÊëÜËáÇËΩ®ËøπÈù¢ÔºâÂêë‰∏ãÂÅöÂàùÂßã‰º∞ËÆ°ÔºåËÄå‰∏çÊòØÂ∫ïÁõò Z ËΩ¥
 	float GuessStrutLen = KineConfig.MinStrutLength + KineConfig.Stroke;
 	FVector3f InitialLowerBallJointLocal = TopMountLocalPos - FVector3f(0.f, 0.f, GuessStrutLen);
 
-	// 3. “ª¥Œ–‘Õ≥“ª◊™ªªµΩµ◊≈Ãø’º‰£¨±£÷§◊›œÚ X_c µƒœﬂ–‘Õ¨≤Ω£¨æ¯≤ªŒ€»æ∑ΩœÚœÚ¡ø
+	// 3. ‰∏ÄÊ¨°ÊÄßÁªü‰∏ÄËΩ¨Êç¢Âà∞Â∫ïÁõòÁ©∫Èó¥Ôºå‰øùËØÅÁ∫µÂêë X_c ÁöÑÁ∫øÊÄßÂêåÊ≠•ÔºåÁªù‰∏çÊ±°ÊüìÊñπÂêëÂêëÈáè
 	FTransform3f CompToChassis = (FTransform3f)ComponentRelativeTransform;
 	InState.LowerBallJointChassisLocation = CompToChassis.TransformPositionNoScale(InitialLowerBallJointLocal);
 
@@ -279,7 +304,7 @@ void FVehicleSuspensionSolver::RoughlyInitializeState(const FTransform& Componen
 	FQuat4f HubChassisRot = (SpindleMountRotation).GetNormalized();
 	InState.HubChassisRotation = HubChassisRot;
 
-	// 4. ∞— HubOffset “≤∏˙◊≈–˝◊™π˝»•£¨◊˜Œ™ Hub µƒ¥÷¬‘Œª÷√
+	// 4. Êää HubOffset ‰πüË∑üÁùÄÊóãËΩ¨ËøáÂéªÔºå‰Ωú‰∏∫ Hub ÁöÑÁ≤óÁï•‰ΩçÁΩÆ
 	FVector3f HubOffset = KineConfig.HubOffsetFromLowerJoint;
 	HubOffset.Y *= SideSign;
 	FVector3f HubOffsetFromLowerJointChassis = HubChassisRot.RotateVector(HubOffset);
@@ -419,6 +444,8 @@ void FVehicleSuspensionSolver::DrawSuspension(
 	bool bSolidAxle,
 	UVehicleWheelComponent* OtherWheel)
 {
+	if (!WheelComponent) return;
+	const FVehicleSuspensionSimState& State = WheelComponent->GetSuspensionState();
 	UWorld* TempWorld = WheelComponent->GetWorld();
 	if (!IsValid(TempWorld))return;
 
@@ -428,6 +455,7 @@ void FVehicleSuspensionSolver::DrawSuspension(
 	FVector HubRelativePos = FVector(State.HubChassisLocation);
 	FVector HubWorldPos = ChassisWorldTrans.TransformPositionNoScale(HubRelativePos);
 	
+	const FVehicleSuspensionHitResult& RayCastResult = WheelComponent->GetSuspensionHitResult();
 	float WheelPos = State.bIsRightWheel ? 1.f : -1.f;
 
 	if (bDrawSuspension)
@@ -551,6 +579,8 @@ void FVehicleSuspensionSolver::DrawSuspensionForce(
 	float Thickness, 
 	float Length)
 {
+	if (!WheelComponent) return;
+	const FVehicleSuspensionSimState& State = WheelComponent->GetSuspensionState();
 	UWorld* TempWorld = WheelComponent->GetWorld();
 	if (!IsValid(TempWorld))return;
 
@@ -681,15 +711,15 @@ FQuat4f FVehicleSuspensionSolver::MakeQuatFrom2DVectors(const FVector2f From, co
 	FVector2f A = From.GetSafeNormal();
 	FVector2f B = To.GetSafeNormal();
 
-	float cosTheta = FVector2f::DotProduct(A, B);              // cos¶»
-	float sinTheta = A.X * B.Y - A.Y * B.X;                    // sin¶»£®2D ≤Êª˝£©
+	float cosTheta = FVector2f::DotProduct(A, B);              // cosŒ∏
+	float sinTheta = A.X * B.Y - A.Y * B.X;                    // sinŒ∏Ôºà2D ÂèâÁßØÔºâ
 
 	// Clamp for numerical stability
 	cosTheta = FMath::Clamp(cosTheta, -1.0f, 1.0f);
 
-	float cosHalf = FMath::Sqrt((1.0f + cosTheta) * 0.5f);    // cos(¶»/2)
-	float sinHalf = FMath::Sqrt((1.0f - cosTheta) * 0.5f);    // sin(¶»/2)
-	sinHalf *= FMath::Sign(sinTheta);                         // ±£≥÷∑ΩœÚ
+	float cosHalf = FMath::Sqrt((1.0f + cosTheta) * 0.5f);    // cos(Œ∏/2)
+	float sinHalf = FMath::Sqrt((1.0f - cosTheta) * 0.5f);    // sin(Œ∏/2)
+	sinHalf *= FMath::Sign(sinTheta);                         // ‰øùÊåÅÊñπÂêë
 
 	FVector3f axisNorm = Axis.GetSafeNormal();
 	return FQuat4f(
@@ -737,16 +767,16 @@ void FVehicleSuspensionSolver::CopyContextToHitResult(
 	FVehicleSuspensionHitResult& NewHitResult)
 {
 	// copy hitresult
-	NewHitResult = FVehicleSuspensionHitResult(
+	NewHitResult = FVehicleSuspensionHitResult{
 		Context.HitResult.PhysMaterial,
 		Context.HitResult.Component,
 		Context.HitResult.BoneName,
-		Context.HitResult.bBlockingHit,
+		Context.HitResult.bBlockingHit != 0,
 		Context.HitResult.TraceStart,
 		Context.HitResult.TraceEnd,
 		Context.HitResult.Location,
 		(FQuat4f)Context.RayCastWorldTransform.GetRotation()
-	);
+	};
 }
 
 void FVehicleSuspensionSolver::CopyStateToContext(
@@ -851,71 +881,71 @@ void FVehicleSuspensionSolver::SolveSolidAxlePosture(
 	FVector3f& OutAxleCenter,
 	FQuat4f& OutAxleRotation)
 {
-	// »∑∂® YZ Ω‚À„∆Ω√Êµƒ∫·œÚ‘≠µ„ (ÕÍ√¿æ”÷–”⁄¡Ω±ﬂÀ˛∂•)
+	// Á°ÆÂÆö YZ Ëß£ÁÆóÂπ≥Èù¢ÁöÑÊ®™ÂêëÂéüÁÇπ (ÂÆåÁæéÂ±Ö‰∏≠‰∫é‰∏§ËæπÂ°îÈ°∂)
 	const float AxleCenterY = (LeftTopMountChassis.Y + RightTopMountChassis.Y) * 0.5f;
 	const float AxleCenterX = (LeftTopMountChassis.X + RightTopMountChassis.X) * 0.5f;
 
-	// ≥ı º≤¬≤‚÷µ
+	// ÂàùÂßãÁåúÊµãÂÄº
 	FVector3f GuessBallJoint_L = LeftTopMountChassis - FVector3f::UpVector * LeftStrutLength;
 	FVector3f GuessBallJoint_R = RightTopMountChassis - FVector3f::UpVector * RightStrutLength;
 	float CurrentAxleCenterZ = (GuessBallJoint_L.Z + GuessBallJoint_R.Z) * 0.5f;
 
 	float GuessDeltaY = GuessBallJoint_L.Y - GuessBallJoint_L.Y;
 	float GuessDeltaZ = GuessBallJoint_L.Z - GuessBallJoint_L.Z;
-	float CurrentRollAngle = 0.f /* FMath::Atan2(GuessDeltaY, GuessDeltaZ) <-”–∆Êµ„£¨≤ª»Á÷±Ω”∞—≥ı º÷µ…ËŒ™ 0 */;
+	float CurrentRollAngle = 0.f /* FMath::Atan2(GuessDeltaY, GuessDeltaZ) <-ÊúâÂ•áÁÇπÔºå‰∏çÂ¶ÇÁõ¥Êé•ÊääÂàùÂßãÂÄºËÆæ‰∏∫ 0 */;
 
 	const float TargetLeftStrutSq = LeftStrutLength * LeftStrutLength;
 	const float TargetRightStrutSq = RightStrutLength * RightStrutLength;
 
-	// ◊Ó∂‡ 5 ¥Œµ¸¥˙
+	// ÊúÄÂ§ö 5 Ê¨°Ëø≠‰ª£
 	for (int32 Iteration = 0; Iteration < 5; ++Iteration)
 	{
 		float SinTheta = FMath::Sin(CurrentRollAngle);
 		float CosTheta = FMath::Cos(CurrentRollAngle);
 
-		// ª˘”⁄µ±«∞≤¬≤‚÷µ£¨º∆À„◊Û”“œ¬«ÚÕ∑µƒ◊¯±Í
+		// Âü∫‰∫éÂΩìÂâçÁåúÊµãÂÄºÔºåËÆ°ÁÆóÂ∑¶Âè≥‰∏ãÁêÉÂ§¥ÁöÑÂùêÊ†á
 		float LeftBallJointY = AxleCenterY - AxleHalfWidth * CosTheta;
 		float LeftBallJointZ = CurrentAxleCenterZ - AxleHalfWidth * SinTheta;
 
 		float RightBallJointY = AxleCenterY + AxleHalfWidth * CosTheta;
 		float RightBallJointZ = CurrentAxleCenterZ + AxleHalfWidth * SinTheta;
 
-		// º∆À„À˛∂•µΩµ±«∞«ÚÕ∑µƒø’º‰œÚ¡ø≤Ó÷µ
+		// ËÆ°ÁÆóÂ°îÈ°∂Âà∞ÂΩìÂâçÁêÉÂ§¥ÁöÑÁ©∫Èó¥ÂêëÈáèÂ∑ÆÂÄº
 		float DeltaY_Left = LeftTopMountChassis.Y - LeftBallJointY;
 		float DeltaZ_Left = LeftTopMountChassis.Z - LeftBallJointZ;
 
 		float DeltaY_Right = RightTopMountChassis.Y - RightBallJointY;
 		float DeltaZ_Right = RightTopMountChassis.Z - RightBallJointZ;
 
-		// º∆À„≤–≤Ó (Residuals)£¨ƒø±Í «»√À¸√«±∆Ω¸ 0
+		// ËÆ°ÁÆóÊÆãÂ∑Æ (Residuals)ÔºåÁõÆÊ†áÊòØËÆ©ÂÆÉ‰ª¨ÈÄºËøë 0
 		float Residual_Left = (DeltaY_Left * DeltaY_Left) + (DeltaZ_Left * DeltaZ_Left) - TargetLeftStrutSq;
 		float Residual_Right = (DeltaY_Right * DeltaY_Right) + (DeltaZ_Right * DeltaZ_Right) - TargetRightStrutSq;
 
-		// ∆´µº ˝/—≈ø…±»æÿ’Û‘™Àÿ (Jacobian Elements)
-		// J11: Left ≤–≤Ó∂‘ CenterZ µƒµº ˝
+		// ÂÅèÂØºÊï∞/ÈõÖÂèØÊØîÁü©ÈòµÂÖÉÁ¥† (Jacobian Elements)
+		// J11: Left ÊÆãÂ∑ÆÂØπ CenterZ ÁöÑÂØºÊï∞
 		float J11 = -2.0f * DeltaZ_Left;
-		// J12: Left ≤–≤Ó∂‘ RollAngle µƒµº ˝
+		// J12: Left ÊÆãÂ∑ÆÂØπ RollAngle ÁöÑÂØºÊï∞
 		float J12 = -2.0f * DeltaY_Left * (AxleHalfWidth * SinTheta) + 2.0f * DeltaZ_Left * (AxleHalfWidth * CosTheta);
 
-		// J21: Right ≤–≤Ó∂‘ CenterZ µƒµº ˝
+		// J21: Right ÊÆãÂ∑ÆÂØπ CenterZ ÁöÑÂØºÊï∞
 		float J21 = -2.0f * DeltaZ_Right;
-		// J22: Right ≤–≤Ó∂‘ RollAngle µƒµº ˝
+		// J22: Right ÊÆãÂ∑ÆÂØπ RollAngle ÁöÑÂØºÊï∞
 		float J22 = 2.0f * DeltaY_Right * (AxleHalfWidth * SinTheta) - 2.0f * DeltaZ_Right * (AxleHalfWidth * CosTheta);
 
-		// æÿ’Û––¡– Ω
+		// Áü©ÈòµË°åÂàóÂºè
 		float Determinant = (J11 * J22) - (J12 * J21);
 
-		// »Áπ˚‘‚”ˆ ˝—ß∆Êµ„ Determinant = 0£¨Àµ√˜◊ÀÃ¨±¿¿££¨SafeDivideƒ¨»œ∑µªÿ0£¨ª·«Â≥˝StepCenterZ∫ÕStepRollAngle
+		// Â¶ÇÊûúÈÅ≠ÈÅáÊï∞Â≠¶Â•áÁÇπ Determinant = 0ÔºåËØ¥ÊòéÂßøÊÄÅÂ¥©Ê∫ÉÔºåSafeDivideÈªòËÆ§ËøîÂõû0Ôºå‰ºöÊ∏ÖÈô§StepCenterZÂíåStepRollAngle
 		float DeterminantInv = UVehicleUtilities::SafeDivide(1.f, Determinant);
 
-		// øÀ¿≥ƒ∑∑®‘Ú«ÛΩ‚‘ˆ¡ø
+		// ÂÖãËé±ÂßÜÊ≥ïÂàôÊ±ÇËß£Â¢ûÈáè
 		float StepCenterZ = (J22 * Residual_Left - J12 * Residual_Right) * DeterminantInv;
 		float StepRollAngle = (-J21 * Residual_Left + J11 * Residual_Right) * DeterminantInv;
 
 		CurrentAxleCenterZ -= StepCenterZ;
 		CurrentRollAngle -= StepRollAngle;
 
-		//  ’¡≤≈–∂œ
+		// Êî∂ÊïõÂà§Êñ≠
 		if (FMath::Abs(StepCenterZ) < SMALL_NUMBER && FMath::Abs(StepRollAngle) < SMALL_NUMBER)
 		{
 			break;
@@ -1021,26 +1051,7 @@ void FVehicleSuspensionSolver::ComputeRayCastLocation(
 	}
 }
 
-bool FVehicleSuspensionSolver::ShouldDoRefinedTrace(
-	FVehicleSuspensionSimContext& Ctx,
-	const float HalfWheelWidth,
-	const FVehicleSuspensionKinematicsConfig& Config)
-{
-	FVector LocalImpactPoint = Ctx.RayCastWorldTransform.InverseTransformPositionNoScale(Ctx.HitResult.ImpactPoint);
-
-	return FMath::Abs(LocalImpactPoint.Y) > HalfWheelWidth || LocalImpactPoint.Z > Config.Stroke;
-}
-
-void FVehicleSuspensionSolver::ComputeHitDistance(
-	FVehicleSuspensionSimContext& Ctx,
-	const float WheelRadius,
-	const float EquivalentSphereTraceRadius)
-{
-	Ctx.HitDistance = Ctx.bHitGround ?
-		Ctx.HitResult.Distance + EquivalentSphereTraceRadius : Ctx.RayCastLength + WheelRadius;
-}
-
-void FVehicleSuspensionSolver::UpdateStrutLength(
+void FVehicleSuspensionSolver::IntegrateSingleWheelSuspension(
 	FVehicleSuspensionSimContext& Ctx,
 	const FVehicleChassisSimState& ChassisState,
 	const float WorldGravityZ,
@@ -1091,28 +1102,28 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 
 		const float ThisWheelChassisZ = Ctx.HubChassisTransform.GetLocation().Z;
 
-		// 1. ªÒ»°÷ –ƒµΩπ“‘ÿµ„µƒ ¿ΩÁø’º‰œÚ¡ø (r)
+		// 1. Ëé∑ÂèñË¥®ÂøÉÂà∞ÊåÇËΩΩÁÇπÁöÑ‰∏ñÁïåÁ©∫Èó¥ÂêëÈáè (r)
 		FVector MountWorldPos = Ctx.ChassisWorldTransform.TransformPositionNoScale(FVector(Ctx.TopMountChassisLocation));
 		FVector RadiusVec = MountWorldPos - FVector(ChassisState.CoMWorldLocation);
 
-		// 2. Ã·»°µ◊≈Ã◊¥Ã¨
+		// 2. ÊèêÂèñÂ∫ïÁõòÁä∂ÊÄÅ
 		FVector A_com = ChassisState.LinearAcceleration;
 		FVector Alpha = ChassisState.AngularAcceleration;
 		FVector Omega = ChassisState.AngularVelocity;
 
-		// 3. º∆À„«–œÚº”ÀŸ∂»: Alpha x r
+		// 3. ËÆ°ÁÆóÂàáÂêëÂä†ÈÄüÂ∫¶: Alpha x r
 		FVector TangentialAccel = FVector::CrossProduct(Alpha, RadiusVec);
 
-		// 4. º∆À„œÚ–ƒº”ÀŸ∂»: Omega x (Omega x r)
+		// 4. ËÆ°ÁÆóÂêëÂøÉÂä†ÈÄüÂ∫¶: Omega x (Omega x r)
 		FVector CentripetalAccel = FVector::CrossProduct(Omega, FVector::CrossProduct(Omega, RadiusVec));
 
-		// 5. π“‘ÿµ„◊‹æ¯∂‘º”ÀŸ∂»
+		// 5. ÊåÇËΩΩÁÇπÊÄªÁªùÂØπÂä†ÈÄüÂ∫¶
 		FVector MountWorldAcceleration = A_com + TangentialAccel + CentripetalAccel;
 
-		// 6. Õ∂”∞µΩºı’∆˜£®Strut£©∑ΩœÚ
+		// 6. ÊäïÂΩ±Âà∞ÂáèÈúáÂô®ÔºàStrutÔºâÊñπÂêë
 		float StrutAcceleration = FVector::DotProduct(MountWorldAcceleration, Ctx.StrutWorldDirection);
 
-		// 7. º∆À„Œ±πﬂ–‘¡¶ (F = -m * a)°£µ•Œª£∫N
+		// 7. ËÆ°ÁÆó‰º™ÊÉØÊÄßÂäõ (F = -m * a)„ÄÇÂçï‰ΩçÔºöN
 		float FictitiousForce = Ctx.VirtualUnsprungMass * StrutAcceleration * cm_to_m;
 
 		if (SpringConfig.bUseDampingRatio)
@@ -1137,7 +1148,7 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 			float CurrentSubstepTime = (i + 1) * SubDt;
 			float InterpolatedGroundLimit = LastStrutLengthLimit + RayStrutVelocity * CurrentSubstepTime;
 
-			// 1. º∆À„µ±«∞µƒœ‘ Ωæ≤Ã¨¡¶ 
+			// 1. ËÆ°ÁÆóÂΩìÂâçÁöÑÊòæÂºèÈùôÊÄÅÂäõ
 			float SpringCompression = KineConfig.Stroke - CurrentLength;
 			float SpringForce = EquivSpring * SpringCompression;
 
@@ -1148,26 +1159,26 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 
 			float StaticForce = SpringForce + GravityForce + Preload + SwaybarForce + FictitiousForce;
 
-			// 2. ª˘”⁄œ‘ Ω¡¶‘§≤‚ÀŸ∂» ( 100.f µ•ŒªªªÀ„)
+			// 2. Âü∫‰∫éÊòæÂºèÂäõÈ¢ÑÊµãÈÄüÂ∫¶ ( 100.f Âçï‰ΩçÊç¢ÁÆó)
 			float PredictedVelocity = CurrentVelocity + (StaticForce * VirtualUnsprungMassInv) * m_to_cm * SubDt;
 
-			// 3. »´“˛ Ω«ÛΩ‚∑÷ƒ∏ (Implicit Denominator)
+			// 3. ÂÖ®ÈöêÂºèÊ±ÇËß£ÂàÜÊØç (Implicit Denominator)
 			float EquivDamp = (PredictedVelocity > 0.f) ? ReboundDamp : CompDamp;
 
-			// “˛ Ω◊Ëƒ·œÓ: C * dt / m
+			// ÈöêÂºèÈòªÂ∞ºÈ°π: C * dt / m
 			float ImplicitDampingTerm = EquivDamp * SubDt * VirtualUnsprungMassInv;
 
-			// “˛ Ω∏’∂»œÓ: K * dt^2 / m (–Ë“™¥¯…œ∫Õº”ÀŸ∂»œ‡Õ¨µƒ 100.f µ•ŒªªªÀ„)
+			// ÈöêÂºèÂàöÂ∫¶È°π: K * dt^2 / m (ÈúÄË¶ÅÂ∏¶‰∏äÂíåÂä†ÈÄüÂ∫¶Áõ∏ÂêåÁöÑ 100.f Âçï‰ΩçÊç¢ÁÆó)
 			float ImplicitSpringTerm = TotalStiffness * VirtualUnsprungMassInv * SubDt * SubDt * m_to_cm;
 
-			// ∞—∏’∂»œÓº”»Î∑÷ƒ∏
+			// ÊääÂàöÂ∫¶È°πÂä†ÂÖ•ÂàÜÊØç
 			float DampingDenominator = 1.f + ImplicitDampingTerm + ImplicitSpringTerm;
 
-			// 4. ∏¸–¬◊Ó÷’ÀŸ∂»”ÎŒª÷√
+			// 4. Êõ¥Êñ∞ÊúÄÁªàÈÄüÂ∫¶‰∏é‰ΩçÁΩÆ
 			CurrentVelocity = PredictedVelocity / DampingDenominator;
 			CurrentLength += CurrentVelocity * SubDt;
 
-			// ‘À∂Ø—ß‘º ¯
+			// ËøêÂä®Â≠¶Á∫¶Êùü
 			if (CurrentLength > InterpolatedGroundLimit)
 			{
 				bGroundConstraintTriggered = true;
@@ -1200,220 +1211,181 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 	}
 }
 
-void FVehicleSuspensionSolver::CacheImpactFriction(
-	FVehicleSuspensionSimContext& Ctx)
+void FVehicleSuspensionSolver::IntegratePairedIndependentSuspension(
+	const FVehicleSuspensionIntegrationInput& Left,
+	const FVehicleSuspensionIntegrationInput& Right, float ActiveSwaybarStiffness)
 {
-	if (Ctx.HitResult.bBlockingHit)
+	const float MacroDt = Left.Context.PhysicsDeltaTime;
+	if (!ensureMsgf(&Left.Context != &Right.Context && MacroDt == Right.Context.PhysicsDeltaTime,
+		TEXT("Paired suspension requires distinct contexts at the same timestep"))) return;
+	if (MacroDt <= 0.f) return;
+	if (ActiveSwaybarStiffness <= 0.f)
 	{
-		if (UPhysicalMaterial* HitPhysMat = Ctx.HitResult.PhysMaterial.Get())
+		// Preserve the scalar model exactly when no cross constraint exists.
+		for (const FVehicleSuspensionIntegrationInput* Input : { &Left, &Right })
 		{
-			Ctx.ImpactFriction = HitPhysMat->Friction;
-			return;
+			IntegrateSingleWheelSuspension(Input->Context, Input->ChassisState, Input->WorldGravityZ,
+				Input->WheelRadius, Input->WheelInertia, Input->KinematicsConfig,
+				Input->SpringConfig, Input->CachedLUTs, 0.f, 0.f);
 		}
+		return;
 	}
-	Ctx.ImpactFriction = 1.f;
-}
 
-// returns EquivalentSphereTraceRadius
-float FVehicleSuspensionSolver::SuspensionLineTrace(
-	FVehicleSuspensionSimContext& Ctx,
-	const UWorld* World,
-	const float WheelRadius,
-	const float HalfWheelWidth,
-	const FCollisionQueryParams& QueryParams,
-	const FCollisionResponseParams& ResponseParams,
-	const FVehicleSuspensionKinematicsConfig& Config)
-{
-	FVector WheelRightVector = Ctx.ChassisWorldTransform.TransformRotation(
-		FQuat(Ctx.HubChassisTransform.GetRotation())).GetRightVector();
-	FVector WheelOuterSideToCenter = HalfWheelWidth * Ctx.WheelSideSign * WheelRightVector;
-	FVector Start = Ctx.RayCastStartWorldLocation + WheelOuterSideToCenter;
-	FVector End = Ctx.RayCastEndWorldLocation + WheelOuterSideToCenter;
-	FVector LineTraceEnd = End - Ctx.RayCastDirectionWorld * WheelRadius;
-
-	Ctx.bRayCastRefined = false;
-
-	/**************RaycastSingle**************/
-	Ctx.bHitGround = FPhysicsInterface::RaycastSingle(World, Ctx.HitResult,
-		Start, LineTraceEnd, Config.TraceChannel, QueryParams, ResponseParams,
-		FCollisionObjectQueryParams::DefaultObjectQueryParam);
-
-	float EquivalentSphereTraceRadius = 0.f;
-	return EquivalentSphereTraceRadius;
-}
-
-// returns EquivalentSphereTraceRadius
-float FVehicleSuspensionSolver::SuspensionSphereTrace(
-	FVehicleSuspensionSimContext& Ctx,
-	const UWorld* World,
-	const float WheelRadius,
-	const float HalfWheelWidth,
-	const FCollisionQueryParams& QueryParams,
-	const FCollisionResponseParams& ResponseParams,
-	const FVehicleSuspensionKinematicsConfig& Config)
-{
-	Ctx.bRayCastRefined = false;
-	Ctx.bHitGround = FPhysicsInterface::GeomSweepSingle(
-		World, FCollisionShape::MakeSphere(WheelRadius), FQuat::Identity, Ctx.HitResult,
-		Ctx.RayCastStartWorldLocation, Ctx.RayCastEndWorldLocation, Config.TraceChannel, QueryParams,
-		ResponseParams, FCollisionObjectQueryParams::DefaultObjectQueryParam);
-
-	if (Ctx.bHitGround)
+	struct FCoordinate
 	{
-		Ctx.bRayCastRefined = ShouldDoRefinedTrace(Ctx, HalfWheelWidth, Config);
+		double Length, Velocity, InitialLength, InitialHubZ, Projection;
+		double Mass, Spring, Rebound, Compression, ConstantForce;
+		double PreviousLimit, Limit, LimitVelocity;
+		bool bDynamic, bTouchedGround = false;
+	};
+	// Keep the scalar/solid-axle integrator unchanged. This setup uses the same physical
+	// coefficients; the pair alone adds a matrix and simultaneous unilateral constraints.
+	auto PrepareCoordinate = [MacroDt](const FVehicleSuspensionIntegrationInput& Input)
+	{
+		FVehicleSuspensionSimContext& Context = Input.Context;
+		const auto& Kinematics = Input.KinematicsConfig;
+		const auto& Spring = Input.SpringConfig;
+		FCoordinate Coordinate{};
+		Coordinate.InitialLength = Coordinate.Length = Context.StrutCurrentLength;
+		Coordinate.Velocity = Context.StrutCurrentVelocity;
+		Coordinate.InitialHubZ = Context.HubChassisTransform.GetLocation().Z;
+		Coordinate.Projection = FMath::Abs(Context.StrutChassisDirection.Z);
+		Coordinate.PreviousLimit = Context.TransientStrutLengthLimit;
+		const float Extension = FMath::Clamp(UVehicleUtilities::SafeDivide(
+			FMath::Max(0.f, Context.HitDistance - Input.WheelRadius), Context.RayCastLength), 0.f, 1.f);
+		Coordinate.Limit = Extension * Kinematics.Stroke;
+		Coordinate.LimitVelocity = (Coordinate.Limit - Coordinate.PreviousLimit) / MacroDt;
+		Context.TransientStrutLengthLimit = Coordinate.Limit;
+		Context.StrutLastLength = Context.StrutCurrentLength;
+		Coordinate.bDynamic = Kinematics.SuspensionAndBrakeMass > SMALL_NUMBER;
+		Context.VirtualUnsprungMass = 0.f;
+		if (!Coordinate.bDynamic) return Coordinate;
 
-		if (Ctx.bRayCastRefined)
+		Context.VirtualUnsprungMass = UVehicleUtilities::SafeDivide(2.f * Input.WheelInertia,
+			Input.WheelRadius * Input.WheelRadius * 0.0001f) + Kinematics.SuspensionAndBrakeMass;
+		Coordinate.Mass = Context.VirtualUnsprungMass;
+		Context.StrutWorldDirection = Context.ChassisWorldTransform.TransformVectorNoScale(
+			FVector(Context.StrutChassisDirection));
+		const float MotionRatio = Input.CachedLUTs.MotionRatioCurve.FastEval(1.f - Context.CurrentExtensionRatio).Value;
+		Coordinate.Spring = Spring.SpringStiffness * MotionRatio * MotionRatio;
+		Coordinate.Rebound = Spring.ReboundDamping * MotionRatio * MotionRatio;
+		Coordinate.Compression = Spring.CompressionDamping * MotionRatio * MotionRatio;
+		if (Spring.bUseDampingRatio)
 		{
-			FVector SecondStepRayCastStart = Ctx.RayCastStartWorldLocation + Ctx.RayCastDirectionWorld * (HalfWheelWidth - WheelRadius);
-			FVector SecondStepRayCastEnd = SecondStepRayCastStart - Ctx.RayCastDirectionWorld * Ctx.RayCastLength;
-
-			Ctx.bHitGround = FPhysicsInterface::GeomSweepSingle(
-				World, FCollisionShape::MakeSphere(HalfWheelWidth), FQuat::Identity, Ctx.HitResult,
-				SecondStepRayCastStart, SecondStepRayCastEnd, Config.TraceChannel, QueryParams,
-				ResponseParams, FCollisionObjectQueryParams::DefaultObjectQueryParam);
+			const float CriticalDamping = GetCriticalDamping(Spring.SpringStiffness, Context.StaticSprungMass);
+			Coordinate.Rebound *= CriticalDamping;
+			Coordinate.Compression *= CriticalDamping;
 		}
-	}
-
-	return WheelRadius;
-}
-
-// returns EquivalentSphereTraceRadius
-float FVehicleSuspensionSolver::SuspensionBoxTrace(
-	FVehicleSuspensionSimContext& Ctx,
-	const UWorld* World,
-	const float WheelRadius,
-	const float HalfWheelWidth,
-	const FCollisionQueryParams& QueryParams,
-	const FCollisionResponseParams& ResponseParams,
-	const FVehicleSuspensionKinematicsConfig& Config)
-{
-	Ctx.bRayCastRefined = false;
-
-	FVector HalfSize = FVector(WheelRadius, HalfWheelWidth, WheelRadius) * 0.707;
-	FQuat Orientation = Ctx.RayCastWorldTransform.TransformRotation(
-		FQuat(0.0f, 0.38268343f, 0.0f, 0.92387953f));	// this is Rotator(0.0, 45.0, 0.0)
-
-	/*****GeomSweepSingle*****/
-	Ctx.bHitGround = FPhysicsInterface::GeomSweepSingle(
-		World,
-		FCollisionShape::MakeBox(HalfSize),
-		Orientation,
-		Ctx.HitResult,
-		Ctx.RayCastStartWorldLocation,
-		Ctx.RayCastEndWorldLocation,
-		Config.TraceChannel,
-		QueryParams,
-		ResponseParams,
-		FCollisionObjectQueryParams::DefaultObjectQueryParam);
-
-	if (Ctx.bHitGround)
+		const FVector MountWorld = Context.ChassisWorldTransform.TransformPositionNoScale(FVector(Context.TopMountChassisLocation));
+		const FVector Radius = MountWorld - FVector(Input.ChassisState.CoMWorldLocation);
+		const FVector Omega = Input.ChassisState.AngularVelocity;
+		const FVector MountAcceleration = FVector(Input.ChassisState.LinearAcceleration)
+			+ FVector::CrossProduct(FVector(Input.ChassisState.AngularAcceleration), Radius)
+			+ FVector::CrossProduct(Omega, FVector::CrossProduct(Omega, Radius));
+		Coordinate.ConstantForce = Coordinate.Mass * Input.WorldGravityZ * Context.StrutWorldDirection.Z
+			+ Spring.SpringPreload * MotionRatio
+			+ Coordinate.Mass * FVector::DotProduct(MountAcceleration, Context.StrutWorldDirection) * 0.01f;
+		return Coordinate;
+	};
+	FCoordinate Coordinates[2] = { PrepareCoordinate(Left), PrepareCoordinate(Right) };
+	const FVehicleSuspensionIntegrationInput* Inputs[2] = { &Left, &Right };
+	const int32 Substeps = FMath::Max(1, FMath::CeilToInt32(MacroDt / (1.f / 480.f)));
+	const double SubDt = double(MacroDt) / Substeps;
+	const double Bar = ActiveSwaybarStiffness;
+	const double BarImplicit = 100.0 * SubDt * SubDt * Bar;
+	for (int32 Step = 0; Step < Substeps; ++Step)
 	{
-		// try to maintain the impact point in the middle of the shape so that it will be more stable
-		FVector NormalVec = Ctx.ChassisWorldTransform.GetRotation().GetRightVector();
-		FVector RelativeBias = Ctx.HitResult.ImpactPoint - Ctx.HitResult.Location;
-		FVector BiasProjection = FVector::VectorPlaneProject(RelativeBias, NormalVec);
-		Ctx.HitResult.ImpactPoint = Ctx.HitResult.Location + BiasProjection;
-	}
-
-	return WheelRadius;
-}
-
-// returns EquivalentSphereTraceRadius
-float FVehicleSuspensionSolver::SuspensionSphereTraceNoRefinement(
-	FVehicleSuspensionSimContext& Ctx,
-	const UWorld* World,
-	const float WheelRadius,
-	const float HalfWheelWidth,
-	const FCollisionQueryParams& QueryParams,
-	const FCollisionResponseParams& ResponseParams,
-	const FVehicleSuspensionKinematicsConfig& Config)
-{
-	Ctx.bRayCastRefined = false;
-
-	float ValidRadius = FMath::Min(WheelRadius, HalfWheelWidth);
-	float RadiusDifference = WheelRadius - ValidRadius;
-	FVector TraceEnd = Ctx.RayCastEndWorldLocation - Ctx.RayCastDirectionWorld * RadiusDifference;
-
-	Ctx.bHitGround = FPhysicsInterface::GeomSweepSingle(
-		World, FCollisionShape::MakeSphere(ValidRadius), FQuat::Identity, Ctx.HitResult,
-		Ctx.RayCastStartWorldLocation, TraceEnd, Config.TraceChannel, QueryParams,
-		ResponseParams, FCollisionObjectQueryParams::DefaultObjectQueryParam);
-
-	return ValidRadius;
-}
-
-// returns EquivalentSphereTraceRadius
-float FVehicleSuspensionSolver::SuspensionMultiSphereTrace(
-	FVehicleSuspensionSimContext& Ctx,
-	const UWorld* World,
-	const float WheelRadius,
-	const float HalfWheelWidth,
-	const FCollisionQueryParams& QueryParams,
-	const FCollisionResponseParams& ResponseParams,
-	const FVehicleSuspensionKinematicsConfig& Config)
-{
-	Ctx.bRayCastRefined = false;
-	Ctx.bHitGround = FPhysicsInterface::GeomSweepSingle(
-		World, FCollisionShape::MakeSphere(WheelRadius), FQuat::Identity, Ctx.HitResult,
-		Ctx.RayCastStartWorldLocation, Ctx.RayCastEndWorldLocation, Config.TraceChannel, QueryParams,
-		ResponseParams, FCollisionObjectQueryParams::DefaultObjectQueryParam);
-
-	if (Ctx.bHitGround)
-	{
-		Ctx.bRayCastRefined = ShouldDoRefinedTrace(Ctx, HalfWheelWidth, Config);
-
-		if (Ctx.bRayCastRefined)
+		double GroundLimit[2], LowerVelocity[2], UpperVelocity[2], Diagonal[2], BaseDiagonal[2], Rhs[2];
+		const double HeightDifference = Coordinates[0].InitialHubZ
+			- (Coordinates[0].Length - Coordinates[0].InitialLength) * Coordinates[0].Projection
+			- Coordinates[1].InitialHubZ
+			+ (Coordinates[1].Length - Coordinates[1].InitialLength) * Coordinates[1].Projection;
+		for (int32 Side = 0; Side < 2; ++Side)
 		{
-			// first test with a bigger box
-			FVector HalfSize = FVector(WheelRadius, HalfWheelWidth, WheelRadius);
-			FHitResult BoxTraceResult;
-			bool bShouldMultiSphereTrace = FPhysicsInterface::GeomSweepSingle(
-				World,
-				FCollisionShape::MakeBox(HalfSize),
-				Ctx.RayCastWorldTransform.GetRotation(),
-				BoxTraceResult,
-				Ctx.RayCastStartWorldLocation,
-				Ctx.RayCastEndWorldLocation,
-				Config.TraceChannel,
-				QueryParams,
-				ResponseParams,
-				FCollisionObjectQueryParams::DefaultObjectQueryParam);
-
-			// then if there is someting inside the box, we do multi-sphere trace
-			if (bShouldMultiSphereTrace)
+			FCoordinate& Coordinate = Coordinates[Side];
+			GroundLimit[Side] = FMath::Max(0.0, Coordinate.PreviousLimit
+				+ Coordinate.LimitVelocity * ((Step + 1) * SubDt));
+			LowerVelocity[Side] = -Coordinate.Length / SubDt;
+			UpperVelocity[Side] = (GroundLimit[Side] - Coordinate.Length) / SubDt;
+			const double Force = Coordinate.Spring * (Inputs[Side]->KinematicsConfig.Stroke - Coordinate.Length)
+				+ Coordinate.ConstantForce + (Side == 0 ? 1.0 : -1.0) * Bar * HeightDifference * Coordinate.Projection;
+			const double PredictedVelocity = Coordinate.bDynamic
+				? Coordinate.Velocity + 100.0 * SubDt * Force / Coordinate.Mass : Coordinate.LimitVelocity;
+			const double Damping = PredictedVelocity > 0.0 ? Coordinate.Rebound : Coordinate.Compression;
+			BaseDiagonal[Side] = Coordinate.Mass + SubDt * Damping + 100.0 * SubDt * SubDt * Coordinate.Spring;
+			Diagonal[Side] = BaseDiagonal[Side] + BarImplicit * Coordinate.Projection * Coordinate.Projection;
+			Rhs[Side] = Coordinate.Mass * Coordinate.Velocity + 100.0 * SubDt * Force;
+		}
+		const double Cross = -BarImplicit * Coordinates[0].Projection * Coordinates[1].Projection;
+		// Expanded rank-one determinant avoids subtracting two almost equal bar^2 terms.
+		const double Determinant = BaseDiagonal[0] * BaseDiagonal[1] + BarImplicit * (
+			BaseDiagonal[0] * FMath::Square(Coordinates[1].Projection)
+			+ BaseDiagonal[1] * FMath::Square(Coordinates[0].Projection));
+		double Velocity[2] = {};
+		int32 SelectedStatus[2] = {};
+		bool bSolved = false;
+		// Only nine active sets: free, bump stop, or query/extension limit per side.
+		// Re-solving the free row with the constrained side is essential at high bar stiffness.
+		for (int32 LeftStatus = 0; LeftStatus < 3 && !bSolved; ++LeftStatus)
+		for (int32 RightStatus = 0; RightStatus < 3 && !bSolved; ++RightStatus)
+		{
+			const int32 Status[2] = { LeftStatus, RightStatus };
+			bool Free[2];
+			for (int32 Side = 0; Side < 2; ++Side)
 			{
-				TArray<FHitResult> MultiHitResults;
-				Ctx.bHitGround = FPhysicsInterface::GeomSweepMulti(
-					World,
-					FCollisionShape::MakeSphere(WheelRadius),
-					FQuat::Identity,
-					MultiHitResults,
-					Ctx.RayCastStartWorldLocation,
-					Ctx.RayCastEndWorldLocation,
-					Config.TraceChannel,
-					QueryParams,
-					ResponseParams,
-					FCollisionObjectQueryParams::DefaultObjectQueryParam
-				);
-
-				for (FHitResult HitResult : MultiHitResults)
-				{
-					if (HitResult.Time > BoxTraceResult.Time)
-					{
-						Ctx.HitResult = HitResult;
-						break;
-					}
-					else if (HitResult.Time == BoxTraceResult.Time)
-					{
-						Ctx.HitResult = BoxTraceResult;
-						break;
-					}
-				}
+				Free[Side] = Coordinates[Side].bDynamic && Status[Side] == 0;
+				Velocity[Side] = !Coordinates[Side].bDynamic ? UpperVelocity[Side]
+					: Status[Side] == 1 ? LowerVelocity[Side] : UpperVelocity[Side];
+			}
+			if (Free[0] && Free[1])
+			{
+				Velocity[0] = (Rhs[0] * Diagonal[1] - Cross * Rhs[1]) / Determinant;
+				Velocity[1] = (Rhs[1] * Diagonal[0] - Cross * Rhs[0]) / Determinant;
+			}
+			else if (Free[0]) Velocity[0] = (Rhs[0] - Cross * Velocity[1]) / Diagonal[0];
+			else if (Free[1]) Velocity[1] = (Rhs[1] - Cross * Velocity[0]) / Diagonal[1];
+			bool bFeasible = true;
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				if (!Coordinates[Side].bDynamic) continue;
+				const double Residual = Diagonal[Side] * Velocity[Side] + Cross * Velocity[1 - Side] - Rhs[Side];
+				const double Tolerance = 1.e-8 * (1.0 + FMath::Abs(Rhs[Side]));
+				bFeasible &= FMath::IsFinite(Velocity[Side])
+					&& Velocity[Side] >= LowerVelocity[Side] - 1.e-7
+					&& Velocity[Side] <= UpperVelocity[Side] + 1.e-7
+					&& (Status[Side] != 1 || Residual >= -Tolerance)
+					&& (Status[Side] != 2 || Residual <= Tolerance);
+			}
+			if (bFeasible)
+			{
+				bSolved = true;
+				SelectedStatus[0] = Status[0];
+				SelectedStatus[1] = Status[1];
 			}
 		}
+		if (!ensureMsgf(bSolved, TEXT("Invalid suspension coefficients or constrained pair solve"))) return;
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			FCoordinate& Coordinate = Coordinates[Side];
+			Coordinate.Length = FMath::Clamp(Coordinate.Length + SubDt * Velocity[Side], 0.0, GroundLimit[Side]);
+			Coordinate.Velocity = Velocity[Side];
+			if (!Coordinate.bDynamic || SelectedStatus[Side] == 2)
+			{
+				Coordinate.bTouchedGround = true;
+				Coordinate.Velocity = FMath::Min(Coordinate.Velocity, Coordinate.LimitVelocity);
+			}
+			else if (SelectedStatus[Side] == 1) Coordinate.Velocity = 0.0;
+		}
 	}
-
-	return WheelRadius;
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		FVehicleSuspensionSimContext& Context = Inputs[Side]->Context;
+		const FCoordinate& Coordinate = Coordinates[Side];
+		Context.StrutCurrentLength = Coordinate.Length;
+		Context.StrutCurrentVelocity = Coordinate.bDynamic ? Coordinate.Velocity : Coordinate.LimitVelocity;
+		Context.CurrentExtensionRatio = UVehicleUtilities::SafeDivide(Context.StrutCurrentLength, Inputs[Side]->KinematicsConfig.Stroke);
+		Context.bWheelOnGround = Context.bHitGround && (Coordinate.bTouchedGround || !Coordinate.bDynamic);
+	}
 }
 
 void FVehicleSuspensionSolver::SuspensionRayCast(
@@ -1426,57 +1398,8 @@ void FVehicleSuspensionSolver::SuspensionRayCast(
 	const FCollisionResponseParams& ResponseParams,
 	const FVehicleSuspensionKinematicsConfig& Config)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_RayCast);
-
-	// savety check
-	if (Ctx.RayCastStartWorldLocation.ContainsNaN()
-		|| Ctx.RayCastEndWorldLocation.ContainsNaN()
-		|| !IsValid(World))
-	{
-		// reset the suspension
-		Ctx.bHitGround = false;
-		ComputeHitDistance(Ctx, WheelRadius, 0.f);
-		CacheImpactFriction(Ctx);
-		return;
-	}
-
-	float EquivalentSphereTraceRadius = WheelRadius;
-	switch (Config.RayCastMode)
-	{
-	default:
-	case EVehicleSuspensionRayCastMode::LineTrace:
-		EquivalentSphereTraceRadius =
-			SuspensionLineTrace(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
-		break;
-	case EVehicleSuspensionRayCastMode::SphereTrace:
-		EquivalentSphereTraceRadius =
-			SuspensionSphereTrace(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
-		break;
-	case EVehicleSuspensionRayCastMode::BoxTrace:
-		EquivalentSphereTraceRadius =
-			SuspensionBoxTrace(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
-		break;
-	case EVehicleSuspensionRayCastMode::SphereTraceNoRefinement:
-		EquivalentSphereTraceRadius =
-			SuspensionSphereTraceNoRefinement(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
-		break;
-	case EVehicleSuspensionRayCastMode::MultiSphereTrace:
-		EquivalentSphereTraceRadius =
-			SuspensionMultiSphereTrace(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
-		break;
-	}
-
-	CacheImpactFriction(Ctx);
-	ComputeHitDistance(Ctx, WheelRadius, EquivalentSphereTraceRadius);
-
-	if (Ctx.HitDistance < WheelRadius)
-	{
-		// if bottom out, do line trace
-		EquivalentSphereTraceRadius =
-			SuspensionLineTrace(Ctx, World, WheelRadius, HalfWheelWidth, QueryParams, ResponseParams, Config);
-		CacheImpactFriction(Ctx);
-		ComputeHitDistance(Ctx, WheelRadius, EquivalentSphereTraceRadius);
-	}
+	FVehicleSuspensionContactBridge::Query(Ctx, World, WheelRadius, HalfWheelWidth,
+		QueryParams, ResponseParams, Config);
 }
 
 void FVehicleSuspensionSolver::SolveLowerWishbone(
@@ -1492,54 +1415,54 @@ void FVehicleSuspensionSolver::SolveLowerWishbone(
 	LowerArmAxisLocal.Y *= Ctx.WheelSideSign;
 	Ctx.LowerWishboneChassisAxis = Ctx.WheelCompToChassisTransform.TransformVectorNoScale(LowerArmAxisLocal).GetSafeNormal();
 
-	// 1. ªÒ»°ƒø±Íºı’∆˜≥§∂»£®«Ú√Ê∞Îæ∂ L_s£©
+	// 1. Ëé∑ÂèñÁõÆÊ†áÂáèÈúáÂô®ÈïøÂ∫¶ÔºàÁêÉÈù¢ÂçäÂæÑ L_sÔºâ
 	float TargetStrutLength = Config.MinStrutLength + Ctx.StrutCurrentLength;
 	float StrutLenSq = TargetStrutLength * TargetStrutLength;
 
-	// 2. ªÒ»°∞⁄±€≤Œ ˝£®‘≤∞Îæ∂ R_arm£©
+	// 2. Ëé∑ÂèñÊëÜËáÇÂèÇÊï∞ÔºàÂúÜÂçäÂæÑ R_armÔºâ
 	float RArm = Config.LowerWishbone.Length;
 	float RArmSq = RArm * RArm;
 
-	// 3. Ã·»°»˝∏ˆ“—÷™µƒ»˝Œ¨◊¯±Í/œÚ¡ø
+	// 3. ÊèêÂèñ‰∏â‰∏™Â∑≤Áü•ÁöÑ‰∏âÁª¥ÂùêÊ†á/ÂêëÈáè
 	FVector3f Pivot = Ctx.LowerPivotChassisLocation;
 	FVector3f Axis = Ctx.LowerWishboneChassisAxis;
 	FVector3f TM = Ctx.TopMountChassisLocation;
 
-	// D  «¥”À˛∂•÷∏œÚœ¬∞⁄±€◊™÷·µƒœÚ¡ø
+	// D ÊòØ‰ªéÂ°îÈ°∂ÊåáÂêë‰∏ãÊëÜËáÇËΩ¨ËΩ¥ÁöÑÂêëÈáè
 	FVector3f D = Pivot - TM;
 	float DSq = D.SquaredLength();
 
-	// 4. ø’º‰Ω‚Œˆº∏∫Œ∫À–ƒ∑Ω≥Ã£∫(Ls^2 - R^2 - ||D||^2) / 2
+	// 4. Á©∫Èó¥Ëß£ÊûêÂá†‰ΩïÊ†∏ÂøÉÊñπÁ®ãÔºö(Ls^2 - R^2 - ||D||^2) / 2
 	float K = (StrutLenSq - RArmSq - DSq) * 0.5f;
 
-	// D ‘⁄¥π÷±”⁄∞⁄±€–˝◊™÷·∆Ω√Ê…œµƒÕ∂”∞
+	// D Âú®ÂûÇÁõ¥‰∫éÊëÜËáÇÊóãËΩ¨ËΩ¥Âπ≥Èù¢‰∏äÁöÑÊäïÂΩ±
 	FVector3f DProj = D - FVector3f::DotProduct(D, Axis) * Axis;
 	float DProjLenSq = DProj.SquaredLength();
 
 	bool bValidIntersection = false;
 
-	// ∑¿÷πÀ˛∂•«°∫√‘⁄∞⁄±€–˝◊™÷·…œµº÷¬≥˝“‘¡„£®œ÷ µ÷–ºı’∆˜≤ªø…ƒ‹’‚—˘∞≤◊∞£©
+	// Èò≤Ê≠¢Â°îÈ°∂ÊÅ∞Â•ΩÂú®ÊëÜËáÇÊóãËΩ¨ËΩ¥‰∏äÂØºËá¥Èô§‰ª•Èõ∂ÔºàÁé∞ÂÆû‰∏≠ÂáèÈúáÂô®‰∏çÂèØËÉΩËøôÊ†∑ÂÆâË£ÖÔºâ
 	if (DProjLenSq > SMALL_NUMBER)
 	{
 		float DProjLen = FMath::Sqrt(DProjLenSq);
-		FVector3f U = DProj / DProjLen; // Õ∂”∞√Ê…œµƒæ÷≤øª˘µ◊ X ÷·
+		FVector3f U = DProj / DProjLen; // ÊäïÂΩ±Èù¢‰∏äÁöÑÂ±ÄÈÉ®Âü∫Â∫ï X ËΩ¥
 
 		float Du = K / DProjLen;
 
-		// ≈–± Ω£∫ºÏ≤Èºı’∆˜ «∑Òƒ‹πª¥•º∞∞⁄±€µƒ‘À∂Ø‘≤ª∑
+		// Âà§Âà´ÂºèÔºöÊ£ÄÊü•ÂáèÈúáÂô®ÊòØÂê¶ËÉΩÂ§üËß¶ÂèäÊëÜËáÇÁöÑËøêÂä®ÂúÜÁéØ
 		if (Du * Du <= RArmSq)
 		{
 			bValidIntersection = true;
 
-			// Dv  «’˝Ωª∑ΩœÚµƒ∑÷¡ø
+			// Dv ÊòØÊ≠£‰∫§ÊñπÂêëÁöÑÂàÜÈáè
 			float Dv = FMath::Sqrt(RArmSq - Du * Du);
-			FVector3f VDir = FVector3f::CrossProduct(Axis, U).GetSafeNormal(); // Õ∂”∞√Ê…œµƒæ÷≤øª˘µ◊ Y ÷·
+			FVector3f VDir = FVector3f::CrossProduct(Axis, U).GetSafeNormal(); // ÊäïÂΩ±Èù¢‰∏äÁöÑÂ±ÄÈÉ®Âü∫Â∫ï Y ËΩ¥
 
-			// µ√≥ˆ¡Ω∏ˆæ¯∂‘æ´»∑µƒΩ‚ŒˆΩ‚
+			// ÂæóÂá∫‰∏§‰∏™ÁªùÂØπÁ≤æÁ°ÆÁöÑËß£ÊûêËß£
 			FVector3f P1 = Pivot + Du * U + Dv * VDir;
 			FVector3f P2 = Pivot + Du * U - Dv * VDir;
 
-			// ∂‘±»…œ“ª÷°µƒœ¬«ÚÕ∑Œª÷√£¨—°‘Òæ‡¿Î◊ÓΩ¸µƒΩ‚£¨±£≥÷ø’º‰‘À∂Øµƒ¡¨–¯–‘
+			// ÂØπÊØî‰∏ä‰∏ÄÂ∏ßÁöÑ‰∏ãÁêÉÂ§¥‰ΩçÁΩÆÔºåÈÄâÊã©Ë∑ùÁ¶ªÊúÄËøëÁöÑËß£Ôºå‰øùÊåÅÁ©∫Èó¥ËøêÂä®ÁöÑËøûÁª≠ÊÄß
 			float Dist1Sq = (P1 - Ctx.LowerBallJointChassisLocation).SquaredLength();
 			float Dist2Sq = (P2 - Ctx.LowerBallJointChassisLocation).SquaredLength();
 
@@ -1547,14 +1470,14 @@ void FVehicleSuspensionSolver::SolveLowerWishbone(
 		}
 		else
 		{
-			// ∞≤»´Ωµº∂£∫µ±ºı’∆˜π˝≥§ªÚπ˝∂Ã£¨µº÷¬«Ú√Ê∫Õ‘≤√ª”–Ωªµ„ ±°£
-			// Œ“√«Ω´◊¯±Í«Ø÷∆£®Clamp£©‘⁄∞⁄±€‘≤÷‹…œæ‡¿Îºı’∆˜ƒø±Í«ÚÃÂ◊ÓΩ¸µƒƒ«∏ˆŒÔ¿Ìº´÷µµ„°£
+			// ÂÆâÂÖ®ÈôçÁ∫ßÔºöÂΩìÂáèÈúáÂô®ËøáÈïøÊàñËøáÁü≠ÔºåÂØºËá¥ÁêÉÈù¢ÂíåÂúÜÊ≤°Êúâ‰∫§ÁÇπÊó∂„ÄÇ
+			// Êàë‰ª¨Â∞ÜÂùêÊ†áÈí≥Âà∂ÔºàClampÔºâÂú®ÊëÜËáÇÂúÜÂë®‰∏äË∑ùÁ¶ªÂáèÈúáÂô®ÁõÆÊ†áÁêÉ‰ΩìÊúÄËøëÁöÑÈÇ£‰∏™Áâ©ÁêÜÊûÅÂÄºÁÇπ„ÄÇ
 			Ctx.LowerBallJointChassisLocation = Pivot + RArm * FMath::Sign(Du) * U;
 		}
 	}
 	else
 	{
-		// º´∆‰∫±º˚µƒ∆Ê“Ï◊¥Ã¨∂µµ◊£∫±£≥÷…œ“ª¥Œµƒ∑ΩœÚ≤¢œﬁ÷∆‘⁄∞⁄±€≥§∂»…œ
+		// ÊûÅÂÖ∂ÁΩïËßÅÁöÑÂ•áÂºÇÁä∂ÊÄÅÂÖúÂ∫ïÔºö‰øùÊåÅ‰∏ä‰∏ÄÊ¨°ÁöÑÊñπÂêëÂπ∂ÈôêÂà∂Âú®ÊëÜËáÇÈïøÂ∫¶‰∏ä
 		FVector3f OldV = Ctx.LowerBallJointChassisLocation - Pivot;
 		FVector3f OldVProj = OldV - FVector3f::DotProduct(OldV, Axis) * Axis;
 		if (OldVProj.SquaredLength() > SMALL_NUMBER)
@@ -1563,7 +1486,7 @@ void FVehicleSuspensionSolver::SolveLowerWishbone(
 		}
 	}
 
-	// 5. ∏¸–¬…œœ¬Œƒ◊¥Ã¨
+	// 5. Êõ¥Êñ∞‰∏ä‰∏ãÊñáÁä∂ÊÄÅ
 	Ctx.StrutChassisDirection = (Ctx.TopMountChassisLocation - Ctx.LowerBallJointChassisLocation).GetSafeNormal();
 	Ctx.bValidKinematicsConfig = Ctx.bValidKinematicsConfig && bValidIntersection;
 }
@@ -1698,7 +1621,7 @@ bool FVehicleSuspensionSolver::SolveUpperWishbone(
 	FVector3f Pos1Dir = (OutPos1 - LowerBallPos).GetSafeNormal();
 	FVector3f Pos2Dir = (OutPos2 - LowerBallPos).GetSafeNormal();
 
-	//  ‰≥ˆ
+	// ËæìÂá∫
 	OutUpperBallPos = FVector3f::DotProduct(Pos1Dir, StrutDir) > FVector3f::DotProduct(Pos2Dir, StrutDir) ? OutPos1 : OutPos2;
 
 	return true;
@@ -1773,27 +1696,27 @@ void FVehicleSuspensionSolver::ComputeSolidAxle(
 	const FVector3f& AxleChassisCenter,
 	const FQuat4f& AxleChassisRotation)
 {
-	// 4. ◊™œÚ÷· (Steer Axis / Kingpin)
+	// 4. ËΩ¨ÂêëËΩ¥ (Steer Axis / Kingpin)
 	FVector3f DefaultForward = FVector3f(1.f, 0.f, 0.f);
 	FVector3f AxleDirectionChassis = AxleChassisRotation.RotateVector(FVector3f::RightVector);
 	Ctx.LowerBallJointChassisLocation = AxleChassisCenter + AxleDirectionChassis * AxleHalfWidth * Ctx.WheelSideSign;
 	Ctx.SteerAxisChassisDirection = FVector3f::CrossProduct(DefaultForward, AxleDirectionChassis).GetSafeNormal();
 
-	// 5. ”¶”√◊™œÚΩ«
+	// 5. Â∫îÁî®ËΩ¨ÂêëËßí
 	FQuat4f SteeringBiasRotation = FQuat4f(Ctx.SteerAxisChassisDirection, FMath::DegreesToRadians(Ctx.SteeringAngle));
 
-	// 6. ◊È∫œ Hub –˝◊™
+	// 6. ÁªÑÂêà Hub ÊóãËΩ¨
 	FQuat4f HubChassisRot = SteeringBiasRotation * AxleChassisRotation;
 	Ctx.HubChassisTransform.SetRotation(HubChassisRot);
 
-	// 7. ∆´“∆µΩ¬÷–ƒ
+	// 7. ÂÅèÁßªÂà∞ËΩÆÂøÉ
 	FVector3f HubOffset = Config.HubOffsetFromLowerJoint;
 	HubOffset.Y *= Ctx.WheelSideSign;
 	Ctx.HubOffsetFromLowerJointChassis = HubChassisRot.RotateVector(HubOffset);
 
 	Ctx.HubChassisTransform.SetLocation(Ctx.LowerBallJointChassisLocation + Ctx.HubOffsetFromLowerJointChassis);
 
-	// 8. ª∫¥Ê ¿ΩÁø’º‰œÚ¡ø”Îºı’∆˜ ‹¡¶∑ΩœÚ
+	// 8. ÁºìÂ≠ò‰∏ñÁïåÁ©∫Èó¥ÂêëÈáè‰∏éÂáèÈúáÂô®ÂèóÂäõÊñπÂêë
 	FVector3f WheelChassisRightVec = Ctx.HubChassisTransform.GetRotation().GetRightVector();
 	Ctx.WheelWorldRightVector = Ctx.ChassisWorldTransform.TransformVectorNoScale((FVector)WheelChassisRightVec);
 	Ctx.HubWorldLocation = Ctx.ChassisWorldTransform.TransformPositionNoScale((FVector)Ctx.HubChassisTransform.GetLocation());
@@ -2072,35 +1995,7 @@ void FVehicleSuspensionSolver::CalculateImpactPointWorldVelocity(
 	FVehicleSuspensionSimContext& Ctx,
 	const FVehicleChassisSimState& ChassisState)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_SuspensionSolver_GetVelocity);
-
-	FVector3f LastImpactWorldVelocity = Ctx.ImpactWorldVelocity;
-
-	if (Ctx.HitResult.bBlockingHit)
-	{
-		const FVector Arm = Ctx.HitResult.ImpactPoint - ChassisState.CoMWorldLocation;
-		FVector LinVelWorldA = ChassisState.LinearVelocity - FVector::CrossProduct(Arm, ChassisState.AngularVelocity);
-
-		FVector LinVelWorldB = FVector(0.f);
-		if (UPrimitiveComponent* HitComponent = Ctx.HitResult.GetComponent())
-		{
-			if (HitComponent->IsPhysicsStateCreated() &&
-				HitComponent->Mobility != EComponentMobility::Static)
-			{
-				LinVelWorldB = UAsyncTickFunctions::ATP_GetLinearVelocityAtPoint(
-					HitComponent,
-					Ctx.HitResult.ImpactPoint,
-					Ctx.HitResult.BoneName
-				);
-			}
-		}
-
-		Ctx.ImpactWorldVelocity = FVector3f(0.01 * (LinVelWorldA - LinVelWorldB));
-	}
-	else
-	{
-		Ctx.ImpactWorldVelocity = FVector3f(0.f);
-	}
+	FVehicleSuspensionContactBridge::CalculateImpactPointWorldVelocity(Ctx, ChassisState);
 }
 
 Chaos::FVec3 FVehicleSuspensionSolver::CalculatePointEffectiveMass3D(

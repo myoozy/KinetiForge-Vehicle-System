@@ -24,6 +24,7 @@ struct FAsyncPhysicsInput : public Chaos::FSimCallbackInput
 		Pawns.Reset();
 		ActorComponents.Reset();
 		World.Reset();
+		DebugMessages = false;
 	}
 };
 

@@ -49,6 +49,7 @@ public class KinetiForge : ModuleRules
 				"PhysicsCore",
                 "AsyncTickPhysics",
                 "MovieScene",
+                "Projects",
                 "NavigationSystem"
             }
 			);

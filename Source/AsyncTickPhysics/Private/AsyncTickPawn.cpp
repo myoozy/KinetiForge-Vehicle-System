@@ -11,14 +11,38 @@ void AAsyncTickPawn::BeginPlay()
 {
 	Super::BeginPlay();
 
-	FAsyncTickManager* AsyncTickManager = FAsyncTickManager::GetPhysicsManagerFromScene(this->GetWorld()->GetPhysicsScene());
-	AsyncTickManager->AddPawn(this);
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+	FPhysScene* PhysicsScene = World->GetPhysicsScene();
+	if (PhysicsScene == nullptr)
+	{
+		return;
+	}
+	if (FAsyncTickManager* AsyncTickManager = FAsyncTickManager::GetPhysicsManagerFromScene(PhysicsScene))
+	{
+		AsyncTickManager->AddPawn(this);
+	}
 }
 
 void AAsyncTickPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
 	
-	FAsyncTickManager* AsyncTickManager = FAsyncTickManager::GetPhysicsManagerFromScene(this->GetWorld()->GetPhysicsScene());
-	AsyncTickManager->RemovePawn(this);
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+	FPhysScene* PhysicsScene = World->GetPhysicsScene();
+	if (PhysicsScene == nullptr)
+	{
+		return;
+	}
+	if (FAsyncTickManager* AsyncTickManager = FAsyncTickManager::GetPhysicsManagerFromScene(PhysicsScene))
+	{
+		AsyncTickManager->RemovePawn(this);
+	}
 }

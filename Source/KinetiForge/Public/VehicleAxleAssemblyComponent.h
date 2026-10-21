@@ -5,11 +5,15 @@
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
 #include "VehicleAxleStructs.h"
+#include "VehiclePhysicsStep.h"
 #include "VehicleAxleAssemblyComponent.generated.h"
 
 class UVehicleDifferentialComponent;
 class UVehicleWheelCoordinatorComponent;
 class UVehicleWheelComponent;
+class FVehicleAxleBridge;
+struct FVehicleAxleRuntimeSettings;
+struct FVehicleAxleWheelInput;
 
 /**
 * The AxleAssemblyComponent holds (weak) pointer to (up to) two wheels and one differential.
@@ -33,9 +37,24 @@ class UVehicleWheelComponent;
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), BlueprintType, Blueprintable )
 class KINETIFORGE_API UVehicleAxleAssemblyComponent : public USceneComponent
 {
+	friend class UVehicleDriveAssemblyComponent;
+	friend class UVehicleDifferentialComponent;
+	friend struct FVehicleDriveOwnershipProbe;
+	friend struct FVehicleAxleRuntimeProbe;
+	friend struct FVehicleWheelBindingProbe;
+	friend struct FVehicleAxleBindingProbe;
+	friend struct FVehicleWheelSlotProbe;
 	GENERATED_BODY()
 
 public:	
+	/** GT compatibility validation of the registered wheel set. All axles already own their C++ runtime. */
+	bool BindIsolatedAxleRuntime();
+	TSharedPtr<FVehicleAxleBridge, ESPMode::ThreadSafe> GetAxleBridge() const;
+	FVehicleAxleRuntimeSettings CaptureRuntimeSettings() const;
+	void RefreshPublishedAxleState();
+	/** Sole simulation consumer only. GT/debug/animation use GetAxleState and published getters. */
+	FVehicleAxleSimState& GetSimulationState();
+	const FVehicleAxleConfig& GetSimulationAxleConfig();
 	// Sets default values for this component's properties
 	UVehicleAxleAssemblyComponent();
 
@@ -109,6 +128,9 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 	virtual void OnRegister() override;
+	virtual void OnUnregister() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void BeginDestroy() override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 
 	UPROPERTY()
@@ -182,31 +204,31 @@ public:
 	EVehicleAxleSuspensionType GetAxleSuspensionType() { return SuspensionType; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	void SetAxleSuspensionType(EVehicleAxleSuspensionType NewType) { SuspensionType = NewType; }
+	void SetAxleSuspensionType(EVehicleAxleSuspensionType NewType);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	const FVehicleAxleConfig& GetAxleConfig() { return AxleConfig; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	void SetAxleConfig(const FVehicleAxleConfig& NewConfig) { AxleConfig = NewConfig; }
+	void SetAxleConfig(const FVehicleAxleConfig& NewConfig);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	const FVehicleAxleSteeringConfig& GetAxleSteeringConfig() { return AxleSteeringConfig; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	void SetAxleSteeringConfig(const FVehicleAxleSteeringConfig& NewConfig) { AxleSteeringConfig = NewConfig; }
+	void SetAxleSteeringConfig(const FVehicleAxleSteeringConfig& NewConfig);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	const FVehicleSteeringAssistConfig& GetSteeringAssistConfig() { return SteeringAssistConfig; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	void SetSteeringAssistConfig(const FVehicleSteeringAssistConfig& NewConfig) { SteeringAssistConfig = NewConfig; }
+	void SetSteeringAssistConfig(const FVehicleSteeringAssistConfig& NewConfig);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
 	const FVehicleTCSConfig& GetTCSConfig() { return TCSConfig; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	void SetTCSConfig(const FVehicleTCSConfig& NewConfig) { TCSConfig = NewConfig; }
+	void SetTCSConfig(const FVehicleTCSConfig& NewConfig);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void InitializeWheels();
@@ -231,16 +253,16 @@ public:
 	{ OutDifferential = Differential.Get(); }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly", meta = (DeprecatedFunction, DeprecationMessage = "Please use GetAxleState instead!"))
-	void GetAxleMovement(FVehicleAxleSimState& Out) { Out = State; }
+	void GetAxleMovement(FVehicleAxleSimState& Out) { Out = GetStateForCaller(); }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
-	const FVehicleAxleSimState& GetAxleState() { return State; }
+	const FVehicleAxleSimState& GetAxleState() { return GetStateForCaller(); }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	void SetP3MotorTorque(float NewTorque) { State.P3MotorTorque = NewTorque; }
+	void SetP3MotorTorque(float NewTorque);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
-	float GetP3MotorTorque() { return State.P3MotorTorque; }
+	float GetP3MotorTorque() { return GetStateForCaller().P3MotorTorque; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void SetWheelPosition(float NewTrackWidth);
@@ -272,34 +294,34 @@ public:
 	);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	float GetWheelBase() { return State.WheelBase; }
+	float GetWheelBase() { return GetStateForCaller().WheelBase; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	void SetWheelBase(float NewWheelBase) { State.WheelBase = NewWheelBase; }
+	void SetWheelBase(float NewWheelBase);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void GetLinearVelocity(FVector3f& OutLocalVelocity, FVector3f& OutWorldVelocity);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	float GetAngularVelocity() { return State.AxleAngularVelocity; }
+	float GetAngularVelocity() { return GetStateForCaller().AxleAngularVelocity; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	float GetTotalAxleInertia() { return State.AxleEffectiveInertia; }
+	float GetTotalAxleInertia() { return GetStateForCaller().AxleEffectiveInertia; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	int32 GetNumOfWheelsOnGround() { return State.NumOfWheelOnGround; }
+	int32 GetNumOfWheelsOnGround() { return GetStateForCaller().NumOfWheelOnGround; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	FVector3f GetAxleCenter();
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
-	float GetSteeringValue() { return State.RealSteeringValue; }
+	float GetSteeringValue() { return GetStateForCaller().RealSteeringValue; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void GetSteeringAngle(float& OutLeft, float& OutRight) 
 	{
-		OutLeft = State.LeftWheelSteeringAngle; 
-		OutRight = State.RightWheelSteeringAngle;
+		OutLeft = GetStateForCaller().LeftWheelSteeringAngle;
+		OutRight = GetStateForCaller().RightWheelSteeringAngle;
 	}
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
@@ -309,8 +331,43 @@ public:
 	UPrimitiveComponent* GetChassis() { return Chassis.Get(); }
 
 private:
-	bool GenerateWheels();
-	bool SearchExistingWheels();
+	/**
+	* Wheel slot model. There are exactly two slots (left/right). AxleLayout decides which
+	* slots are required; the slot's wheel is either generated by this axle (destroyable,
+	* positioned and configured by the axle) or referenced from the level (never destroyed,
+	* never repositioned or reconfigured by InitializeWheels). All slot mutation goes through
+	* ReconcileWheelSlots, so registration order and repeated registration are irrelevant.
+	*/
+	enum class EWheelSide : uint8 { Left, Right };
+
+	bool IsWheelRequired(EWheelSide Side) const;
+	FName GetGeneratedWheelName(EWheelSide Side) const;
+	TWeakObjectPtr<UVehicleWheelComponent>& WheelSlotRef(EWheelSide Side);
+	bool IsWheelGenerated(EWheelSide Side) const;
+	void SetWheelGenerated(EWheelSide Side, bool bGenerated);
+	bool HasBothWheels() const;
+	void EnsureAxleAttachedToChassis();
+	void PlaceWheel(EWheelSide Side, float TrackWidth);
+	void PlaceManagedWheels();
+	void DestroyGeneratedWheel(EWheelSide Side);
+	void ResolveWheelSlot(EWheelSide Side);
+	void ReconcileWheelSlots();
+
+	/** True only for wheels this axle created; referenced wheels are never destroyed. */
+	bool bLeftWheelGenerated = false;
+	bool bRightWheelGenerated = false;
+
+	TAtomic<bool> bManualPhysicsReady{false};
+	const FVehicleAxleSimState& GetStateForCaller() const;
+	static FVehicleAxleWheelInput CaptureWheelTransmissionInput(UVehicleWheelComponent* Wheel);
+	static float CaptureSimulationTrackWidth(float FallbackWidth, UVehicleWheelComponent* Left, UVehicleWheelComponent* Right);
+	FVehiclePhysicsOwnership PhysicsOwnership;
+	// Assigned during construction and never replaced; bridge lifetime is shared with in-flight users.
+	TSharedPtr<FVehicleAxleBridge, ESPMode::ThreadSafe> AxleBridge;
+	uint64 LastAxlePublicationSequence = 0;
+	uint64 RequestedP3Sequence = 0, RequestedWheelBaseSequence = 0;
+	float RequestedP3MotorTorque = 0.f, RequestedWheelBase = 0.f;
+	void SubmitRuntimeSettings();
 	bool GenerateDifferential();
 
 	UPROPERTY()
