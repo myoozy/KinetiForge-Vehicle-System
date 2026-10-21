@@ -4,12 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "AsyncTickActorComponent.h"
+#include "HAL/CriticalSection.h"
 #include "VehicleAsyncTickComponent.generated.h"
 
 class UVehicleDriveAssemblyComponent;
 class UVehicleWheelCoordinatorComponent;
 class UVehicleAsyncSpringArmComponent;
-class FAsyncTickManager;
+class FVehiclePhysicsStep;
 
 /**
  * This component recieves callback from physics thread and calls other components to update physics.
@@ -19,6 +20,8 @@ UCLASS()
 class KINETIFORGE_API UVehicleAsyncTickComponent : public UAsyncTickActorComponent
 {
 	GENERATED_BODY()
+	friend struct FVehicleAsyncTickRegistrationProbe;
+	friend struct FVehicleAsyncTickBeginDestroyProbe;
 
 public:
 	bool bUpdatePhysicsOnGameThread = false;
@@ -40,21 +43,24 @@ protected:
 	TArray<TWeakObjectPtr<UVehicleAsyncSpringArmComponent>> AsyncSpringArms;
 
 protected:
+	virtual void OnRegister() override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void OnUnregister() override;
+	virtual void BeginDestroy() override;
 
-	/**
-	* This function runs on worker thread (not safe but much better performance)
-	*/
+	/** This function runs on worker thread (not safe but much better performance). */
 	virtual void NativeAsyncTick(float DeltaTime) override;
 
 	/**
-	* This function runs on frozen game thread, it is thread-safe but the performance is bad
+	* This function runs on frozen game thread, it is thread-safe but the performance is bad.
+	* Aero/spring-arm UObject state is updated here; Drive steps use the scene callback selected during binding.
 	*/
 	virtual void AsyncPhysicsTickComponent(float DeltaTime, float SimTime) override;
 
 private:
-	void UpdateAllPhysics(float DeltaTime);
-	FAsyncTickManager* CachedAsyncTickManager = nullptr;
+	void StopDrivePhysicsSteps(bool bForgetDrives);
+	mutable FCriticalSection RegistrationMutex;
+	TMap<TWeakObjectPtr<UVehicleDriveAssemblyComponent>, TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe>> DrivePhysicsSteps;
+	void UpdateAuxiliaryPhysics(float DeltaTime);
 };

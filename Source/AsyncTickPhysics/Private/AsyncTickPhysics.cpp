@@ -7,14 +7,29 @@
 
 void FAsyncTickPhysicsModule::StartupModule()
 {
-	this->OnPhysSceneInit = FPhysicsDelegates::OnPhysSceneInit.AddRaw(this, &FAsyncTickPhysicsModule::PhysScene_OnPhysSceneInit);
-	this->OnPhysSceneTerm = FPhysicsDelegates::OnPhysSceneTerm.AddRaw(this, &FAsyncTickPhysicsModule::PhysScene_OnPhysSceneTerm);
+	if (!OnPhysSceneInit.IsValid())
+	{
+		OnPhysSceneInit = FPhysicsDelegates::OnPhysSceneInit.AddRaw(this, &FAsyncTickPhysicsModule::PhysScene_OnPhysSceneInit);
+	}
+	if (!OnPhysSceneTerm.IsValid())
+	{
+		OnPhysSceneTerm = FPhysicsDelegates::OnPhysSceneTerm.AddRaw(this, &FAsyncTickPhysicsModule::PhysScene_OnPhysSceneTerm);
+	}
 }
 
 void FAsyncTickPhysicsModule::ShutdownModule()
 {
-	FPhysicsDelegates::OnPhysSceneInit.Remove(this->OnPhysSceneInit);
-	FPhysicsDelegates::OnPhysSceneTerm.Remove(this->OnPhysSceneTerm);
+	if (OnPhysSceneInit.IsValid())
+	{
+		FPhysicsDelegates::OnPhysSceneInit.Remove(OnPhysSceneInit);
+		OnPhysSceneInit.Reset();
+	}
+	if (OnPhysSceneTerm.IsValid())
+	{
+		FPhysicsDelegates::OnPhysSceneTerm.Remove(OnPhysSceneTerm);
+		OnPhysSceneTerm.Reset();
+	}
+	FAsyncTickManager::ShutdownAllManagers();
 }
 
 // Create the new tick manager

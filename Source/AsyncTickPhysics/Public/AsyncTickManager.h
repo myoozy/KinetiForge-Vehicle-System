@@ -8,6 +8,7 @@
 
 class ASYNCTICKPHYSICS_API FAsyncTickManager
 {
+	friend struct FAsyncTickManagerLifecycleProbe;
 public:
 	FAsyncTickManager(FPhysScene* PhysScene);
 	~FAsyncTickManager();
@@ -20,6 +21,9 @@ public:
 	FPhysScene_Chaos& GetScene() const { return Scene; }
 
 	static FAsyncTickManager* GetPhysicsManagerFromScene(FPhysScene* PhysScene);
+	// Called on the game thread during normal module shutdown. This does not drain
+	// callbacks already queued on a solver; the module remains resident until process exit.
+	static void ShutdownAllManagers();
 
 	void DetachFromPhysScene(FPhysScene* PhysScene);
 	
@@ -34,6 +38,7 @@ public:
 
 	void ScenePreTick(FPhysScene* PhysScene, float DeltaTime);
 private:
+	static void UnregisterWorldDelegatesIfUnused();
 	static TMap<FPhysScene*, FAsyncTickManager*> SceneToPhysicsManagerMap;
 
 	TArray<TWeakObjectPtr<AAsyncTickPawn>> Pawns;

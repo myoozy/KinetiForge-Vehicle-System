@@ -3,10 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HAL/CriticalSection.h"
 #include "Components/SceneComponent.h"
 #include "VehicleInputStructs.h"
 #include "VehicleDrivetrainStructs.h"
 #include "VehicleAxleStructs.h"
+#include "VehiclePhysicsBodyBinding.h"
 #include "VehicleDriveAssemblyComponent.generated.h"
 
 class UVehicleWheelComponent;
@@ -17,6 +19,15 @@ class UVehicleEngineComponent;
 class UVehicleClutchComponent;
 class UVehicleGearboxComponent;
 class UVehicleAsyncTickComponent;
+class FVehiclePowerUnitBridge;
+class FVehiclePhysicsStep;
+class FVehicleFixedDriveRuntime;
+class FVehiclePhysicsExecutionContext;
+class FVehiclePhysicsScene;
+struct FVehicleGearboxRuntimeState;
+struct FVehicleInputRuntimeSettings;
+struct FVehicleInputStepContext;
+enum class EVehicleInputAxis : uint8;
 
 /**
 * The DriveAssemblyComponent holds a a complete drivetrain. Including:
@@ -39,6 +50,16 @@ UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), BlueprintType, 
 class KINETIFORGE_API UVehicleDriveAssemblyComponent : public USceneComponent
 {
     GENERATED_BODY()
+    friend class FVehicleExistingBlueprintRuntimeTest;
+    friend struct FVehicleDriveInputRegressionProbe;
+    friend struct FVehicleDriveAssemblyRuntimeProbe;
+    friend struct FVehicleDriveOwnershipProbe;
+    friend struct FVehiclePowerLifetimeProbe;
+    friend struct FVehicleFixedDriveAssemblyIntegrationProbe;
+    friend struct FVehicleFixedDriveContactIntegrationProbe;
+    friend struct FVehicleFixedDriveAsyncLifecycleProbe;
+    friend class UVehicleAsyncTickComponent;
+    friend class UVehicleDifferentialComponent;
 
 public:
     // Sets default values for this component's properties
@@ -82,6 +103,13 @@ public:
     FAutoGearboxConfig AutoGearboxConfig;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bUpdatePhysicsAutomatically = true;
+
+    /** Serialized compatibility field; production vehicles always use the whole-vehicle runtime. */
+    UPROPERTY(BlueprintReadOnly, Category = "Setup", meta = (DeprecatedProperty, DeprecationMessage = "Vehicles now use one C++ runtime; this setting is ignored."))
+    bool bUseIsolatedPowerUnitRuntime = false;
+    /** Serialized compatibility field; false no longer selects the old component physics path. */
+    UPROPERTY(BlueprintReadOnly, Category = "Setup", meta = (DeprecatedProperty, DeprecationMessage = "Vehicles now use one C++ runtime; this setting is ignored."))
+    bool bUseIsolatedVehicleRuntime = true;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
     bool bDrivetrainSubstepping = true;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Setup")
@@ -91,8 +119,12 @@ protected:
     // Called when the game starts
     virtual void BeginPlay() override;
     virtual void OnRegister() override;
+    virtual void OnUnregister() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+    virtual void BeginDestroy() override;
     virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    // GT-only compatibility helpers for unbound components; owned input state is advanced by the runtime.
     void UpdateInput(float InDeltaTime);
     void UpdateThrottle(float InDeltaTime);
     void UpdateBrake(float InDeltaTime);
@@ -184,8 +216,13 @@ public:
     // Called every frame
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+    /** Manual callers disable automatic updates. Overlapping calls and stopped entries are ignored.
+     * Component lifecycle changes run on GT, outside an executing physics callback. */
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void UpdatePhysics(float InDeltaTime);
+    /** Context-aware manual entry for the isolated assembly. Disable automatic updates first.
+     * Caller must already be executing in this scene's physics callback. */
+    void UpdatePhysics(float InDeltaTime, const FVehiclePhysicsExecutionContext& Context);
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
     void InputThrottle(float InValue, bool bDirectInput = false);
     UFUNCTION(BlueprintCallable, Category = "VehicleDriveAssembly")
@@ -328,6 +365,37 @@ public:
     TArray<UPrimitiveComponent*> GetRayCastHitComponents();
 
 private:
+    bool PrepareIsolatedAxles();
+    TSharedPtr<FVehicleFixedDriveRuntime, ESPMode::ThreadSafe> CaptureFixedDriveRuntime();
+    TArray<FVehiclePhysicsBodyIdentity> CaptureAssemblyBodyIdentities() const;
+    TArray<FVehiclePhysicsBodyIdentity> BoundAssemblyBodies; // GT-only; detect body recreation without borrowing PT handles.
+    TSharedPtr<FVehiclePhysicsScene, ESPMode::ThreadSafe> PhysicsScene;
+    TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> ScenePhysicsStep; // GT-only registration ownership.
+    TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> GetPhysicsStep() const;
+    bool PreparePhysicsStepRegistration(); // GT; preflight all axle/wheel claims before publication.
+    void RefreshInvalidatedPhysicsBinding();
+    void StopPhysicsUpdates(); // GT lifecycle: close admission and drain before touching children.
+    mutable FCriticalSection PhysicsStepMutex;
+    TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> PhysicsStep;
+    FVehicleInputRuntimeSettings CaptureInputRuntimeSettings() const;
+    FVehicleInputStepContext CaptureInputStepContext() const;
+    void UpdateInputAxis(EVehicleInputAxis Axis, float InDeltaTime);
+    void ApplyInputCommand(EVehicleInputAxis Axis, float Input, bool bDirectInput);
+    FVehicleInputState RequestedInputRaw; // GT commands survive reads of older published results.
+    bool InitializePowerUnitBridge();
+    void RefreshPowerUnitBridge();
+    void SubmitTransferCaseRuntimeSettings();
+    TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> GetPowerUnitBridge() const;
+    FVehicleGearboxRuntimeState GetGearboxStateForInput() const;
+    FVehicleGearboxConfig GetGearboxConfigForInput() const;
+    float GetEngineRPMForInput() const;
+    TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> PowerUnitBridge;
+    TWeakObjectPtr<UVehicleEngineComponent> BoundPowerUnitEngine;
+    TWeakObjectPtr<UVehicleClutchComponent> BoundPowerUnitClutch;
+    TWeakObjectPtr<UVehicleGearboxComponent> BoundPowerUnitGearbox;
+    mutable FCriticalSection PowerUnitBridgeMutex; // Protects publication of the shared pointer, not simulation.
+    bool bPowerUnitBridgeRequested = false; // Fixed at BeginPlay.
+    bool bPowerUnitBridgeInitializationFailed = false;
     bool GeneratePowerUnit();
     int GenerateAxles();    //-1: no owner actor; -2: no valid Chassis; -3: there're already axles
     int SearchExistingAxles();

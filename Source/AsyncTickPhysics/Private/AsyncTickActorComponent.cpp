@@ -11,14 +11,25 @@ void UAsyncTickActorComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	FAsyncTickManager* AsyncTickManager = FAsyncTickManager::GetPhysicsManagerFromScene(this->GetWorld()->GetPhysicsScene());
-	AsyncTickManager->AddActorComponent(this);
+	if (UWorld* World = GetWorld())
+	{
+		if (FAsyncTickManager* Manager = FAsyncTickManager::GetPhysicsManagerFromScene(World->GetPhysicsScene()))
+		{
+			Manager->AddActorComponent(this);
+		}
+	}
 }
 
 void UAsyncTickActorComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
 	
-	FAsyncTickManager* AsyncTickManager = FAsyncTickManager::GetPhysicsManagerFromScene(this->GetWorld()->GetPhysicsScene());
-	AsyncTickManager->RemoveActorComponent(this);
+	// World/scene teardown can precede a deferred component BeginDestroy/EndPlay.
+	if (UWorld* World = GetWorld())
+	{
+		if (FAsyncTickManager* Manager = FAsyncTickManager::GetPhysicsManagerFromScene(World->GetPhysicsScene()))
+		{
+			Manager->RemoveActorComponent(this);
+		}
+	}
 }

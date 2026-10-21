@@ -30,14 +30,14 @@ FAsyncTickManager::FAsyncTickManager(FPhysScene* PhysScene)
 
 FAsyncTickManager::~FAsyncTickManager()
 {
-	while(Pawns.Num() > 0)
-	{
-		this->RemovePawn(Pawns.Last());
-	}
-	while(ActorComponents.Num() > 0)
-	{
-		this->RemoveActorComponent(ActorComponents.Last());
-	}
+	// Remove the lookup before destroying this manager, including shutdown paths
+	// where the physics-scene termination delegate was not the caller.
+	DetachFromPhysScene(&Scene);
+	// FPhysScene_Chaos broadcasts OnPhysSceneTerm while its solver still exists;
+	// FAsyncTickPhysics deletes this manager from that notification.
+	UnregisterCallbacks();
+	Pawns.Reset();
+	ActorComponents.Reset();
 }
 
 void FAsyncTickManager::OnPostWorldInitialization(UWorld* InWorld, const UWorld::InitializationValues)
@@ -75,57 +75,112 @@ FAsyncTickManager* FAsyncTickManager::GetPhysicsManagerFromScene(FPhysScene* Phy
 
 void FAsyncTickManager::DetachFromPhysScene(FPhysScene* PhysScene)
 {
-	FAsyncTickManager::SceneToPhysicsManagerMap.Remove(PhysScene);
+	if (FAsyncTickManager** Existing = SceneToPhysicsManagerMap.Find(PhysScene);
+		Existing != nullptr && *Existing == this)
+	{
+		SceneToPhysicsManagerMap.Remove(PhysScene);
+	}
+	UnregisterWorldDelegatesIfUnused();
+}
+
+void FAsyncTickManager::UnregisterWorldDelegatesIfUnused()
+{
+	if (!SceneToPhysicsManagerMap.IsEmpty())
+	{
+		return;
+	}
+
+	if (OnPostWorldInitializationHandle.IsValid())
+	{
+		FWorldDelegates::OnPostWorldInitialization.Remove(OnPostWorldInitializationHandle);
+		OnPostWorldInitializationHandle.Reset();
+	}
+	if (OnWorldCleanupHandle.IsValid())
+	{
+		FWorldDelegates::OnWorldCleanup.Remove(OnWorldCleanupHandle);
+		OnWorldCleanupHandle.Reset();
+	}
+	GInitialized = false;
+}
+
+void FAsyncTickManager::ShutdownAllManagers()
+{
+	// Remove all lookup entries before deleting managers so callbacks cannot find
+	// a partially dismantled manager during normal game-thread shutdown.
+	TArray<FAsyncTickManager*> Managers;
+	SceneToPhysicsManagerMap.GenerateValueArray(Managers);
+	SceneToPhysicsManagerMap.Reset();
+	UnregisterWorldDelegatesIfUnused();
+
+	for (FAsyncTickManager* Manager : Managers)
+	{
+		if (Manager != nullptr)
+		{
+			Manager->UnregisterCallbacks();
+			delete Manager;
+		}
+	}
 }
 
 void FAsyncTickManager::AddPawn(TWeakObjectPtr<AAsyncTickPawn> Pawn)
 {
 	if(Pawn.IsValid())
 	{
-		Pawns.Add(Pawn);
+		Pawns.AddUnique(Pawn);
 	}
 }
 
 void FAsyncTickManager::RemovePawn(TWeakObjectPtr<AAsyncTickPawn> Pawn)
 {
-	if(Pawn.IsValid())
-	{
-		Pawns.Remove(Pawn);
-	}
+	// Remove by weak identity even after the UObject has become invalid.
+	Pawns.Remove(Pawn);
 }
 void FAsyncTickManager::AddActorComponent(TWeakObjectPtr<UAsyncTickActorComponent> ActorComponent)
 {
 	if(ActorComponent.IsValid())
 	{
-		ActorComponents.Add(ActorComponent);
+		ActorComponents.AddUnique(ActorComponent);
 	}
 }
 
 void FAsyncTickManager::RemoveActorComponent(TWeakObjectPtr<UAsyncTickActorComponent> ActorComponent)
 {
-	if(ActorComponent.IsValid())
-	{
-		ActorComponents.Remove(ActorComponent);
-	}
+	// Remove by weak identity even after the UObject has become invalid.
+	ActorComponents.Remove(ActorComponent);
 }
 
 void FAsyncTickManager::RegisterCallbacks()
 {
-	OnPhysScenePreTickHandle = Scene.OnPhysScenePreTick.AddRaw(this, &FAsyncTickManager::ScenePreTick);
-
-	if(AsyncObject == nullptr)
+	Chaos::FPhysicsSolver* Solver = Scene.GetSolver();
+	if (Solver == nullptr) return;
+	if (!OnPhysScenePreTickHandle.IsValid())
 	{
-		AsyncObject = Scene.GetSolver()->CreateAndRegisterSimCallbackObject_External<FAsyncPhysicsCallback>();
+		OnPhysScenePreTickHandle = Scene.OnPhysScenePreTick.AddRaw(this, &FAsyncTickManager::ScenePreTick);
+	}
+	if (AsyncObject == nullptr)
+	{
+		AsyncObject = Solver->CreateAndRegisterSimCallbackObject_External<FAsyncPhysicsCallback>();
 	}
 }
 
 void FAsyncTickManager::UnregisterCallbacks()
 {
-	Scene.OnPhysScenePreTick.Remove(OnPhysScenePreTickHandle);
+	if (OnPhysScenePreTickHandle.IsValid())
+	{
+		Scene.OnPhysScenePreTick.Remove(OnPhysScenePreTickHandle);
+		OnPhysScenePreTickHandle.Reset();
+	}
 
 	if(AsyncObject != nullptr)
 	{
-		Scene.GetSolver()->UnregisterAndFreeSimCallbackObject_External(AsyncObject);
+		FAsyncPhysicsCallback* CallbackToRelease = AsyncObject;
+		AsyncObject = nullptr;
+		// OnPhysSceneTerm is broadcast from FPhysScene_Chaos's destructor before
+		// FChaosScene's base destructor destroys SceneSolver.
+		if (Chaos::FPhysicsSolver* Solver = Scene.GetSolver())
+		{
+			Solver->UnregisterAndFreeSimCallbackObject_External(CallbackToRelease);
+		}
 	}
 }
 

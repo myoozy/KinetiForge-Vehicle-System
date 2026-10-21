@@ -3,8 +3,31 @@
 
 #include "VehicleDifferentialComponent.h"
 #include "VehicleAxleAssemblyComponent.h"
+#include "VehicleDriveAssemblyComponent.h"
 #include "VehicleWheelComponent.h"
 #include "VehicleUtilities.h"
+#include "VehicleDifferentialSolver.h"
+
+void UVehicleDifferentialComponent::AddConfigurationConsumer(UActorComponent* Consumer)
+{
+	check(IsInGameThread());
+	ConfigurationConsumers.RemoveAll([](const auto& Entry) { return !Entry.IsValid(); });
+	ConfigurationConsumers.AddUnique(Consumer);
+}
+
+void UVehicleDifferentialComponent::SetConfig(const FVehicleLimitedSlipDifferentialConfig& NewConfig)
+{
+	check(IsInGameThread());
+	Config = NewConfig;
+	// Submit through each consumer's current binding, so an old subscription cannot restore a replaced diff.
+	// Copy first: submission also refreshes subscriptions and may prune the original list.
+	const auto Consumers = ConfigurationConsumers;
+	for (const auto& Consumer : Consumers)
+	{
+		if (auto* Axle = Cast<UVehicleAxleAssemblyComponent>(Consumer.Get())) Axle->SubmitRuntimeSettings();
+		else if (auto* Drive = Cast<UVehicleDriveAssemblyComponent>(Consumer.Get())) Drive->SubmitTransferCaseRuntimeSettings();
+	}
+}
 
 // Sets default values for this component's properties
 UVehicleDifferentialComponent::UVehicleDifferentialComponent()
@@ -19,10 +42,62 @@ UVehicleDifferentialComponent::UVehicleDifferentialComponent()
 // Called when the game starts
 void UVehicleDifferentialComponent::BeginPlay()
 {
+	InvalidatePhysicsDependents();
 	Super::BeginPlay();
 
 	// ...
 	
+}
+
+void UVehicleDifferentialComponent::AddPhysicsDependent(const TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe>& Step)
+{
+	check(IsInGameThread());
+	PhysicsDependents.RemoveAll([](const auto& Entry)
+	{
+		const auto Existing = Entry.Pin();
+		return !Existing || Existing->IsStopped();
+	});
+	for (const auto& Entry : PhysicsDependents) if (Entry.Pin() == Step) return;
+	PhysicsDependents.Add(Step);
+}
+
+void UVehicleDifferentialComponent::InvalidatePhysicsDependents()
+{
+	check(IsInGameThread());
+	for (const auto& Entry : PhysicsDependents)
+	{
+		if (const auto Step = Entry.Pin()) Step->InvalidateBindingAndWait();
+	}
+}
+
+void UVehicleDifferentialComponent::OnRegister()
+{
+	InvalidatePhysicsDependents();
+	Super::OnRegister();
+}
+
+void UVehicleDifferentialComponent::OnUnregister()
+{
+	InvalidatePhysicsDependents();
+	Super::OnUnregister();
+}
+
+void UVehicleDifferentialComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	InvalidatePhysicsDependents();
+	Super::EndPlay(EndPlayReason);
+}
+
+void UVehicleDifferentialComponent::BeginDestroy()
+{
+	InvalidatePhysicsDependents();
+	Super::BeginDestroy();
+}
+
+void UVehicleDifferentialComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
+{
+	InvalidatePhysicsDependents();
+	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
 
 
@@ -49,17 +124,36 @@ void UVehicleDifferentialComponent::UpdateOutputShaft(float InDriveTorque, float
 		);
 	
 	//update inertia
-	OutReflectedInertiaEachWheel = 0.5 * InReflectedInertia * Config.GearRatio * Config.GearRatio;
+	OutReflectedInertiaEachWheel = FVehicleDifferentialSolver::CalculateReflectedOutputInertiaPerWheel(
+		InReflectedInertia, Config.GearRatio);
 }
 
 void UVehicleDifferentialComponent::UpdateInputShaft(float InLeftOutputShaftAngularVelocity, float InRightOutputShaftAngularVelocity, float InLeftWheelInertia, float InRightWheelInertia, float& OutInputShaftVelocity, float& OutReflectedInertia)
 {
 	OutInputShaftVelocity = GetInputShaftVelocity(InLeftOutputShaftAngularVelocity, InRightOutputShaftAngularVelocity);
 
-	OutReflectedInertia = UVehicleUtilities::SafeDivide(InLeftWheelInertia + InRightWheelInertia, Config.GearRatio * Config.GearRatio);
+	OutReflectedInertia = FVehicleDifferentialSolver::CalculateReflectedInputInertia(
+		InLeftWheelInertia, InRightWheelInertia, Config.GearRatio);
 }
 
 int32 UVehicleDifferentialComponent::SubstepTransferCase(
+	TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
+	float InSubstepDeltaTime,
+	float InGearboxOutputTorque,
+	float InBrakeValue,
+	float InHandbrakeValue,
+	bool bLineLockActive,
+	float& OutTransmissionOutputShaftAngularVelocity,
+	float& OutTransmissionOutputShaftEffectiveInertia,
+	float& OutEffectiveDriveShaftStiffness)
+{
+	return SubstepTransferCaseWithConfig(Config, InAxles, InSubstepDeltaTime, InGearboxOutputTorque,
+		InBrakeValue, InHandbrakeValue, bLineLockActive, OutTransmissionOutputShaftAngularVelocity,
+		OutTransmissionOutputShaftEffectiveInertia, OutEffectiveDriveShaftStiffness);
+}
+
+int32 UVehicleDifferentialComponent::SubstepTransferCaseWithConfig(
+	const FVehicleLimitedSlipDifferentialConfig& Config,
 	TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
 	float InSubstepDeltaTime,
 	float InGearboxOutputTorque,
@@ -81,14 +175,14 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 	{
 		if (Axle == nullptr) continue;
 
-		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > SMALL_NUMBER;
+		bool IsDriveAxle = Axle->GetSimulationAxleConfig().TorqueWeight > SMALL_NUMBER;
 		if (IsDriveAxle)
 		{
 			NumOfDriveAxles++;
-			SumTorqueWeight += FMath::Abs(Axle->GetAxleConfig().TorqueWeight);
+			SumTorqueWeight += FMath::Abs(Axle->GetSimulationAxleConfig().TorqueWeight);
 
-			float AxleTotalInertia = Axle->GetTotalAxleInertia();
-			float AxleAngVel = Axle->GetAngularVelocity();
+			float AxleTotalInertia = Axle->GetSimulationState().AxleEffectiveInertia;
+			float AxleAngVel = Axle->GetSimulationState().AxleAngularVelocity;
 
 			TotalDriveAxleInertia += AxleTotalInertia;
 			TotalAngularMomentum += AxleTotalInertia * AxleAngVel;
@@ -97,7 +191,8 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 	float FloatNumOfDriveAxles = (float)NumOfDriveAxles;
 
 	// Calculate the physically correct locked angular velocity (momentum-weighted average)
-	float TargetLockedAngVel = UVehicleUtilities::SafeDivide(TotalAngularMomentum, TotalDriveAxleInertia);
+	float TargetLockedAngVel = FVehicleDifferentialSolver::CalculateLockedAngularVelocity(
+		TotalAngularMomentum, TotalDriveAxleInertia);
 
 	// update axles
 	float DriveTorque = Config.GearRatio * InGearboxOutputTorque;
@@ -114,30 +209,25 @@ int32 UVehicleDifferentialComponent::SubstepTransferCase(
 		float AxleAngVel = 0.f;
 		float AxleStiffness = 0.f;
 
-		bool IsDriveAxle = Axle->GetAxleConfig().TorqueWeight > SMALL_NUMBER;
+		bool IsDriveAxle = Axle->GetSimulationAxleConfig().TorqueWeight > SMALL_NUMBER;
 		if (IsDriveAxle)
 		{
 			// central diff locking logic
 			// Use TargetLockedAngVel instead of simple arithmetic average
-			float AngVelDifference = TargetLockedAngVel - Axle->GetAngularVelocity();
-
-			bool bIsDrive = (DriveTorque * TargetLockedAngVel) >= 0.f;
-			float CurrentLockRatio = bIsDrive ? Config.DriveLockRatio : Config.CoastLockRatio;
-
 			// The calculated TorqueBias is now guaranteed to sum to exactly 0 across all axles
-			float TorqueBias = UVehicleUtilities::SafeDivide(AngVelDifference * Axle->GetTotalAxleInertia() * CurrentLockRatio, InSubstepDeltaTime);
-			float NormTorqueWeight = UVehicleUtilities::SafeDivide(Axle->GetAxleConfig().TorqueWeight, SumTorqueWeight);
-
+			// Analytic balance is retained; floating-point sums may have roundoff.
 			// Combine mechanical static split + LSD clutch pack transfer
-			float AxleDriveTorque = DriveTorque * NormTorqueWeight + TorqueBias;
+			const FVehicleTransferCaseAxleOutput AxleOutput = FVehicleDifferentialSolver::CalculateTransferCaseAxleOutput(
+				Config, DriveTorque, TargetLockedAngVel, Axle->GetSimulationState().AxleAngularVelocity,
+				Axle->GetSimulationState().AxleEffectiveInertia, Axle->GetSimulationAxleConfig().TorqueWeight, SumTorqueWeight, InSubstepDeltaTime);
 
 			// burnout assist
-			bool IsMainDriveAxle = NormTorqueWeight > 0.5f;
+			bool IsMainDriveAxle = AxleOutput.NormalizedTorqueWeight > 0.5f;
 			bool ShouldReleaseBrake = IsMainDriveAxle && bLineLockActive;
 
 			Axle->SubstepAxle(
 				InSubstepDeltaTime,
-				AxleDriveTorque,
+				AxleOutput.DriveTorque,
 				InBrakeValue * !ShouldReleaseBrake,
 				InHandbrakeValue,
 				AxleInertia, AxleAngVel, AxleStiffness
@@ -267,35 +357,29 @@ void UVehicleDifferentialComponent::GetOutputTorque(
 	float& OutLeftTorque,
 	float& OutRightTorque)
 {
-	float OpenDiffTorque = 0.5 * Config.GearRatio * InTorque;
-
-	float AverageAngularVelocity = 0.5 * (InLeftAngularVelocity + InRightAngularVelocity);
-	bool bIsDrive = (OpenDiffTorque * AverageAngularVelocity) >= 0.f;
-	float CurrentLockRatio = bIsDrive ? Config.DriveLockRatio : Config.CoastLockRatio;
-
 	//calculate the torque required for both sides to match the average angular velocity
-
-	float ReducedInertia = UVehicleUtilities::SafeDivide(
-		InLeftTotalInertia * InRightTotalInertia, InLeftTotalInertia + InRightTotalInertia);
-
-	float OmegaDiff = InLeftAngularVelocity - InRightAngularVelocity;
-
-	float MaxTransferTorque = UVehicleUtilities::SafeDivide(ReducedInertia * OmegaDiff, InDeltaTime);
-	float TransferTorque = MaxTransferTorque * CurrentLockRatio;
-
-	OutLeftTorque = OpenDiffTorque - TransferTorque;
-	OutRightTorque = OpenDiffTorque + TransferTorque;
+	FVehicleDifferentialStepInput Input;
+	Input.InputTorque = InTorque;
+	Input.LeftAngularVelocity = InLeftAngularVelocity;
+	Input.RightAngularVelocity = InRightAngularVelocity;
+	Input.LeftTotalInertia = InLeftTotalInertia;
+	Input.RightTotalInertia = InRightTotalInertia;
+	Input.DeltaTime = InDeltaTime;
+	const FVehicleDifferentialTorqueOutput Output = FVehicleDifferentialSolver::CalculateOutputTorques(Config, Input);
+	OutLeftTorque = Output.LeftTorque;
+	OutRightTorque = Output.RightTorque;
 
 }
 
 void UVehicleDifferentialComponent::GetOpenDiffOutputTorque(float InTorque, float& OutTorqueLeft, float& OutTorqueRight)
 {
-	float OpenDiffTorque = 0.5 * Config.GearRatio * InTorque;
+	float OpenDiffTorque = FVehicleDifferentialSolver::CalculateOpenOutputTorque(InTorque, Config.GearRatio);
 	OutTorqueLeft = OpenDiffTorque;
 	OutTorqueRight = OpenDiffTorque;
 }
 
 float UVehicleDifferentialComponent::GetInputShaftVelocity(float OutputShaftAngularVelocityLeft, float OutputShaftAngularVelocityRight)
 {
-	return (OutputShaftAngularVelocityLeft + OutputShaftAngularVelocityRight) * 0.5 * Config.GearRatio;
+	return FVehicleDifferentialSolver::CalculateInputAngularVelocity(
+		OutputShaftAngularVelocityLeft, OutputShaftAngularVelocityRight, Config.GearRatio);
 }

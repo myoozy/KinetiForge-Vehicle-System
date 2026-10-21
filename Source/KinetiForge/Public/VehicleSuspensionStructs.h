@@ -104,11 +104,11 @@ struct KINETIFORGE_API FVehicleSuspensionKinematicsConfig
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType != ESuspensionType::StraightLine", EditConditionHides))
 	FVehicleSuspensionWishboneConfig LowerWishbone =
-		FVehicleSuspensionWishboneConfig(FVector3f(0.f, 0.f, -12.f), FVector3f(1.f, 0.f, 0.f), 50.f);
+		FVehicleSuspensionWishboneConfig{FVector3f(0.f, 0.f, -12.f), FVector3f(1.f, 0.f, 0.f), 50.f};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "SuspensionType == ESuspensionType::DoubleWishbone", EditConditionHides))
 	FVehicleSuspensionWishboneConfig UpperWishbone =
-		FVehicleSuspensionWishboneConfig(FVector3f(0.f, 0.f, 14.f), FVector3f(1.f, 0.f, 0.f), 48.f);
+		FVehicleSuspensionWishboneConfig{FVector3f(0.f, 0.f, 14.f), FVector3f(1.f, 0.f, 0.f), 48.f};
 
 	/**
 	* Unit: cm

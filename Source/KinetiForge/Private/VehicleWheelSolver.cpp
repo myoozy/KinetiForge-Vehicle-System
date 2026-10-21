@@ -3,7 +3,6 @@
 
 #include "VehicleWheelSolver.h"
 #include "VehicleWheelComponent.h"
-#include "AsyncTickFunctions.h"
 #include "VehicleUtilities.h"
 
 FVehicleWheelSolver::FVehicleWheelSolver()
@@ -19,17 +18,13 @@ void FVehicleWheelSolver::Initialize(const FVehicleTireConfig& TireConfig)
 	UpdateCachedLUTs(TireConfig);
 }
 
-void FVehicleWheelSolver::PreStep(
-	float InMacroDeltaTime,
-	const FTransform& AsyncChassisWorldTransform,
-	const FVehicleSuspensionSimState& SuspensionState, 
-	const FVehicleWheelConfig& WheelConfig,
-	const FVehicleTireConfig& TireConfig)
+void FVehicleWheelSolver::PrepareWheel(
+	FVehicleWheelSimState& LocalState, FVehicleWheelSimContext& Context,
+	const FVehicleWheelCachedLUTs& TireLUTs, float InMacroDeltaTime,
+	const FTransform& AsyncChassisWorldTransform, const FVehicleSuspensionSimState& SuspensionState,
+	const FVehicleWheelConfig& WheelConfig, const FVehicleTireConfig& TireConfig)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
-
-	FVehicleWheelSimContext& Context = CurrentContext;
-	FVehicleWheelSimState& LocalState = State;
 
 	Context.MacroDeltaTime = InMacroDeltaTime;
 	Context.MacroDeltaTimeInv = UVehicleUtilities::SafeDivide(1.f, InMacroDeltaTime);
@@ -45,8 +40,8 @@ void FVehicleWheelSolver::PreStep(
 	Context.LongForceDir = LongForceDirUnNorm.GetSafeNormal();
 	Context.LatForceDir = LatForceDirUnNorm.GetSafeNormal();
 
-	// ÕâÀïµÄµã³ËÆäÊµ¾ÍÊÇ»ñÈ¡ÏòÁ¿³¤¶È
-	// ÎÒÊ¹ÓÃµã³ËÖ»ÊÇÎªÁËÌáÐÑ×Ô¼º£¬ÎÒÔÚÓÃ³µÂÖ×ªÖá·½ÏòÔÚµØÃæÉÏµÄÍ¶Ó°³¤¶ÈÀ´½üËÆÄ£ÄâcamberÔì³ÉµÄ×¥µØÁ¦±ä»¯
+	// è¿™é‡Œçš„ç‚¹ä¹˜å…¶å®žå°±æ˜¯èŽ·å–å‘é‡é•¿åº¦
+	// æˆ‘ä½¿ç”¨ç‚¹ä¹˜åªæ˜¯ä¸ºäº†æé†’è‡ªå·±ï¼Œæˆ‘åœ¨ç”¨è½¦è½®è½¬è½´æ–¹å‘åœ¨åœ°é¢ä¸Šçš„æŠ•å½±é•¿åº¦æ¥è¿‘ä¼¼æ¨¡æ‹Ÿcamberé€ æˆçš„æŠ“åœ°åŠ›å˜åŒ–
 	Context.LongForceScale = FVector3f::DotProduct(LongForceDirUnNorm, Context.LongForceDir);
 	Context.LatForceScale = FVector3f::DotProduct(LatForceDirUnNorm, Context.LatForceDir);
 
@@ -77,7 +72,7 @@ void FVehicleWheelSolver::PreStep(
 		SuspensionState,
 		AsyncChassisWorldTransform,
 		WheelConfig,
-		CachedLUTs,
+		TireLUTs,
 		LocalState.SignedCamberDegree
 	);
 
@@ -85,22 +80,16 @@ void FVehicleWheelSolver::PreStep(
 	Context.AccumulateTireImpulse2D = FVector2f(0.f);
 }
 
-void FVehicleWheelSolver::Substep(
-	float InSubstepDeltaTime,
-	float InDriveTorque,
-	float InBrakeTorque,
-	float InHandbrakeTorque,
-	float InReflectedInertia,
-	const FVehicleWheelConfig& WheelConfig,
-	const FVehicleTireConfig& TireConfig,
-	const FVehicleABSConfig& ABSConfig,
-	const FVehicleSuspensionSimState& SuspensionState)
+void FVehicleWheelSolver::IntegrateWheel(
+	FVehicleWheelSimState& LocalState, FVehicleWheelSimContext& Context,
+	const FVehicleWheelCachedLUTs& TireLUTs, float InSubstepDeltaTime,
+	float InDriveTorque, float InBrakeTorque, float InHandbrakeTorque, float InReflectedInertia,
+	const FVehicleWheelConfig& WheelConfig, const FVehicleTireConfig& TireConfig,
+	const FVehicleABSConfig& ABSConfig, const FVehicleSuspensionSimState& SuspensionState)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
 
 	const FVehicleWheelConfig& Config = WheelConfig;
-	FVehicleWheelSimContext& Context = CurrentContext;
-	FVehicleWheelSimState& LocalState = State;
 
 	Context.SubstepDeltaTime = InSubstepDeltaTime;
 	Context.SubstepDeltaTimeInv = UVehicleUtilities::SafeDivide(1.f, InSubstepDeltaTime);
@@ -126,7 +115,7 @@ void FVehicleWheelSolver::Substep(
 		ForceIntoSurface,
 		SuspensionState.bWheelOnGround,
 		TireConfig,
-		CachedLUTs
+		TireLUTs
 	);
 
 	// =========================================================
@@ -138,16 +127,46 @@ void FVehicleWheelSolver::Substep(
 	Context.AccumulateTireImpulse2D += SubstepForce2D * Context.SubstepDeltaTime;
 }
 
-void FVehicleWheelSolver::PostStep()
+void FVehicleWheelSolver::FinalizeWheel(FVehicleWheelSimState& LocalState, const FVehicleWheelSimContext& Context)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
 
-	FVehicleWheelSimContext& Context = CurrentContext;
-	FVehicleWheelSimState& LocalState = State;
 	LocalState.TireForce2D = Context.AccumulateTireImpulse2D * Context.MacroDeltaTimeInv;
 	LocalState.TireForce =
 		LocalState.TireForce2D.X * Context.LongForceDir +
 		LocalState.TireForce2D.Y * Context.LatForceDir;
+}
+
+void FVehicleWheelSolver::PreStep(
+	float InMacroDeltaTime,
+	const FTransform& AsyncChassisWorldTransform,
+	const FVehicleSuspensionSimState& SuspensionState,
+	const FVehicleWheelConfig& WheelConfig,
+	const FVehicleTireConfig& TireConfig)
+{
+	PrepareWheel(State, CurrentContext, CachedLUTs, InMacroDeltaTime,
+		AsyncChassisWorldTransform, SuspensionState, WheelConfig, TireConfig);
+}
+
+void FVehicleWheelSolver::Substep(
+	float InSubstepDeltaTime,
+	float InDriveTorque,
+	float InBrakeTorque,
+	float InHandbrakeTorque,
+	float InReflectedInertia,
+	const FVehicleWheelConfig& WheelConfig,
+	const FVehicleTireConfig& TireConfig,
+	const FVehicleABSConfig& ABSConfig,
+	const FVehicleSuspensionSimState& SuspensionState)
+{
+	IntegrateWheel(State, CurrentContext, CachedLUTs, InSubstepDeltaTime,
+		InDriveTorque, InBrakeTorque, InHandbrakeTorque, InReflectedInertia,
+		WheelConfig, TireConfig, ABSConfig, SuspensionState);
+}
+
+void FVehicleWheelSolver::PostStep()
+{
+	FinalizeWheel(State, CurrentContext);
 }
 
 void FVehicleWheelSolver::DrawWheelForce(
@@ -161,6 +180,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 	bool bDrawInertia)
 {
 	if (!WheelComponent)return;
+	const FVehicleWheelSimState& State = WheelComponent->GetWheelState();
 
 	UWorld* CurrentWorld = WheelComponent->GetWorld();
 
@@ -238,29 +258,34 @@ void FVehicleWheelSolver::DrawWheelForce(
 
 void FVehicleWheelSolver::UpdateCachedLUTs(const FVehicleTireConfig& Config)
 {
+	CacheLUTs(CachedLUTs, Config);
+}
+
+void FVehicleWheelSolver::CacheLUTs(FVehicleWheelCachedLUTs& LUTs, const FVehicleTireConfig& Config)
+{
 	if (IsValid(Config.Fx))
 	{
-		CachedLUTs.Fx.BuildFromCurve(Config.Fx->FloatCurve);
+		LUTs.Fx.BuildFromCurve(Config.Fx->FloatCurve);
 	}
 	else
 	{
-		CachedLUTs.Fx.SetAllTo(1.f);
+		LUTs.Fx.SetAllTo(1.f);
 	}
 	if (IsValid(Config.Fy))
 	{
-		CachedLUTs.Fy.BuildFromCurve(Config.Fy->FloatCurve, FVector2f(0.f, 90.f));
+		LUTs.Fy.BuildFromCurve(Config.Fy->FloatCurve, FVector2f(0.f, 90.f));
 	}
 	else
 	{
-		CachedLUTs.Fy.SetAllTo(1.f);
+		LUTs.Fy.SetAllTo(1.f);
 	}
 	if (IsValid(Config.CamberToLateralDrift))
 	{
-		CachedLUTs.CamberToLateralDrift.CopyFromRichCurve(Config.CamberToLateralDrift->FloatCurve, FVector2f(0.f, 90.f));
+		LUTs.CamberToLateralDrift.CopyFromRichCurve(Config.CamberToLateralDrift->FloatCurve, FVector2f(0.f, 90.f));
 	}
 	else
 	{
-		CachedLUTs.CamberToLateralDrift.SetAllTo(0.f);
+		LUTs.CamberToLateralDrift.SetAllTo(0.f);
 	}
 }
 
@@ -441,7 +466,7 @@ void FVehicleWheelSolver::UpdateSlipAngle(
 	SlipAngleRaw = FMath::RadiansToDegrees(SlipAngleRaw);
 
 	//approximate low speed slip angle
-	//-V.y = |V| * sin(SlipAngle) ¡Ö |V| * SlipAngle ¡Ö SlipAngle; when slip angle is small and |v| --> 1.f
+	//-V.y = |V| * sin(SlipAngle) â‰ˆ |V| * SlipAngle â‰ˆ SlipAngle; when slip angle is small and |v| --> 1.f
 	float LowSpeedSlipAngle = -FMath::RadiansToDegrees(LocalState.LocalLinearVelocity.Y);
 
 	//get alpha for lerp, lerp between high speed and low speede
@@ -628,7 +653,7 @@ FVector2f FVehicleWheelSolver::CalculateGravityCompensationOnSlope(
 
 	// sin(theta): LatForceDir.Z or LongForceDir.Z
 	// ExtraGravityForce = Fz * TanTheta; 
-	// TanTheta ¡Ö SinTheta, when theta is small; 
+	// TanTheta â‰ˆ SinTheta, when theta is small;
 	// when theta is large, the vehicle maybe should not be able to hold itself on the slope; 
 	// so there might be no need to calculate tan(theta)
 	   

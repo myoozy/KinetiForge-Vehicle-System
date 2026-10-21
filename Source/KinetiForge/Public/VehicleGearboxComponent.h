@@ -5,16 +5,21 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "VehicleDrivetrainStructs.h"
+#include "VehicleGearboxSolver.h"
+#include "VehiclePhysicsStep.h"
 #include "VehicleGearboxComponent.generated.h"
 
 DECLARE_DYNAMIC_DELEGATE(FOnShiftFinishedDelegate);
 
 class UVehicleAxleAssemblyComponent;
+class FVehiclePowerUnitBridge;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), BlueprintType, Blueprintable)
 class KINETIFORGE_API UVehicleGearboxComponent : public UActorComponent
 {
 	GENERATED_BODY()
+	friend class UVehicleDriveAssemblyComponent;
+	friend struct FVehiclePowerLifetimeProbe;
 
 public:	
 	// Sets default values for this component's properties
@@ -27,6 +32,12 @@ protected:
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
+	virtual void OnRegister() override;
+	virtual void OnUnregister() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void BeginDestroy() override;
+	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
+	FVehiclePhysicsOwnership PhysicsOwnership;
 
 	FOnShiftFinishedDelegate ShiftFinishedCallback;
 	FTimerHandle GearShiftTimerHandle;
@@ -58,7 +69,13 @@ public:
 	const FVehicleGearboxConfig& GetConfig() { return Config; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleGearbox")
-	void SetConfig(const FVehicleGearboxConfig& NewConfig) { Config = NewConfig; }
+	void SetConfig(const FVehicleGearboxConfig& NewConfig);
+
+	/** Game-thread authority snapshot; the existing World timer owns gear selection. */
+	FVehicleGearboxRuntimeState CaptureRuntimeSettingsState() const { return CaptureRuntimeState(); }
+	bool CanBindPowerUnitBridge() const;
+	bool BindPowerUnitBridge(TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> InBridge);
+	void SubmitRuntimeSettings();
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleGearbox")
 	void ShiftToTargetGear(int32 InTargetGear, bool bImmediate = false);
@@ -96,7 +113,7 @@ public:
 	bool GetIsInGear() { return bIsInGear; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleGearbox")
-	void SetP2MotorTorque(float NewTorque) { P2MotorTorque = NewTorque; }
+	void SetP2MotorTorque(float NewTorque);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleGearbox")
 	float GetP2MotorTorque() { return P2MotorTorque; }
@@ -116,4 +133,11 @@ public:
 	bool IsGearDataDirty();
 	bool GetShouldRevMatch() { return bShouldRevMatch; }
 	bool GetShouldCutSpark() { return bShouldCutSpark; }
+
+private:
+	// Adapt legacy protected fields without changing C++ subclass access.
+	FVehicleGearboxRuntimeState CaptureRuntimeState() const;
+	void ApplyRuntimeState(const FVehicleGearboxRuntimeState& RuntimeState);
+	TWeakPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> PowerUnitBridge;
+	bool bPowerUnitBridgeBound = false; // Accessed only by game-thread control APIs.
 };

@@ -12,6 +12,7 @@ public:
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
+	virtual bool SupportsDynamicReloading() override { return false; }
 
 private:
 	// Delegates for the Physics Scene init and termination.

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "VehicleDrivetrainStructs.h"
+#include "VehiclePhysicsStep.h"
 #include "VehicleDifferentialComponent.generated.h"
 
 class UVehicleAxleAssemblyComponent;
@@ -16,6 +17,9 @@ UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), BlueprintType, 
 class KINETIFORGE_API UVehicleDifferentialComponent : public UActorComponent
 {
 	GENERATED_BODY()
+	friend class UVehicleDriveAssemblyComponent;
+	friend class UVehicleAxleAssemblyComponent;
+	friend struct FVehiclePowerLifetimeProbe;
 
 public:	
 	// Sets default values for this component's properties
@@ -28,6 +32,19 @@ protected:
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
+	virtual void OnRegister() override;
+	virtual void OnUnregister() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void BeginDestroy() override;
+	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
+
+	// Differential configuration is stateless; several assemblies may legitimately share it.
+	void AddPhysicsDependent(const TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe>& Step);
+	void InvalidatePhysicsDependents();
+	TArray<TWeakPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe>> PhysicsDependents; // GT only.
+	// GT only. Consumers capture their current configuration, including shared differentials.
+	void AddConfigurationConsumer(UActorComponent* Consumer);
+	TArray<TWeakObjectPtr<UActorComponent>> ConfigurationConsumers;
 
 public:	
 	// Called every frame
@@ -37,7 +54,7 @@ public:
 	const FVehicleLimitedSlipDifferentialConfig& GetConfig() { return Config; }
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
-	void SetConfig(const FVehicleLimitedSlipDifferentialConfig& NewConfig) { Config = NewConfig; }
+	void SetConfig(const FVehicleLimitedSlipDifferentialConfig& NewConfig);
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleDifferential")
 	void UpdateOutputShaft(
@@ -62,6 +79,18 @@ public:
 		float& OutReflectedInertia
 	);
 	int32 SubstepTransferCase(
+		TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
+		float InSubstepDeltaTime,
+		float InGearboxOutputTorque,
+		float InBrakeValue,
+		float InHandbrakeValue,
+		bool bLineLockActive,
+		float& OutTransmissionOutputShaftAngularVelocity,
+		float& OutTransmissionOutputShaftEffectiveInertia,
+		float& OutEffectiveDriveShaftStiffness);
+	/** Fixed axle orchestration using an owned config snapshot; contains no component state access. */
+	static int32 SubstepTransferCaseWithConfig(
+		const FVehicleLimitedSlipDifferentialConfig& Config,
 		TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,
 		float InSubstepDeltaTime,
 		float InGearboxOutputTorque,

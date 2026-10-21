@@ -2,7 +2,10 @@
 
 
 #include "VehicleEngineComponent.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "VehicleUtilities.h"
+#include "VehicleEngineSolver.h"
+#include "VehiclePowerUnitBridge.h"
 
 // Sets default values for this component's properties
 UVehicleEngineComponent::UVehicleEngineComponent()
@@ -29,6 +32,7 @@ UVehicleEngineComponent::UVehicleEngineComponent()
 // Called when the game starts
 void UVehicleEngineComponent::BeginPlay()
 {
+	PhysicsOwnership.InvalidateOwnerAndWait();
 	Super::BeginPlay();
 
 	// ...
@@ -47,327 +51,29 @@ void UVehicleEngineComponent::BeginPlay()
 
 void UVehicleEngineComponent::EngineAcceleration(const float DeltaTime)
 {
-	// absolut engine rpm
-	float AbsolutRPM = FMath::Abs(State.EngineRPM);
-
-	// internal friction of the engine
-	float MechFriction = NAConfig.StartFriction + NAConfig.FrictionCoefficient * AbsolutRPM;
-	float PumpingLoss = NAConfig.PumpingLossCoefficient * AbsolutRPM * FMath::Clamp(1.0f - State.RealThrottle, 0.f, 1.f);
-	float FrictionTorque = MechFriction + PumpingLoss;
-
-	// check if there is combustion
-	bool bCombustion = State.bFuelInjection && State.bSpark;
-
-	// torque generated inside of the engine
-	const float TorqueLUT_Value = CachedTorqueLUT.FastEval(
-		AbsolutRPM,
-		FVector2f(NAConfig.EngineIdleRPM, NAConfig.EngineMaxRPM)
-	).Value;
-
-	float IndicatedTorque = 
-		State.RealThrottle * (FrictionTorque + NAConfig.MaxEngineTorque * TorqueLUT_Value);
-	
-	// no combustion, no torque
-	IndicatedTorque *= bCombustion;
-
-	/********************* Turbo Charging Logic *********************/
-
-	//turbo charged and na have different behavior
-	//check if engine is really turbo charged
-	if (TurboConfig.MaxBoostPressure > SMALL_NUMBER && NAConfig.EngineIdleRPM > 0.f)
-	{
-		float RPMFactor = FMath::GetMappedRangeValueClamped(
-			FVector2f(0.f, TurboConfig.FullBoostRPM),
-			FVector2f(0.0f, 1.0f), 
-			AbsolutRPM
-		);
-
-		float TargetSpool = RPMFactor * State.RealThrottle;
-
-		float MinSpoolForPositiveBoost = (TurboConfig.FullBoostRPM > SMALL_NUMBER) ? TurboConfig.SpoolStartRPM / TurboConfig.FullBoostRPM : 0.f;
-
-		// if blow off valve closed or antt-lag triggered, interp speed = 3.f / TurboConfig.SpoolUpDuration;
-		// else, interp speed = 3.f / TurboConfig.PressureDecayDuration
-		float SpoolInterpSpeed = 0.f;
-
-		// if throttle is released, blow off valve is open, target vacuum will be 0.0
-		// other wise it will be related to throttle input(smaller imput -> more vacuum)
-		float ManifoldVacuum = 0.f;
-
-		State.bIsAntiLagTriggered = TurboConfig.bEnableAntiLag
-			&& TargetSpool < State.TurboSpool
-			&& AbsolutRPM > TurboConfig.AntiLagMinRPM
-			&& State.TurboSpool > MinSpoolForPositiveBoost;
-
-		// if throttle input is too small, blow off valve will be opened
-		// if anti-lag is triggered, the valve should not be open
-		bool bIsBlowOffValveOpen = State.RawThrottleInput <= SMALL_NUMBER && !State.bIsAntiLagTriggered;
-
-		if (bIsBlowOffValveOpen)
-		{
-			SpoolInterpSpeed = (TurboConfig.PressureDecayDuration > SMALL_NUMBER) ? 3.f / TurboConfig.PressureDecayDuration : 0.f;
-
-			// if blowing off not marked and turbo spinning fast
-			if (!State.bIsTurboBlowingOff && State.TurboSpool > MinSpoolForPositiveBoost)
-			{
-				// trigger blow off callbacks in next game tick
-				State.bIsTurboBlowingOff = true;
-				bShouldTriggerTurboBlowOffCallback = true;
-			}
-		}
-		else
-		{
-			State.bIsTurboBlowingOff = false;
-
-			// if throttle is hit, blow off valve close
-			SpoolInterpSpeed = (TurboConfig.SpoolUpDuration > SMALL_NUMBER) ? 3.f / TurboConfig.SpoolUpDuration : 0.f;
-
-			const float StaticIntakeRestriction = FMath::GetMappedRangeValueClamped(
-				FVector2f(0.f, NAConfig.EngineIdleRPM),
-				FVector2f(0.f, TurboConfig.StaticIntakeRestriction),
-				State.EngineRPM
-			);
-
-			if (State.bIsAntiLagTriggered)
-			{
-				// inject fuel during exhaust stroke
-				State.bFuelInjection = true;
-
-				float ALS_TargetSpool = FMath::Sqrt(TurboConfig.AntiLagTargetPressureRatio);
-				TargetSpool = FMath::Min(State.TurboSpool, ALS_TargetSpool);
-			}
-			else
-			{
-				// if the turbo rpm is too low, the intake will have restriction
-				// we estimate the max restriction as vacuum pressure
-				float CurrentIntakeRestriction = FMath::GetMappedRangeValueClamped(
-					FVector2f(0.f, MinSpoolForPositiveBoost),
-					FVector2f(StaticIntakeRestriction, 0.f),
-					State.TurboSpool
-				);
-
-				ManifoldVacuum = FMath::Lerp(StaticIntakeRestriction, CurrentIntakeRestriction, State.RawThrottleInput);
-			}
-		}
-
-		// get spool
-		State.TurboSpool = FMath::FInterpTo(
-			State.TurboSpool, 
-			TargetSpool, 
-			DeltaTime, 
-			SpoolInterpSpeed
-		);
-
-		// get turbo boost
-		State.TurboSpool = FMath::Clamp(State.TurboSpool, 0.f, 1.f);
-		float SpoolSqr = State.TurboSpool * State.TurboSpool;
-		float CurrentBoost = FMath::GetMappedRangeValueClamped(
-			FVector2f(MinSpoolForPositiveBoost * MinSpoolForPositiveBoost, 1.f),
-			FVector2f(0.0f, TurboConfig.MaxBoostPressure),
-			SpoolSqr
-		);
-
-		// get target pressure and get current pressure
-		float TargetPressure = CurrentBoost + ManifoldVacuum;
-		float PressureBuildSpeed = 3.f / 0.1f; // 3 / PressureBuildTime
-		State.TurboPressure = FMath::FInterpTo(
-			State.TurboPressure,
-			TargetPressure,
-			DeltaTime,
-			PressureBuildSpeed
-		);
-
-		//get indicated torque
-		float TorqueMultiplier = 1.f + State.TurboPressure * TurboConfig.BoostEfficiency;
-		IndicatedTorque *= FMath::Max(SMALL_NUMBER, TorqueMultiplier);
-	}
-	else
-	{
-		// clear all cache if not turbo charged
-		State.bIsTurboBlowingOff = false;
-		State.bIsAntiLagTriggered = false;
-		State.TurboPressure *= 0.9f;
-		State.TurboSpool *= 0.9f;
-	}
-
-	/*************** Calculation of Angular Velocity ***************/
-
-	// consider P1 motor
-	IndicatedTorque += State.P1MotorTorque;
-
-	// accelerate engine
-	State.EngineAngularVelocity += UVehicleUtilities::SafeDivide(DeltaTime, NAConfig.EngineInertia) * (IndicatedTorque - State.LoadTorque + State.StarterMotorTorque);
-	
-	// get the direction of friction torque
-	float AngVelSignWithoutFriction = FMath::Sign(State.EngineAngularVelocity);
-	FrictionTorque = FrictionTorque * AngVelSignWithoutFriction;
-	State.EngineAngularVelocity -= UVehicleUtilities::SafeDivide(DeltaTime, NAConfig.EngineInertia) * FrictionTorque;
-	
-	// zero cross check
-	bool bCrossZero = FMath::Sign(State.EngineAngularVelocity) != AngVelSignWithoutFriction;
-	if (bCrossZero)State.EngineAngularVelocity = 0.f;
-	
-	// get engine rpm
-	State.EngineRPM = RadToRPM * State.EngineAngularVelocity;
-	
-	// get the effective engine torque (the power)
-	State.EffectiveTorque = IndicatedTorque - FrictionTorque;
+	if (bPowerUnitBridgeBound.Load()) return;
+	FVehicleEngineSolver::EngineAcceleration(FVehicleEngineParameters::FromConfig(NAConfig),
+		TurboConfig, CachedTorqueLUT, State, DeltaTime, bShouldTriggerTurboBlowOffCallback);
 }
 
 void UVehicleEngineComponent::UpdateExhaust(const float DeltaTime)
 {
-	// absolut engine rpm
-	float AbsolutRPM = FMath::Abs(State.EngineRPM);
-
-	// normalized rpm
-	float NormalizedRPM = UVehicleUtilities::SafeDivide(AbsolutRPM, NAConfig.EngineMaxRPM);
-
-	// check if engine is slowing down (and not idling)
-	bool bIsDecelerating =
-		State.EffectiveTorque < 0.f
-		&& AbsolutRPM >(NAConfig.EngineIdleRPM * 1.5f)
-		&& AbsolutRPM < NAConfig.EngineMaxRPM;
-
-	// get the AFR or lambda
-	float TargetLamda = bIsDecelerating ?
-		NAConfig.DeceleratingLambda :
-		FMath::GetMappedRangeValueClamped(
-			FVector2f(0.8f, 0.9f),
-			FVector2f(1.f, NAConfig.MaxPowerLambda),
-			State.RawThrottleInput
-		);
-
-	// if there is fuel injection, do the backfiring logic
-	if (State.bFuelInjection)
-	{
-		// approximate fuel flow
-		float BaseFuelFlow = State.bIsAntiLagTriggered ? 
-			State.TurboSpool * State.TurboSpool : NormalizedRPM * State.RealThrottle;
-
-		// if spark is off, or if anti-lag is on
-		// all the fuel will be sent to the exhaust
-		bool bAllInExhaust = !State.bSpark || State.bIsAntiLagTriggered;
-
-		float UnburntFuel = bAllInExhaust ?
-			BaseFuelFlow : BaseFuelFlow * FMath::Max(0.f, 1.f - TargetLamda);
-
-		// accumulate unburnt fuel
-		State.UnburntFuelBuffer += NAConfig.UnburntFuelAccumulationRate * UnburntFuel * DeltaTime;
-	}
-
-	// higher lambda or higher rpm causes the unburnt fuel decay faster
-	float UnBurntFuelDecayAmount = ExhaustConfig.ExhaustScavengingStrength * State.UnburntFuelBuffer * TargetLamda * NormalizedRPM;
-
-	// update unburnt fuel
-	State.UnburntFuelBuffer -= UnBurntFuelDecayAmount * DeltaTime;
-
-	// get target exhaust heat
-	// high rpm & lot of throttle = heat
-	float TargetHeat = NormalizedRPM * State.RealThrottle;
-
-	// get interp speed 
-	float HeatInterpSpeed = TargetHeat > State.ExhaustHeat ? 
-		ExhaustConfig.HeatUpRate : ExhaustConfig.CoolDownRate;
-
-	// update exhaust heat
-	State.ExhaustHeat = FMath::FInterpTo(
-		State.ExhaustHeat,
-		TargetHeat,
-		DeltaTime,
-		HeatInterpSpeed
-	);
-
-	State.BackfireIntensity = 0.f;
-
-	if (State.ExhaustHeat > ExhaustConfig.FlashPoint && State.UnburntFuelBuffer > ExhaustConfig.PopFuelThreshold)
-	{
-		float Intensity = FMath::GetMappedRangeValueUnclamped(
-			FVector2D(
-				ExhaustConfig.PopFuelThreshold, 
-				ExhaustConfig.FlameFuelThreshold
-			),
-			FVector2D(0.f, 1.f),
-			State.UnburntFuelBuffer
-		);
-
-		Intensity = FMath::Max(0.f, Intensity);
-
-		float Chance = ExhaustConfig.IgnitionProbability * Intensity;
-
-		if (FMath::FRand() < Chance)
-		{
-			State.BackfireIntensity = Intensity;
-			State.UnburntFuelBuffer -= State.UnburntFuelBuffer * Intensity;
-			float HeatAdded = ExhaustConfig.BackfireHeatSpike * Intensity;
-			State.ExhaustHeat += HeatAdded;
-			bShouldTriggerBackfiringCallback = true;
-		}
-	}
-
-	// clamp the value
-	State.UnburntFuelBuffer = FMath::Max(0.f, State.UnburntFuelBuffer);
-	State.ExhaustHeat = FMath::Clamp(State.ExhaustHeat, 0.f, 1.f);
+	if (bPowerUnitBridgeBound.Load()) return;
+	FVehicleEngineSolver::UpdateExhaust(FVehicleEngineParameters::FromConfig(NAConfig),
+		ExhaustConfig, State, DeltaTime, bShouldTriggerBackfiringCallback);
 }
 
 float UVehicleEngineComponent::EstimateThrottleForTorque(float TargetEffectiveTorque)
 {
-	const float RPM = FMath::Abs(State.EngineRPM);
-
-	const float MechFriction =
-		NAConfig.StartFriction +
-		NAConfig.FrictionCoefficient * RPM;
-
-	const float PumpingLossAtClosedThrottle =
-		NAConfig.PumpingLossCoefficient * RPM;
-
-	const float TorqueCurveValue = CachedTorqueLUT.FastEval(
-		RPM,
-		FVector2f(NAConfig.EngineIdleRPM, NAConfig.EngineMaxRPM)
-	).Value;
-
-	const float CurveTorque =
-		NAConfig.MaxEngineTorque * TorqueCurveValue;
-
-	// We want:
-	// EffectiveTorque = IndicatedTorque - FrictionTorque = TargetEffectiveTorque
-	//
-	// FrictionTorque(t) = MechFriction + PumpingLossAtClosedThrottle * (1 - t)
-	// IndicatedTorque(t) = t * (FrictionTorque(t) + CurveTorque)
-	//
-	// Solve:
-	// t * (MechFriction + PumpingLossAtClosedThrottle * (1 - t) + CurveTorque)
-	// - (MechFriction + PumpingLossAtClosedThrottle * (1 - t))
-	// = TargetEffectiveTorque
-
-	const float P = PumpingLossAtClosedThrottle;
-	const float B = MechFriction + CurveTorque + 2.f * P;
-	const float C = TargetEffectiveTorque + MechFriction + P;
-
-	float RequiredThrottle = 1.f;
-
-	if (P > SMALL_NUMBER)
-	{
-		const float Discriminant = B * B - 4.f * P * C;
-
-		if (Discriminant > 0.f)
-		{
-			// smaller root is the physically useful one in [0, 1]
-			RequiredThrottle = (B - FMath::Sqrt(Discriminant)) / (2.f * P);
-		}
-	}
-	else
-	{
-		// no pumping-loss dependency on throttle
-		RequiredThrottle = UVehicleUtilities::SafeDivide(C, MechFriction + CurveTorque, 1.f);
-	}
-
-	return FMath::Clamp(RequiredThrottle, 0.f, 1.f);
+	return FVehicleEngineSolver::EstimateThrottleForTorque(FVehicleEngineParameters::FromConfig(NAConfig),
+		State, CachedTorqueLUT, TargetEffectiveTorque);
 }
 
 // Called every frame
 void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	RefreshPublishedRuntimeState();
 
 	// ...
 
@@ -419,121 +125,11 @@ void UVehicleEngineComponent::TickComponent(float DeltaTime, ELevelTick TickType
 void UVehicleEngineComponent::UpdatePhysics(float InDeltaTime, float InThrottle, float InLoadTorque, bool bDisableSpark)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Engine_UpdatePhysics);
+	if (bPowerUnitBridgeBound.Load()) return;
 
-	State.RawThrottleInput = FMath::Clamp(InThrottle, 0.f, 1.f);
-	State.LoadTorque = InLoadTorque;
-
-	// get torque required to start engine
-	State.TorqueRequiredToStartEngine = NAConfig.StartFriction + NAConfig.EngineIdleRPM * NAConfig.FrictionCoefficient;
-
-	//check if idle rpm is valid
-	if (NAConfig.EngineIdleRPM > 0)
-	{
-		// 0.7 is a magic number
-		State.EngineOffRPM = 0.7f * NAConfig.EngineIdleRPM;
-
-		//get idle throttle
-		State.IdleThrottle = FMath::Clamp(
-			UVehicleUtilities::SafeDivide(State.TorqueRequiredToStartEngine,
-				State.TorqueRequiredToStartEngine + NAConfig.MaxEngineTorque * CachedTorqueLUT.FastEval(0.f).Value),
-			0.f, 1.f);
-	}
-	else
-	{
-		State.IdleThrottle = 0;
-		State.EngineOffRPM = -BIG_NUMBER;
-	}
-
-	// true if rpm > max rpm
-	bool bRevLimit = State.EngineRPM > NAConfig.EngineMaxRPM;
-
-	switch (State.OperationMode)
-	{
-	case EVehicleEngineOperationMode::On:
-		// enable fuel injection and spark if there's throttle input
-		// the fuel injection and spark might be disabled in certain conditions
-		State.bFuelInjection = State.RawThrottleInput > SMALL_NUMBER;
-
-		// update revlimit timer
-		State.RevLimiterTimer = bRevLimit ? 0.f : State.RevLimiterTimer + InDeltaTime;
-		// avoid overflow
-		// avoid rapid toggling due to RevLimiterTime being too short (not unit conversion)
-		State.RevLimiterTimer = FMath::Min(State.RevLimiterTimer, NAConfig.RevLimiterTime * 10.f);
-
-		// if rpm is smaller than max rpm and the timer fullfills the timer limit
-		State.bSpark = !bDisableSpark && !bRevLimit && State.RevLimiterTimer >= NAConfig.RevLimiterTime;
-
-		//check if engine is idling
-		if (State.EngineRPM < NAConfig.EngineIdleRPM && NAConfig.EngineIdleRPM > 0.f)
-		{
-			// if rpm is too low
-			// interp the throttle to 1
-			// and enable spark and fuel injection
-			// to maintain the rpm
-			State.RealThrottle = FMath::FInterpTo(
-				State.RealThrottle, 
-				1.f, 
-				InDeltaTime, 
-				NAConfig.IdleThrottleInterpSpeed);
-
-			const float PositiveLoadTorque = FMath::Max(0.f, State.LoadTorque);
-			const float RequiredThrottleByLoad = EstimateThrottleForTorque(PositiveLoadTorque);
-
-			State.RealThrottle = FMath::Max(RequiredThrottleByLoad, State.RealThrottle);
-
-			State.bFuelInjection = State.bSpark = true;
-		}
-		else
-		{
-			const float FloatingErrorTolerance = 1e-3f;
-			// get real throttle value
-			State.RealThrottle = FMath::Lerp(State.IdleThrottle - FloatingErrorTolerance, 1.f, State.RawThrottleInput);
-		}
-
-		// check if engine is off
-		if (State.EngineRPM <= State.EngineOffRPM)
-		{
-			State.OperationMode = EVehicleEngineOperationMode::Off;
-			State.bFuelInjection = State.bSpark = false;
-		}
-		break;
-	case EVehicleEngineOperationMode::Off:
-		State.bFuelInjection = State.bSpark = false;
-		if (State.EngineRPM > State.EngineOffRPM)
-		{
-			State.OperationMode = EVehicleEngineOperationMode::On;
-			State.bFuelInjection = State.bSpark = true;
-		}
-		break;
-	case EVehicleEngineOperationMode::Starting:
-		State.RealThrottle = FMath::Lerp(State.IdleThrottle, 1.f, State.RawThrottleInput);
-		State.bFuelInjection = State.bSpark = true;
-		//check if engine is started
-		if (State.EngineRPM > FMath::Min(1.5 * NAConfig.EngineIdleRPM, 0.9 * NAConfig.EngineMaxRPM))
-		{
-			State.OperationMode = EVehicleEngineOperationMode::On;
-			State.StarterMotorTorque = 0.f;
-		}
-		else
-		{
-			State.StarterMotorTorque += InDeltaTime * State.TorqueRequiredToStartEngine * 10;
-		}
-		break;
-	case EVehicleEngineOperationMode::Shutting:
-		State.StarterMotorTorque = 0.f;
-		State.bFuelInjection = false;
-		if (State.EngineRPM <= State.EngineOffRPM)
-		{
-			State.OperationMode = EVehicleEngineOperationMode::Off;
-		}
-		break;
-	default:
-		State.OperationMode = EVehicleEngineOperationMode::On;
-		break;
-	}
-
-	EngineAcceleration(InDeltaTime);
-	UpdateExhaust(InDeltaTime);
+	FVehicleEngineSolver::UpdatePhysics(FVehicleEngineParameters::FromConfig(NAConfig),
+		TurboConfig, ExhaustConfig, CachedTorqueLUT, State, InDeltaTime, InThrottle, InLoadTorque,
+		bDisableSpark, bShouldTriggerTurboBlowOffCallback, bShouldTriggerBackfiringCallback);
 }
 
 void UVehicleEngineComponent::SetNaturallyAspiratedEngineConfig(const FVehicleNaturallyAspiratedEngineConfig& NewConfig)
@@ -545,17 +141,18 @@ void UVehicleEngineComponent::SetNaturallyAspiratedEngineConfig(const FVehicleNa
 void UVehicleEngineComponent::SetTurboConfig(const FVehicleEngineTurboConfig& NewConfig)
 {
 	TurboConfig = NewConfig;
+	SubmitRuntimeSettings();
 }
 
 void UVehicleEngineComponent::SetExhaustConfig(const FVehicleEngineExhaustConfig& NewConfig)
 {
 	ExhaustConfig = NewConfig;
+	SubmitRuntimeSettings();
 }
 
 float UVehicleEngineComponent::GetMaxEngineTorque()
 {
-	const float TurboBoost = FMath::Max(0.f, TurboConfig.MaxBoostPressure * TurboConfig.BoostEfficiency);
-	return NAConfig.MaxEngineTorque * (1.f + TurboBoost);
+	return FVehicleEngineSolver::CalculateMaxTorque(FVehicleEngineParameters::FromConfig(NAConfig), TurboConfig);
 }
 
 void UVehicleEngineComponent::UpdateCachedLookUpTables()
@@ -571,44 +168,103 @@ void UVehicleEngineComponent::UpdateCachedLookUpTables()
 	{
 		CachedTorqueLUT.SetAllTo(1.f);
 	}
+	SubmitRuntimeSettings();
+}
+
+FVehicleEngineRuntimeSettings UVehicleEngineComponent::CaptureRuntimeSettings() const
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Engine_CaptureRuntimeSettings);
+	check(IsInGameThread());
+	FVehicleEngineRuntimeSettings Settings;
+	Settings.Parameters = FVehicleEngineParameters::FromConfig(NAConfig);
+	Settings.TurboConfig = TurboConfig;
+	Settings.ExhaustConfig = ExhaustConfig;
+	Settings.TorqueLUT = CachedTorqueLUT;
+	return Settings;
+}
+
+bool UVehicleEngineComponent::CanBindPowerUnitBridge() const
+{
+	check(IsInGameThread());
+	return !bPowerUnitBridgeBound.Load();
+}
+
+bool UVehicleEngineComponent::BindPowerUnitBridge(
+	TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> InBridge)
+{
+	check(IsInGameThread());
+	if (!CanBindPowerUnitBridge() || !InBridge.IsValid()) return false;
+	PowerUnitBridge = InBridge;
+	RequestedP1MotorTorque = State.P1MotorTorque;
+	bPowerUnitBridgeBound.Store(true);
+	SubmitRuntimeSettings();
+	RefreshPublishedRuntimeState();
+	return true;
+}
+
+void UVehicleEngineComponent::SubmitRuntimeSettings()
+{
+	if (!bPowerUnitBridgeBound.Load()) return;
+	check(IsInGameThread());
+	if (TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> Bridge = PowerUnitBridge.Pin())
+	{
+		Bridge->SubmitEngineSettings(CaptureRuntimeSettings());
+	}
+}
+
+void UVehicleEngineComponent::RefreshPublishedRuntimeState()
+{
+	if (!bPowerUnitBridgeBound.Load()) return;
+	check(IsInGameThread());
+	if (TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> Bridge = PowerUnitBridge.Pin())
+	{
+		Bridge->ReadEngineResult(State, bShouldTriggerTurboBlowOffCallback,
+			bShouldTriggerBackfiringCallback);
+		// P1 is a commanded input, unlike RPM: keep the current GT value even if the result is older.
+		State.P1MotorTorque = RequestedP1MotorTorque;
+	}
+}
+
+void UVehicleEngineComponent::SetP1MotorTorque(float NewTorque)
+{
+	RequestedP1MotorTorque = NewTorque;
+	if (bPowerUnitBridgeBound.Load())
+	{
+		check(IsInGameThread());
+		State.P1MotorTorque = NewTorque;
+		if (TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> Bridge = PowerUnitBridge.Pin())
+		{
+			Bridge->RequestP1MotorTorque(NewTorque);
+		}
+		return;
+	}
+	State.P1MotorTorque = NewTorque;
 }
 
 EVehicleEngineOperationMode UVehicleEngineComponent::StartVehicleEngine()
 {
-	switch (State.OperationMode)
+	if (bPowerUnitBridgeBound.Load())
 	{
-	case EVehicleEngineOperationMode::On:
-		break;
-	case EVehicleEngineOperationMode::Off:State.OperationMode = EVehicleEngineOperationMode::Starting;
-		break;
-	case EVehicleEngineOperationMode::Starting:
-		break;
-	case EVehicleEngineOperationMode::Shutting://State = EVehicleEngineState::Starting;
-		break;
-	default:
-		break;
+		check(IsInGameThread());
+		if (TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> Bridge = PowerUnitBridge.Pin())
+		{
+			Bridge->RequestEngineStart();
+		}
 	}
-
-	return State.OperationMode;
+	return FVehicleEngineSolver::StartVehicleEngine(State);
 }
 
 EVehicleEngineOperationMode UVehicleEngineComponent::ShutVehicleEngine()
 {
-	switch (State.OperationMode)
+	if (bPowerUnitBridgeBound.Load())
 	{
-	case EVehicleEngineOperationMode::On:State.OperationMode = EVehicleEngineOperationMode::Shutting;
-		break;
-	case EVehicleEngineOperationMode::Off:
-		break;
-	case EVehicleEngineOperationMode::Starting://State = EVehicleEngineState::Shutting;
-		break;
-	case EVehicleEngineOperationMode::Shutting:
-		break;
-	default:
-		break;
+		check(IsInGameThread());
+		if (TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> Bridge = PowerUnitBridge.Pin())
+		{
+			Bridge->RequestEngineShutdown();
+		}
 	}
-
-	return State.OperationMode;
+	return FVehicleEngineSolver::ShutdownVehicleEngine(State);
 }
 
 void UVehicleEngineComponent::BindEventToOnTurboBlowOff(FOnTurboBlowOffDelegate InOnTurboBlowOff)
@@ -625,4 +281,35 @@ void UVehicleEngineComponent::BindEventToOnBackfiring(FOnBackfiringDelegate InOn
 	{
 		BackfiringCallbacks.Add(InOnBackFiring);
 	}
+}
+
+
+void UVehicleEngineComponent::OnRegister()
+{
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::OnRegister();
+}
+
+void UVehicleEngineComponent::OnUnregister()
+{
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::OnUnregister();
+}
+
+void UVehicleEngineComponent::BeginDestroy()
+{
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::BeginDestroy();
+}
+
+void UVehicleEngineComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::EndPlay(EndPlayReason);
+}
+
+void UVehicleEngineComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
+{
+	PhysicsOwnership.InvalidateOwnerAndWait();
+	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
