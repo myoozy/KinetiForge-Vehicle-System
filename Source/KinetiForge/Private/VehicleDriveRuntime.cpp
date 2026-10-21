@@ -1,18 +1,18 @@
 // Copyright (c) 2026 Zhengyi Miao (github.com/myoozy)
 
-#include "VehicleFixedDriveRuntime.h"
+#include "VehicleDriveRuntime.h"
 #include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "VehicleDifferentialSolver.h"
 #include "VehiclePhysicsStep.h"
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/Particle/ParticleUtilities.h"
 
-FVehicleFixedDriveRuntime::FVehicleFixedDriveRuntime(
+FVehicleDriveRuntime::FVehicleDriveRuntime(
 	TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> InPowerUnit,
 	FVehiclePhysicsBodyIdentity InChassis, TArray<FVehicleAxlePhysicsAssembly> InAxles)
 	: PowerUnit(MoveTemp(InPowerUnit)), Chassis(MoveTemp(InChassis)), Axles(MoveTemp(InAxles)) {}
 
-void FVehicleFixedDriveRuntime::Update(float DeltaTime, const FVehiclePhysicsExecutionContext& Context)
+void FVehicleDriveRuntime::Update(float DeltaTime, const FVehiclePhysicsExecutionContext& Context)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_DriveAssembly_UpdatePhysics);
 	// This vehicle owns its borrowed lookups only until the current macrostep returns.
@@ -93,7 +93,7 @@ void FVehicleFixedDriveRuntime::Update(float DeltaTime, const FVehiclePhysicsExe
 	PowerUnit->PublishResult();
 }
 
-int32 FVehicleFixedDriveRuntime::SubstepTransferCase(float DeltaTime, float OutputTorque,
+int32 FVehicleDriveRuntime::SubstepTransferCase(float DeltaTime, float OutputTorque,
 	float Brake, float Handbrake, bool bLineLock, const FVehiclePhysicsExecutionContext& Context,
 	float& OutputAngularVelocity, float& OutputInertia, float& OutputStiffness)
 {

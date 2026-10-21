@@ -17,11 +17,11 @@ struct KINETIFORGE_API FVehicleAxleWheelInput
 	float PredictedSlipRatio = 0.f;
 };
 
-/** Fixed axle equations only. Wheel integration, suspension and body queries stay separate. */
+/** Axle-level equations only. Wheel integration, suspension and body queries stay separate. */
 class KINETIFORGE_API FVehicleAxleSolver
 {
 public:
-	/** Pure fixed-axle kinematic helpers shared by the legacy component and ordinary runtime. */
+	/** Pure axle-level kinematic helpers shared by the legacy component and ordinary runtime. */
 	static void UpdateLinearVelocity(FVehicleAxleSimState& State,
 		const FVehicleSuspensionSimState* LeftSuspension, const FQuat4f* LeftChassisRotation,
 		const FVehicleSuspensionSimState* RightSuspension, const FQuat4f* RightChassisRotation);

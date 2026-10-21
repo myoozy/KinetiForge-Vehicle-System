@@ -23,7 +23,7 @@
 #include "UObject/StrongObjectPtr.h"
 #include "Misc/ScopeExit.h"
 
-struct FVehicleFixedDriveAssemblyIntegrationProbe
+struct FVehicleDriveAssemblyIntegrationProbe
 {
 	static TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> Step(UVehicleDriveAssemblyComponent& Drive)
 	{
@@ -35,7 +35,7 @@ struct FVehicleFixedDriveAssemblyIntegrationProbe
 	}
 };
 
-namespace VehicleFixedDriveIntegrationTests
+namespace VehicleDriveIntegrationTests
 {
 	struct FWorldOwner
 	{
@@ -45,7 +45,7 @@ namespace VehicleFixedDriveIntegrationTests
 
 	UWorld* CreateWorld(FAutomationTestBase& Test, FWorldOwner& Owner)
 	{
-		Owner.World = UWorld::CreateWorld(EWorldType::Game, false, TEXT("VehicleFixedDriveIntegration"), nullptr,
+		Owner.World = UWorld::CreateWorld(EWorldType::Game, false, TEXT("VehicleDriveIntegration"), nullptr,
 			true, ERHIFeatureLevel::Num, nullptr, true);
 		if (!Test.TestNotNull(TEXT("Integration world created"), Owner.World)) return nullptr;
 		Owner.World->InitWorld(UWorld::InitializationValues().AllowAudioPlayback(false)
@@ -125,8 +125,8 @@ namespace VehicleFixedDriveIntegrationTests
 		Vehicle.Actor->DispatchBeginPlay();
 		// BeginPlay may precede generated physics bodies and child BeginPlay. Two GT refreshes
 		// let the deferred power bridge initialize and then publish a body-bound scene step.
-		FVehicleFixedDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
-		FVehicleFixedDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
+		FVehicleDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
+		FVehicleDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
 		FVehicleNaturallyAspiratedEngineConfig EngineConfig = Vehicle.Drive->GetEngine()->GetNaturallyAspiratedEngineConfig();
 		EngineConfig.UnburntFuelAccumulationRate = 0.f;
 		Vehicle.Drive->GetEngine()->SetNaturallyAspiratedEngineConfig(EngineConfig);
@@ -144,13 +144,13 @@ namespace VehicleFixedDriveIntegrationTests
 	}
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDriveSceneIntegrationTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDriveSceneIntegrationTest,
 	"KinetiForge.Drivetrain.FixedDrive.IndependentFrozenBaseline",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FVehicleFixedDriveSceneIntegrationTest::RunTest(const FString& Parameters)
+bool FVehicleDriveSceneIntegrationTest::RunTest(const FString& Parameters)
 {
-	using namespace VehicleFixedDriveIntegrationTests;
+	using namespace VehicleDriveIntegrationTests;
 	FVehicleFrozenBaseline Baseline;
 	if (!Baseline.Load(*this, TEXT("independent.csv"), 36, 10)) return false;
 	FWorldOwner Owner;
@@ -160,7 +160,7 @@ bool FVehicleFixedDriveSceneIntegrationTest::RunTest(const FString& Parameters)
 	if (!TestTrue(TEXT("Complete independent vehicle registered"), Vehicle.Drive && Vehicle.Axle && Vehicle.Chassis)) return false;
 	Flush(*World);
 	PrepareVehicle(Vehicle);
-	const auto Entry = FVehicleFixedDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
+	const auto Entry = FVehicleDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
 	if (!TestTrue(TEXT("Vehicle owns an active scene entry"), Entry && !Entry->IsStopped())) return false;
 	if (!TestEqual(TEXT("Independent fixture has two wheels"), Vehicle.Drive->GetWheels().Num(), 2)) return false;
 	for (int32 Frame = 0; Frame < 36; ++Frame)
@@ -183,13 +183,13 @@ bool FVehicleFixedDriveSceneIntegrationTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDriveSolidAxleComparisonTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDriveSolidAxleComparisonTest,
 	"KinetiForge.Drivetrain.FixedDrive.SolidAxleFrozenBaseline",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FVehicleFixedDriveSolidAxleComparisonTest::RunTest(const FString& Parameters)
+bool FVehicleDriveSolidAxleComparisonTest::RunTest(const FString& Parameters)
 {
-	using namespace VehicleFixedDriveIntegrationTests;
+	using namespace VehicleDriveIntegrationTests;
 	FVehicleFrozenBaseline Baseline;
 	if (!Baseline.Load(*this, TEXT("solid.csv"), 18, 3)) return false;
 	FWorldOwner Owner;
@@ -212,60 +212,60 @@ bool FVehicleFixedDriveSolidAxleComparisonTest::RunTest(const FString& Parameter
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDriveLifecycleIntegrationTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDriveLifecycleIntegrationTest,
 	"KinetiForge.Lifecycle.FixedDriveBodyRecreationAndFrozenLane",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FVehicleFixedDriveLifecycleIntegrationTest::RunTest(const FString& Parameters)
+bool FVehicleDriveLifecycleIntegrationTest::RunTest(const FString& Parameters)
 {
-	using namespace VehicleFixedDriveIntegrationTests;
+	using namespace VehicleDriveIntegrationTests;
 	FWorldOwner WorldOwner;
 	UWorld* World = CreateWorld(*this, WorldOwner);
 	if (!World) return false;
 	FVehicle Vehicle = CreateVehicle(*World, FVector(0.f, 0.f, 1000.f), true, 8000.f);
-	if (!TestTrue(TEXT("Solid-axle fixed vehicle registered"), Vehicle.Actor && Vehicle.Drive && Vehicle.Axle)) return false;
+	if (!TestTrue(TEXT("Solid-axle drivetrain vehicle registered"), Vehicle.Actor && Vehicle.Drive && Vehicle.Axle)) return false;
 	Flush(*World);
 	PrepareVehicle(Vehicle);
 	TestTrue(TEXT("Solid axle retains its configured suspension type"),
 		Vehicle.Axle->GetAxleSuspensionType() == EVehicleAxleSuspensionType::Solid);
 	TestEqual(TEXT("Solid axle retains both wheel bindings"), Vehicle.Drive->GetWheels().Num(), 2);
-	const auto OldEntry = FVehicleFixedDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
-	if (!TestNotNull(TEXT("Fixed runtime entry published"), OldEntry.Get())) return false;
-	TestFalse(TEXT("Public float-only manual update rejects a context-required fixed runtime"), OldEntry->TryExecute(1.f / 60.f));
+	const auto OldEntry = FVehicleDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
+	if (!TestNotNull(TEXT("Drive runtime entry published"), OldEntry.Get())) return false;
+	TestFalse(TEXT("Public float-only manual update rejects a context-required Drive runtime"), OldEntry->TryExecute(1.f / 60.f));
 
 	Vehicle.Chassis->RecreatePhysicsState();
-	FVehicleFixedDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
+	FVehicleDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
 	TestTrue(TEXT("Body recreation permanently closes the old runtime entry"), OldEntry->IsStopped());
 	TestFalse(TEXT("Retained pre-recreation entry cannot advance"), OldEntry->TryExecute(1.f / 60.f));
 	Flush(*World);
-	FVehicleFixedDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
-	const auto NewEntry = FVehicleFixedDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
+	FVehicleDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
+	const auto NewEntry = FVehicleDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
 	TestTrue(TEXT("Body recreation publishes a fresh entry after rebinding"), NewEntry.IsValid() && NewEntry != OldEntry && !NewEntry->IsStopped());
 
-	const auto CurrentEntry = FVehicleFixedDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
+	const auto CurrentEntry = FVehicleDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
 	TestTrue(TEXT("Rebound entry is current and active"), CurrentEntry.IsValid() && CurrentEntry != OldEntry && !CurrentEntry->IsStopped());
 	TestFalse(TEXT("Pre-body-recreation entry stays stopped after rebind"), OldEntry->TryExecute(1.f / 60.f));
 	const TArray<UVehicleWheelComponent*> OriginalWheels = Vehicle.Drive->GetWheels();
 	Vehicle.Drive->UnregisterComponent();
 	TestTrue(TEXT("Drive unregister stops its current retained step"), CurrentEntry->IsStopped());
 	Vehicle.Drive->RegisterComponent();
-	const auto DriveRestoredEntry = FVehicleFixedDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
-	TestTrue(TEXT("Drive registration publishes another fresh fixed entry"), DriveRestoredEntry.IsValid()
+	const auto DriveRestoredEntry = FVehicleDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
+	TestTrue(TEXT("Drive registration publishes another fresh Drive entry"), DriveRestoredEntry.IsValid()
 		&& DriveRestoredEntry != CurrentEntry && !DriveRestoredEntry->IsStopped());
 	TestTrue(TEXT("Drive registration preserves the generated wheel component identities"), Vehicle.Drive->GetWheels() == OriginalWheels);
 	TestFalse(TEXT("Pre-unregister entry remains stopped"), CurrentEntry->TryExecute(1.f / 60.f));
 	if (!TestEqual(TEXT("Wheel-loss fixture begins with two wheels"), OriginalWheels.Num(), 2)) return false;
 	UVehicleWheelComponent* Survivor = OriginalWheels[0];
 	UVehicleWheelComponent* RemovedWheel = OriginalWheels[1];
-	const auto BeforeWheelLossEntry = FVehicleFixedDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
+	const auto BeforeWheelLossEntry = FVehicleDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
 	const auto SurvivorBridge = Survivor->GetWheelBridge();
-	if (!TestNotNull(TEXT("Surviving wheel has a fixed-runtime bridge"), SurvivorBridge.Get())) return false;
+	if (!TestNotNull(TEXT("Surviving wheel has a Drive-runtime bridge"), SurvivorBridge.Get())) return false;
 	const uint64 BeforeWheelLossSequence = SurvivorBridge->ReadResult().PublicationSequence;
 	RemovedWheel->DestroyComponent();
-	TestTrue(TEXT("Wheel destruction closes the old fixed entry"), BeforeWheelLossEntry->IsStopped());
-	FVehicleFixedDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
-	const auto SingleWheelEntry = FVehicleFixedDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
-	if (!TestTrue(TEXT("Wheel loss rebinds one active fixed entry"), SingleWheelEntry.IsValid()
+	TestTrue(TEXT("Wheel destruction closes the old Drive entry"), BeforeWheelLossEntry->IsStopped());
+	FVehicleDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
+	const auto SingleWheelEntry = FVehicleDriveAssemblyIntegrationProbe::Step(*Vehicle.Drive);
+	if (!TestTrue(TEXT("Wheel loss rebinds one active Drive entry"), SingleWheelEntry.IsValid()
 		&& SingleWheelEntry != BeforeWheelLossEntry && !SingleWheelEntry->IsStopped())) return false;
 	int32 LiveWheelCount = 0;
 	for (UVehicleWheelComponent* Wheel : Vehicle.Drive->GetWheels())
@@ -284,26 +284,26 @@ bool FVehicleFixedDriveLifecycleIntegrationTest::RunTest(const FString& Paramete
 	}
 
 	FVehicle FrozenVehicle = CreateVehicle(*World, FVector(1000.f, 0.f, 1000.f), true, 8000.f, true);
-	if (!TestTrue(TEXT("Frozen-lane fixed vehicle registered"), FrozenVehicle.Actor && FrozenVehicle.Drive)) return false;
+	if (!TestTrue(TEXT("Frozen-lane drivetrain vehicle registered"), FrozenVehicle.Actor && FrozenVehicle.Drive)) return false;
 	Flush(*World);
 	PrepareVehicle(FrozenVehicle);
-	const auto FrozenEntry = FVehicleFixedDriveAssemblyIntegrationProbe::Step(*FrozenVehicle.Drive);
-	if (!TestTrue(TEXT("Frozen GT lane publishes an active fixed-runtime entry"), FrozenEntry.IsValid() && !FrozenEntry->IsStopped())) return false;
+	const auto FrozenEntry = FVehicleDriveAssemblyIntegrationProbe::Step(*FrozenVehicle.Drive);
+	if (!TestTrue(TEXT("Frozen GT lane publishes an active Drive-runtime entry"), FrozenEntry.IsValid() && !FrozenEntry->IsStopped())) return false;
 	const auto FrozenWheelBridge = FrozenVehicle.Drive->GetWheels()[0]->GetWheelBridge();
 	const uint64 BeforeFrozenStep = FrozenWheelBridge->ReadResult().PublicationSequence;
 	Flush(*World);
-	TestEqual(TEXT("Frozen fixed runtime publishes exactly once without legacy ticker duplication"),
+	TestEqual(TEXT("Frozen Drive runtime publishes exactly once without legacy ticker duplication"),
 		FrozenWheelBridge->ReadResult().PublicationSequence, BeforeFrozenStep + 1);
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDriveManualCallbackTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDriveManualCallbackTest,
 	"KinetiForge.Drivetrain.FixedDrive.ManualCallbackContext",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FVehicleFixedDriveManualCallbackTest::RunTest(const FString& Parameters)
+bool FVehicleDriveManualCallbackTest::RunTest(const FString& Parameters)
 {
-	using namespace VehicleFixedDriveIntegrationTests;
+	using namespace VehicleDriveIntegrationTests;
 	FWorldOwner Owner;
 	UWorld* World = CreateWorld(*this, Owner);
 	if (!World) return false;
@@ -312,12 +312,12 @@ bool FVehicleFixedDriveManualCallbackTest::RunTest(const FString& Parameters)
 	Flush(*World);
 	PrepareVehicle(Vehicle);
 	Vehicle.Drive->bUpdatePhysicsAutomatically = false;
-	FVehicleFixedDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
+	FVehicleDriveAssemblyIntegrationProbe::Tick(*Vehicle.Drive);
 	const auto WheelBridge = Vehicle.Drive->GetWheels()[0]->GetWheelBridge();
 	const uint64 InitialSequence = WheelBridge->ReadResult().PublicationSequence;
 	Vehicle.Drive->UpdatePhysics(1.f / 60.f);
 	Flush(*World);
-	TestEqual(TEXT("Ordinary GT manual call and disabled automatic entry do not advance fixed runtime"),
+	TestEqual(TEXT("Ordinary GT manual call and disabled automatic entry do not advance Drive runtime"),
 		WheelBridge->ReadResult().PublicationSequence, InitialSequence);
 	TestNull(TEXT("No context retained on GT outside callback"), FVehiclePhysicsExecutionContext::GetCurrent());
 
@@ -342,7 +342,7 @@ bool FVehicleFixedDriveManualCallbackTest::RunTest(const FString& Parameters)
 	Flush(*World);
 	TestTrue(TEXT("Actual callback exposes its scoped context"), bScopedContextCorrect);
 	TestTrue(TEXT("Nested borrowed scope restores outer callback context"), bNestedContextRestored);
-	TestEqual(TEXT("Float-only manual callback advances fixed runtime once"),
+	TestEqual(TEXT("Float-only manual callback advances Drive runtime once"),
 		WheelBridge->ReadResult().PublicationSequence, InitialSequence + 1);
 	TestNull(TEXT("Callback scope clears borrowed context after return"), FVehiclePhysicsExecutionContext::GetCurrent());
 

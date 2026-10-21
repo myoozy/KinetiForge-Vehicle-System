@@ -12,7 +12,7 @@ struct FVehicleAxleWheelInput;
 
 namespace Chaos { class FRigidBodyHandle_Internal; }
 
-/** One fixed axle side. An unset wheel bridge represents a missing wheel. Body identity is
+/** One axle-level side. An unset wheel bridge represents a missing wheel. Body identity is
  * captured on GT and must be replaced by rebuilding the assembly when the body changes. */
 struct KINETIFORGE_API FVehicleAxlePhysicsWheelBinding
 {
@@ -22,7 +22,7 @@ struct KINETIFORGE_API FVehicleAxlePhysicsWheelBinding
 	bool IsPresent() const { return WheelBridge.IsValid(); }
 };
 
-/** Fixed left/right wheel assembly. UObject discovery and component ownership remain in the
+/** Left/right wheel assembly at the axle level. UObject discovery and component ownership remain in the
  * GT adapter. World queries/contact binding are the deliberate UE boundary in WheelPhysics. */
 class KINETIFORGE_API FVehicleAxlePhysicsAssembly
 {

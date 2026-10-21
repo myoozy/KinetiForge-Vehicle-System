@@ -88,7 +88,7 @@ public:
 		float& OutTransmissionOutputShaftAngularVelocity,
 		float& OutTransmissionOutputShaftEffectiveInertia,
 		float& OutEffectiveDriveShaftStiffness);
-	/** Fixed axle orchestration using an owned config snapshot; contains no component state access. */
+	/** Axle orchestration using an owned config snapshot; contains no component state access. */
 	static int32 SubstepTransferCaseWithConfig(
 		const FVehicleLimitedSlipDifferentialConfig& Config,
 		TArrayView<UVehicleAxleAssemblyComponent* const> InAxles,

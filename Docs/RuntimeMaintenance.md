@@ -1,13 +1,13 @@
 # Vehicle runtime maintenance guide
 
-This UE5.3 plugin simulates a fixed drivetrain assembled from existing vehicle components. Components remain the asset, Blueprint, configuration and editor-facing API. The normal Drive simulation runs through ordinary C++ runtimes. Existing assets do not need a new drivetrain graph.
+This UE5.3 plugin simulates a configured drivetrain assembled from existing vehicle components. Components remain the asset, Blueprint, configuration and editor-facing API. The normal Drive simulation runs through ordinary C++ runtimes. Existing assets do not need a new drivetrain graph.
 
-Start with [VehicleFixedDriveRuntime.cpp](../Source/KinetiForge/Private/VehicleFixedDriveRuntime.cpp). Its `Update` function is the complete vehicle physics sequence. Read the layers below when changing a particular behavior; the development audit is not required reading.
+Start with [VehicleDriveRuntime.cpp](../Source/KinetiForge/Private/VehicleDriveRuntime.cpp). Its `Update` function is the complete vehicle physics sequence. Read the layers below when changing a particular behavior; the development audit is not required reading.
 
 ## One physics step
 
 ```text
-Chaos callback -> scene schedule -> admitted physics step -> FixedDriveRuntime::Update
+Chaos callback -> scene schedule -> admitted physics step -> DriveRuntime::Update
   validate all required bodies; consume power/input settings and commands
   axle PreStep: consume wheel/axle inputs, prepare suspension and wheels
   drivetrain substeps:
@@ -24,7 +24,7 @@ Suspension preparation/integration and tire/drivetrain integration remain separa
 | Change | Start here |
 | --- | --- |
 | Vehicle assembly, component discovery, editor preview, binding | [VehicleDriveAssemblyComponent.cpp](../Source/KinetiForge/Private/VehicleDriveAssemblyComponent.cpp) |
-| Whole-vehicle ordering and transfer-case distribution | [VehicleFixedDriveRuntime.cpp](../Source/KinetiForge/Private/VehicleFixedDriveRuntime.cpp) |
+| Whole-vehicle ordering and transfer-case distribution | [VehicleDriveRuntime.cpp](../Source/KinetiForge/Private/VehicleDriveRuntime.cpp) |
 | Engine, clutch and gear-path composition | [VehiclePowerUnitRuntime.cpp](../Source/KinetiForge/Private/VehiclePowerUnitRuntime.cpp), then the corresponding solver |
 | Default input assistance | [VehicleInputSolver.cpp](../Source/KinetiForge/Private/VehicleInputSolver.cpp) |
 | Axle stages and feedback | [VehicleAxlePhysicsAssembly.cpp](../Source/KinetiForge/Private/VehicleAxlePhysicsAssembly.cpp), then VehicleAxleSolver |
@@ -44,7 +44,9 @@ Configuration setters submit snapshots; physics consumes them at a step boundary
 
 GT getters read published display state. Supported synchronous manual wheel/axle calls can read the current simulation result for same-step feedback. This compatibility path is not permission to call component getters from arbitrary workers during destruction. Preserve old reflected getters and manual interfaces: external Blueprints may use them.
 
-The normal fixed runtime does not discover components during integration. UE5.3 still requires UObject access for the UWorld query entry and hit component/material handling, including immediate ground reactions. These exceptions are concentrated in contact adaptation; the system does not claim complete UObject isolation. Moving ground reactions to a later GT frame would change the simulation.
+The normal Drive runtime does not discover components during integration. UE5.3 still requires UObject access for the UWorld query entry and hit component/material handling, including immediate ground reactions. These exceptions are concentrated in contact adaptation; the system does not claim complete UObject isolation. Moving ground reactions to a later GT frame would change the simulation.
+
+Native C++ extensions that explicitly include `VehicleFixedDriveRuntime.h` or refer to `FVehicleFixedDriveRuntime` should update to `VehicleDriveRuntime.h` and `FVehicleDriveRuntime`. Reflected UObject fields and Blueprint interfaces are unchanged.
 
 ## Registration and lifetime
 

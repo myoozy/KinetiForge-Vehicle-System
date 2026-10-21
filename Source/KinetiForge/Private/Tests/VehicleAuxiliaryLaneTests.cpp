@@ -95,7 +95,7 @@ bool FVehicleAuxiliaryFrozenGameThreadLaneTest::RunTest(const FString& Parameter
 		FPlatformAtomics::InterlockedCompareExchange(&WitnessThread,
 			static_cast<int32>(FPlatformTLS::GetCurrentThreadId()), -1);
 	});
-	if (!TestNotNull(TEXT("FixedDrive taskgraph witness registered"), Witness.Get())) return false;
+	if (!TestNotNull(TEXT("Drive runtime taskgraph witness registered"), Witness.Get())) return false;
 	ON_SCOPE_EXIT { Host->UnregisterStep(Witness); };
 	TArray<UVehicleWheelComponent*> Wheels = Drive->GetWheels();
 	if (!TestTrue(TEXT("Fixture has a wheel"), Wheels.Num() > 0)) return false;
@@ -115,7 +115,7 @@ bool FVehicleAuxiliaryFrozenGameThreadLaneTest::RunTest(const FString& Parameter
 			SpringArm->ReadPhysicsOriginWorldTransform().Equals(Aero->LastParentWorldTransform, 1.e-3f));
 	}
 	TestEqual(TEXT("Aero runs on game thread frozen callback"), Aero->ThreadId.Load(), GT);
-	TestTrue(TEXT("FixedDrive witness ran on TaskGraph worker"),
+	TestTrue(TEXT("Drive runtime witness ran on TaskGraph worker"),
 		FPlatformAtomics::InterlockedCompareExchange(&WitnessCalls, 0, 0) >= 3
 		&& FPlatformAtomics::InterlockedCompareExchange(&WitnessThread, -1, -1) != GT);
 

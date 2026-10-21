@@ -31,7 +31,7 @@ struct KINETIFORGE_API FVehicleTransferCaseAxleOutput
 
 /**
  * Value-only differential equations. No axle discovery, wheel updates or
- * UObject access. The assembly still supplies the existing fixed topology.
+ * UObject access. The assembly still supplies the existing drivetrain topology.
  */
 class KINETIFORGE_API FVehicleDifferentialSolver
 {

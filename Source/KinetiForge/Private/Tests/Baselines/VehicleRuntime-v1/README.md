@@ -4,7 +4,7 @@ These read-only CSVs were captured on UE 5.3.2 from the reference code at
 `e1d67bf`, with temporary output hooks, before removing the legacy vehicle and
 input backends. The six source comparison tests passed during capture. Four
 unrelated lifecycle migrations initially failed and were corrected against the
-real fixed-runtime path before the final regression run.
+real Drive-runtime path before the final regression run.
 
 Normal tests only read these files. There is no baseline regeneration flag or
 executable legacy backend. A future intentional behavior change must review any
