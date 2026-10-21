@@ -50,7 +50,7 @@ struct KINETIFORGE_API FVehiclePowerUnitResult
 };
 
 /**
- * Narrow mailbox for the fixed power unit. One simulation consumer owns Runtime;
+ * Narrow mailbox for the power unit. One simulation consumer owns Runtime;
  * game-thread producers submit settings/commands and read published copies.
  * Locks cover data transfer only, never equations or downstream wheel updates.
  * This does not make the containing UObject callback or its inputs thread-safe.
@@ -67,7 +67,7 @@ public:
 	void SubmitClutchSettings(const FVehicleClutchConfig& Config);
 	/** Legacy World timer remains authoritative for gear selection in this stage. */
 	void SubmitGearboxSettings(const FVehicleGearboxConfig& Config, const FVehicleGearboxRuntimeState& State);
-	/** Submit the fixed transfer-case setup for the next macrostep. */
+	/** Submit the transfer-case setup for the next macrostep. */
 	void SubmitTransferCaseConfig(const FVehicleLimitedSlipDifferentialConfig& Config);
 	void RequestEngineStart();
 	void RequestEngineShutdown();

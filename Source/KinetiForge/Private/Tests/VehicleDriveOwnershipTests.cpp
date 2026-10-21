@@ -118,12 +118,12 @@ bool FVehicleDriveOwnershipPreflightTest::RunTest(const FString& Parameters)
 	SpareOldStep->StopAndWait();
 	const auto CandidateVehicle = VehicleDriveOwnershipTest::Create(*World, FVector(2000.f, 0.f, 800.f), true);
 	UVehicleDriveAssemblyComponent* Candidate = CandidateVehicle.Drive;
-	FVehicleDriveOwnershipProbe::Tick(*Candidate); // Finish the fixed-runtime dependency recovery.
+	FVehicleDriveOwnershipProbe::Tick(*Candidate); // Finish the drive-runtime dependency recovery.
 	FVehicleDriveOwnershipProbe::GetStep(*Candidate)->StopAndWait();
 
-	// A real fixed-runtime drive can claim an available registered assembly.
+	// A real drive-runtime instance can claim an available registered assembly.
 	FVehicleDriveOwnershipProbe::SetAxles(*Candidate, {SpareAxles[0]});
-	TestTrue(TEXT("Fixed-runtime candidate claims an available axle and its wheels"), FVehicleDriveOwnershipProbe::Prepare(*Candidate));
+	TestTrue(TEXT("Drive-runtime candidate claims an available axle and its wheels"), FVehicleDriveOwnershipProbe::Prepare(*Candidate));
 	TestTrue(TEXT("Positive control publishes ownership"), FVehicleDriveOwnershipProbe::HasOwner(*SpareAxles[0]));
 	FVehicleDriveOwnershipProbe::GetStep(*Candidate)->StopAndWait();
 

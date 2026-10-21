@@ -9,7 +9,7 @@
 #include "VehicleUtilities.h"
 
 /**
- * Fixed single-clutch power unit with owned value data. Does not discover
+ * Single-clutch power unit with owned value data. Does not discover
  * components, schedule physics, dispatch delegates, or own chassis/wheels.
  * DriveAssembly will bind and drive it in stage C. Its two step functions keep
  * the existing downstream update between engine/output and clutch feedback.

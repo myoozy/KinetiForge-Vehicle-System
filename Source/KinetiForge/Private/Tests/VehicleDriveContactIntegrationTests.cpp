@@ -23,7 +23,7 @@
 #include "Physics/Experimental/PhysScene_Chaos.h"
 #include "PBDRigidsSolver.h"
 
-struct FVehicleFixedDriveContactIntegrationProbe
+struct FVehicleDriveContactIntegrationProbe
 {
 	static TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> Step(UVehicleDriveAssemblyComponent& Drive)
 	{
@@ -31,7 +31,7 @@ struct FVehicleFixedDriveContactIntegrationProbe
 	}
 };
 
-namespace VehicleFixedDriveContactIntegration
+namespace VehicleDriveContactIntegration
 {
 	struct FWorldOwner
 	{
@@ -41,7 +41,7 @@ namespace VehicleFixedDriveContactIntegration
 
 	UWorld* CreateWorld(FAutomationTestBase& Test, FWorldOwner& Owner)
 	{
-		Owner.World = UWorld::CreateWorld(EWorldType::Game, false, TEXT("VehicleFixedDriveContactIntegration"),
+		Owner.World = UWorld::CreateWorld(EWorldType::Game, false, TEXT("VehicleDriveContactIntegration"),
 			nullptr, true, ERHIFeatureLevel::Num, nullptr, true);
 		if (!Test.TestNotNull(TEXT("Contact integration world created"), Owner.World)) return nullptr;
 		Owner.World->InitWorld(UWorld::InitializationValues().AllowAudioPlayback(false).CreatePhysicsScene(true)
@@ -178,13 +178,13 @@ namespace VehicleFixedDriveContactIntegration
 	}
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDriveGroundContactTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDriveGroundContactTest,
 	"KinetiForge.Drivetrain.FixedDrive.StaticContactFrozenBaseline",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FVehicleFixedDriveGroundContactTest::RunTest(const FString& Parameters)
+bool FVehicleDriveGroundContactTest::RunTest(const FString& Parameters)
 {
-	using namespace VehicleFixedDriveContactIntegration;
+	using namespace VehicleDriveContactIntegration;
 	FVehicleFrozenBaseline Baseline;
 	if (!Baseline.Load(*this, TEXT("static-contact.csv"), 24, 20)) return false;
 	FWorldOwner Owner;
@@ -199,7 +199,7 @@ bool FVehicleFixedDriveGroundContactTest::RunTest(const FString& Parameters)
 	if (!TestTrue(TEXT("Complete contact vehicle registered"), Vehicle.Drive && Vehicle.Axle && Vehicle.Chassis)) return false;
 	Flush(*World);
 	Prepare(Vehicle);
-	const auto Entry = FVehicleFixedDriveContactIntegrationProbe::Step(*Vehicle.Drive);
+	const auto Entry = FVehicleDriveContactIntegrationProbe::Step(*Vehicle.Drive);
 	if (!TestTrue(TEXT("Contact runtime entry is active"), Entry && !Entry->IsStopped())) return false;
 	if (!TestEqual(TEXT("Contact fixture has two wheels"), Vehicle.Drive->GetWheels().Num(), 2)) return false;
 	int32 GroundSamples = 0;
@@ -236,13 +236,13 @@ bool FVehicleFixedDriveGroundContactTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDriveDynamicContactReactionTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDriveDynamicContactReactionTest,
 	"KinetiForge.Drivetrain.FixedDrive.DynamicContactReactionSamePhase",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FVehicleFixedDriveDynamicContactReactionTest::RunTest(const FString& Parameters)
+bool FVehicleDriveDynamicContactReactionTest::RunTest(const FString& Parameters)
 {
-	using namespace VehicleFixedDriveContactIntegration;
+	using namespace VehicleDriveContactIntegration;
 	FVehicleFrozenBaseline Baseline;
 	if (!Baseline.Load(*this, TEXT("dynamic-contact.csv"), 12, 11)) return false;
 	FWorldOwner Owner;
@@ -255,7 +255,7 @@ bool FVehicleFixedDriveDynamicContactReactionTest::RunTest(const FString& Parame
 	Flush(*World);
 	Prepare(Vehicle);
 	if (!TestEqual(TEXT("Dynamic fixture has two wheels"), Vehicle.Drive->GetWheels().Num(), 2)) return false;
-	const auto Entry = FVehicleFixedDriveContactIntegrationProbe::Step(*Vehicle.Drive);
+	const auto Entry = FVehicleDriveContactIntegrationProbe::Step(*Vehicle.Drive);
 	if (!TestTrue(TEXT("Dynamic-contact runtime entry is active"), Entry && !Entry->IsStopped())) return false;
 	const auto Scene = GetScene(*World);
 	if (!TestNotNull(TEXT("Dynamic contact scene host"), Scene.Get())) return false;

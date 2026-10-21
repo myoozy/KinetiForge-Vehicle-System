@@ -6,12 +6,12 @@
 #include "VehicleAxlePhysicsAssembly.h"
 #include "VehiclePowerUnitBridge.h"
 
-/** One simulation consumer owns this fixed assembly. Components only prepare its
+/** One simulation consumer owns this drivetrain assembly. Components only prepare its
  * bindings and transfer commands/results; suspension and drivetrain remain separate stages. */
-class KINETIFORGE_API FVehicleFixedDriveRuntime
+class KINETIFORGE_API FVehicleDriveRuntime
 {
 public:
-	FVehicleFixedDriveRuntime(TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> InPowerUnit,
+	FVehicleDriveRuntime(TSharedPtr<FVehiclePowerUnitBridge, ESPMode::ThreadSafe> InPowerUnit,
 		FVehiclePhysicsBodyIdentity InChassis, TArray<FVehicleAxlePhysicsAssembly> InAxles);
 	void Update(float DeltaTime, const FVehiclePhysicsExecutionContext& Context);
 

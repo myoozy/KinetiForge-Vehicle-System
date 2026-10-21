@@ -30,7 +30,7 @@
 #include "Chaos/Particle/ParticleUtilities.h"
 #include "UObject/GarbageCollection.h"
 
-struct FVehicleFixedDriveAsyncLifecycleProbe
+struct FVehicleDriveAsyncLifecycleProbe
 {
 	static TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> Step(UVehicleDriveAssemblyComponent& Drive)
 	{
@@ -46,7 +46,7 @@ struct FVehicleFixedDriveAsyncLifecycleProbe
 	}
 };
 
-namespace VehicleFixedDriveAsyncLifecycleTests
+namespace VehicleDriveAsyncLifecycleTests
 {
 	constexpr uint32 WaitTimeoutMs = 5000;
 
@@ -131,8 +131,8 @@ namespace VehicleFixedDriveAsyncLifecycleTests
 		if (!Test.TestTrue(TEXT("Vehicle components registered"), Vehicle.Actor && Vehicle.Chassis && Vehicle.Axle && Vehicle.Drive)) return false;
 		if (!Test.TestTrue(TEXT("New Drive uses the whole-vehicle runtime by default"), Vehicle.Drive->bUseIsolatedVehicleRuntime)) return false;
 		Vehicle.Actor->DispatchBeginPlay();
-		FVehicleFixedDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
-		const auto Entry = FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
+		FVehicleDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
+		const auto Entry = FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
 		if (!Test.TestTrue(TEXT("First eligible GT refresh publishes an active default runtime"),
 			Entry.IsValid() && !Entry->IsStopped())) return false;
 		Test.TestFalse(TEXT("Default runtime cannot be advanced by a context-free legacy step call"), Entry->TryExecute(1.f / 60.f));
@@ -163,23 +163,23 @@ namespace VehicleFixedDriveAsyncLifecycleTests
 	};
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDriveTaskGraphLifecycleTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDriveTaskGraphLifecycleTest,
 	"KinetiForge.Drivetrain.FixedDrive.TaskGraphLifecycle",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FVehicleFixedDriveTaskGraphLifecycleTest::RunTest(const FString& Parameters)
+bool FVehicleDriveTaskGraphLifecycleTest::RunTest(const FString& Parameters)
 {
-	using namespace VehicleFixedDriveAsyncLifecycleTests;
+	using namespace VehicleDriveAsyncLifecycleTests;
 	FWorldOwner Owner;
-	UWorld* World = CreateWorld(*this, Owner, TEXT("VehicleFixedDriveTaskGraphLifecycle"));
+	UWorld* World = CreateWorld(*this, Owner, TEXT("VehicleDriveTaskGraphLifecycle"));
 	if (!World) return false;
 	FVehicle Vehicle = CreateVehicle(*World);
 	Flush(*World);
 	if (!StartVehicle(*this, Vehicle)) return false;
 	Flush(*World); // Ensure the registered Drive callback and its captured body identities are consumed.
-	FVehicleFixedDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
-	auto OldStep = FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
-	auto Host = FVehicleFixedDriveAsyncLifecycleProbe::Scene(*Vehicle.Drive);
+	FVehicleDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
+	auto OldStep = FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
+	auto Host = FVehicleDriveAsyncLifecycleProbe::Scene(*Vehicle.Drive);
 	if (!TestTrue(TEXT("Isolated Drive has active scene step"), OldStep.IsValid() && !OldStep->IsStopped())
 		|| !TestNotNull(TEXT("Drive owns scene host"), Host.Get())) return false;
 
@@ -211,7 +211,7 @@ bool FVehicleFixedDriveTaskGraphLifecycleTest::RunTest(const FString& Parameters
 	TestTrue(TEXT("Chaos invoked the registered callback on a non-GT TaskGraph worker"),
 		FPlatformAtomics::InterlockedCompareExchange(&WorkerCalls, 0, 0) >= 4
 		&& FPlatformAtomics::InterlockedCompareExchange(&WorkerThreadId, -1, -1) != GameThreadId);
-	TestTrue(TEXT("The actual fixed Drive advanced its engine through the scene callback"), Vehicle.Drive->GetEngine()->GetRPM() > 0.f);
+	TestTrue(TEXT("The actual Drive runtime advanced its engine through the scene callback"), Vehicle.Drive->GetEngine()->GetRPM() > 0.f);
 
 	const float RPMBeforeBodyRebuild = Vehicle.Drive->GetEngine()->GetRPM();
 	// Old serialized switches must not restore the removed production component path,
@@ -221,8 +221,8 @@ bool FVehicleFixedDriveTaskGraphLifecycleTest::RunTest(const FString& Parameters
 	Vehicle.Chassis->RecreatePhysicsState();
 	Flush(*World);
 	Vehicle.Drive->GetEngine()->RefreshPublishedRuntimeState();
-	FVehicleFixedDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
-	auto RebuiltStep = FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
+	FVehicleDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
+	auto RebuiltStep = FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
 	TestTrue(TEXT("Body recreation closes old entry and publishes a new one"), OldStep->IsStopped()
 		&& RebuiltStep.IsValid() && RebuiltStep != OldStep && !RebuiltStep->IsStopped());
 	TestFalse(TEXT("Retained old Drive entry cannot restart"), OldStep->TryExecute(1.f / 60.f));
@@ -231,17 +231,17 @@ bool FVehicleFixedDriveTaskGraphLifecycleTest::RunTest(const FString& Parameters
 	TestTrue(TEXT("Drive state survives body rebinding and resumes on TaskGraph"),
 		Vehicle.Drive->GetEngine()->GetRPM() > 0.f && RPMBeforeBodyRebuild > 0.f);
 
-	const auto BeforeWheelUnregister = FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
+	const auto BeforeWheelUnregister = FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
 	Wheels = Vehicle.Drive->GetWheels();
 	if (!TestEqual(TEXT("Lifecycle fixture has two wheels"), Wheels.Num(), 2)) return false;
 	Wheels[1]->UnregisterComponent();
 	TestTrue(TEXT("Wheel unregister invalidates the currently shared entry"), BeforeWheelUnregister->IsStopped());
-	FVehicleFixedDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
+	FVehicleDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
 	TestTrue(TEXT("Unregistered dependency does not let old entry resume"),
-		FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive)->IsStopped());
+		FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive)->IsStopped());
 	Wheels[1]->RegisterComponent();
-	FVehicleFixedDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
-	auto RecoveredStep = FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
+	FVehicleDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
+	auto RecoveredStep = FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
 	TestTrue(TEXT("Wheel registration publishes a fresh runnable entry"), RecoveredStep.IsValid()
 		&& RecoveredStep != BeforeWheelUnregister && !RecoveredStep->IsStopped());
 	Flush(*World);
@@ -250,8 +250,8 @@ bool FVehicleFixedDriveTaskGraphLifecycleTest::RunTest(const FString& Parameters
 	Wheels = Vehicle.Drive->GetWheels();
 	Wheels[1]->DestroyComponent();
 	TestTrue(TEXT("Destroying one wheel closes the old pair entry"), RecoveredStep->IsStopped());
-	FVehicleFixedDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
-	auto SingleWheelStep = FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
+	FVehicleDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
+	auto SingleWheelStep = FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
 	TestTrue(TEXT("Remaining wheel is rebound through a fresh entry"), SingleWheelStep.IsValid()
 		&& SingleWheelStep != RecoveredStep && !SingleWheelStep->IsStopped());
 	Flush(*World);
@@ -262,8 +262,8 @@ bool FVehicleFixedDriveTaskGraphLifecycleTest::RunTest(const FString& Parameters
 	Vehicle.Drive->UnregisterComponent();
 	TestTrue(TEXT("Drive unregister drains the retained step"), SingleWheelStep->IsStopped());
 	Vehicle.Drive->RegisterComponent();
-	FVehicleFixedDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
-	auto ReRegisteredStep = FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
+	FVehicleDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
+	auto ReRegisteredStep = FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
 	TestTrue(TEXT("Drive re-register creates a fresh entry"), ReRegisteredStep.IsValid()
 		&& ReRegisteredStep != SingleWheelStep && !ReRegisteredStep->IsStopped());
 	Flush(*World);
@@ -282,15 +282,15 @@ bool FVehicleFixedDriveTaskGraphLifecycleTest::RunTest(const FString& Parameters
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDriveTaskGraphDrainTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDriveTaskGraphDrainTest,
 	"KinetiForge.Drivetrain.FixedDrive.TaskGraphDrain",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FVehicleFixedDriveTaskGraphDrainTest::RunTest(const FString& Parameters)
+bool FVehicleDriveTaskGraphDrainTest::RunTest(const FString& Parameters)
 {
-	using namespace VehicleFixedDriveAsyncLifecycleTests;
+	using namespace VehicleDriveAsyncLifecycleTests;
 	FWorldOwner Owner;
-	UWorld* World = CreateWorld(*this, Owner, TEXT("VehicleFixedDriveTaskGraphDrain"));
+	UWorld* World = CreateWorld(*this, Owner, TEXT("VehicleDriveTaskGraphDrain"));
 	if (!World) return false;
 	FKinetiForgeModule& Module = FModuleManager::Get().GetModuleChecked<FKinetiForgeModule>(TEXT("KinetiForge"));
 	auto Host = Module.AcquirePhysicsScene(World->GetPhysicsScene());
@@ -371,15 +371,15 @@ bool FVehicleFixedDriveTaskGraphDrainTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDriveMultipleBodiesTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDriveMultipleBodiesTest,
 	"KinetiForge.Drivetrain.FixedDrive.MultipleBodies",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FVehicleFixedDriveMultipleBodiesTest::RunTest(const FString& Parameters)
+bool FVehicleDriveMultipleBodiesTest::RunTest(const FString& Parameters)
 {
-	using namespace VehicleFixedDriveAsyncLifecycleTests;
+	using namespace VehicleDriveAsyncLifecycleTests;
 	FWorldOwner Owner;
-	UWorld* World = CreateWorld(*this, Owner, TEXT("VehicleFixedDriveMultipleBodies"));
+	UWorld* World = CreateWorld(*this, Owner, TEXT("VehicleDriveMultipleBodies"));
 	if (!World) return false;
 	FVehicle Vehicle = CreateVehicle(*World);
 	if (!Vehicle.Drive) return false;
@@ -412,7 +412,7 @@ bool FVehicleFixedDriveMultipleBodiesTest::RunTest(const FString& Parameters)
 			RearBody->GetComponentQuat().Equals(Vehicle.Chassis->GetComponentQuat(), 1.e-3f))) return false;
 	const TArray<UVehicleWheelComponent*> Wheels = Vehicle.Drive->GetWheels();
 	if (!TestEqual(TEXT("One Drive binds four wheels across two bodies"), Wheels.Num(), 4)) return false;
-	auto Host = FVehicleFixedDriveAsyncLifecycleProbe::Scene(*Vehicle.Drive);
+	auto Host = FVehicleDriveAsyncLifecycleProbe::Scene(*Vehicle.Drive);
 	if (!TestNotNull(TEXT("Multi-body Drive has a scene host"), Host.Get())) return false;
 
 	struct FWheelBodyObservation
@@ -471,13 +471,13 @@ bool FVehicleFixedDriveMultipleBodiesTest::RunTest(const FString& Parameters)
 		!= static_cast<int32>(FPlatformTLS::GetCurrentThreadId()));
 
 	Host->UnregisterStep(Witness);
-	const auto PreviousDriveStep = FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
+	const auto PreviousDriveStep = FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
 	RearBody->RecreatePhysicsState();
-	FVehicleFixedDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
+	FVehicleDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
 	TestTrue(TEXT("Recreating only the rear body closes the previous whole-Drive entry"), PreviousDriveStep->IsStopped());
 	Flush(*World);
-	FVehicleFixedDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
-	const auto ReboundDriveStep = FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
+	FVehicleDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
+	const auto ReboundDriveStep = FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
 	if (!TestTrue(TEXT("Rear body recreation publishes a fresh active Drive entry"), ReboundDriveStep.IsValid()
 		&& ReboundDriveStep != PreviousDriveStep && !ReboundDriveStep->IsStopped())) return false;
 	TestTrue(TEXT("Body rebinding preserves all four wheel component identities"), Vehicle.Drive->GetWheels() == Wheels);
@@ -490,22 +490,22 @@ bool FVehicleFixedDriveMultipleBodiesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDriveFixedAsyncTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDriveFixedAsyncTest,
 	"KinetiForge.Drivetrain.FixedDrive.FixedAsyncFrameBoundary",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 static bool RunFixedAsyncFrameBoundary(FAutomationTestBase& Test, float FixedDeltaTime)
 {
-	using namespace VehicleFixedDriveAsyncLifecycleTests;
+	using namespace VehicleDriveAsyncLifecycleTests;
 	FWorldOwner Owner;
-	UWorld* World = CreateWorld(Test, Owner, TEXT("VehicleFixedDriveFixedAsync"));
+	UWorld* World = CreateWorld(Test, Owner, TEXT("VehicleDriveFixedAsync"));
 	if (!World) return false;
 	FVehicle Vehicle = CreateVehicle(*World);
 	Flush(*World);
 	if (!StartVehicle(Test, Vehicle)) return false;
 	Flush(*World);
-	FVehicleFixedDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
-	auto Host = FVehicleFixedDriveAsyncLifecycleProbe::Scene(*Vehicle.Drive);
+	FVehicleDriveAsyncLifecycleProbe::Tick(*Vehicle.Drive);
+	auto Host = FVehicleDriveAsyncLifecycleProbe::Scene(*Vehicle.Drive);
 	if (!Test.TestNotNull(TEXT("Fixed async Drive has a scene host"), Host.Get())) return false;
 	const auto Wheels = Vehicle.Drive->GetWheels();
 	if (!Test.TestEqual(TEXT("Fixed async fixture has two wheels"), Wheels.Num(), 2)) return false;
@@ -598,7 +598,7 @@ static bool RunFixedAsyncFrameBoundary(FAutomationTestBase& Test, float FixedDel
 		FPlatformAtomics::InterlockedCompareExchange(&IncorrectDeltaTimes, 0, 0), 0);
 	Test.TestEqual(TEXT("Mailbox command is consumed by subsequent fixed physics steps"),
 		WheelBridge->ReadResult().AppliedP4Sequence, CommandSequence);
-	const auto RetainedDriveStep = FVehicleFixedDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
+	const auto RetainedDriveStep = FVehicleDriveAsyncLifecycleProbe::Step(*Vehicle.Drive);
 	// Leave completion to normal World teardown after a final catch-up frame. No audio device
 	// is created here; this checks the vehicle/Chaos exit path, not the reported audio shutdown.
 	AdvanceGameFrame(1.f / 30.f);
@@ -609,16 +609,16 @@ static bool RunFixedAsyncFrameBoundary(FAutomationTestBase& Test, float FixedDel
 	return true;
 }
 
-bool FVehicleFixedDriveFixedAsyncTest::RunTest(const FString& Parameters)
+bool FVehicleDriveFixedAsyncTest::RunTest(const FString& Parameters)
 {
 	return RunFixedAsyncFrameBoundary(*this, 1.f / 120.f);
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleFixedDrive1000HzExitTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleDrive1000HzExitTest,
 	"KinetiForge.Drivetrain.FixedDrive.FixedAsync1000HzExit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FVehicleFixedDrive1000HzExitTest::RunTest(const FString& Parameters)
+bool FVehicleDrive1000HzExitTest::RunTest(const FString& Parameters)
 {
 	return RunFixedAsyncFrameBoundary(*this, 0.001f);
 }

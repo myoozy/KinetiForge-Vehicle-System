@@ -19,7 +19,7 @@
 #include "VehiclePhysicsStep.h"
 #include "AsyncTickPhysicsExecution.h"
 #include "PBDRigidsSolver.h"
-#include "VehicleFixedDriveRuntime.h"
+#include "VehicleDriveRuntime.h"
 #include "KinetiForge.h"
 #include "Modules/ModuleManager.h"
 #include "Misc/ScopeLock.h"
@@ -178,7 +178,7 @@ TArray<FVehiclePhysicsBodyIdentity> UVehicleDriveAssemblyComponent::CaptureAssem
 	return Identities;
 }
 
-TSharedPtr<FVehicleFixedDriveRuntime, ESPMode::ThreadSafe> UVehicleDriveAssemblyComponent::CaptureFixedDriveRuntime()
+TSharedPtr<FVehicleDriveRuntime, ESPMode::ThreadSafe> UVehicleDriveAssemblyComponent::CaptureDriveRuntime()
 {
 	check(IsInGameThread());
 	const auto Unit = GetPowerUnitBridge();
@@ -210,7 +210,7 @@ TSharedPtr<FVehicleFixedDriveRuntime, ESPMode::ThreadSafe> UVehicleDriveAssembly
 		Assemblies.Emplace(AxleBridge, CaptureWheel(Left), CaptureWheel(Right));
 	}
 	BoundAssemblyBodies = Identities;
-	return MakeShared<FVehicleFixedDriveRuntime, ESPMode::ThreadSafe>(Unit, Identities[0], MoveTemp(Assemblies));
+	return MakeShared<FVehicleDriveRuntime, ESPMode::ThreadSafe>(Unit, Identities[0], MoveTemp(Assemblies));
 }
 
 bool UVehicleDriveAssemblyComponent::PreparePhysicsStepRegistration()
@@ -218,17 +218,17 @@ bool UVehicleDriveAssemblyComponent::PreparePhysicsStepRegistration()
 	check(IsInGameThread());
 	const auto PreviousStep = GetPhysicsStep();
 	TSharedPtr<FVehiclePhysicsStep, ESPMode::ThreadSafe> Candidate;
-	TSharedPtr<FVehicleFixedDriveRuntime, ESPMode::ThreadSafe> FixedRuntime;
-	bool bFixedRuntimeReady = true;
+	TSharedPtr<FVehicleDriveRuntime, ESPMode::ThreadSafe> DriveRuntime;
+	bool bDriveRuntimeReady = true;
 	// Only reuse an entry actually published by the scene host. In particular,
-	// an unregistered component's constructor entry is not a fixed-runtime binding.
+	// an unregistered component's constructor entry is not a drive-runtime binding.
 	if (PreviousStep && !PreviousStep->IsStopped() && PreviousStep == ScenePhysicsStep) Candidate = PreviousStep;
 	else
 	{
-		FixedRuntime = CaptureFixedDriveRuntime();
-		bFixedRuntimeReady = FixedRuntime.IsValid();
+		DriveRuntime = CaptureDriveRuntime();
+		bDriveRuntimeReady = DriveRuntime.IsValid();
 		Candidate = MakeShared<FVehiclePhysicsStep, ESPMode::ThreadSafe>(
-			[Runtime = FixedRuntime](float DeltaTime, const FVehiclePhysicsExecutionContext& Context)
+			[Runtime = DriveRuntime](float DeltaTime, const FVehiclePhysicsExecutionContext& Context)
 			{ if (Runtime) Runtime->Update(DeltaTime, Context); });
 	}
 	TArray<UVehicleAxleAssemblyComponent*> ClaimedAxles;
@@ -316,7 +316,7 @@ bool UVehicleDriveAssemblyComponent::PreparePhysicsStepRegistration()
 		DependentDifferentials.AddUnique(CentralDifferential);
 	}
 	else if (bAssemblyHasBegunPlay) { bCanClaim = false; bDependencyNotReady = true; }
-	if (!bFixedRuntimeReady) { bCanClaim = false; bDependencyNotReady = true; }
+	if (!bDriveRuntimeReady) { bCanClaim = false; bDependencyNotReady = true; }
 	if (AssemblyBridge)
 	{
 		// Re-registering the same components preserves owned simulation state.
@@ -342,15 +342,15 @@ bool UVehicleDriveAssemblyComponent::PreparePhysicsStepRegistration()
 		}
 		return false;
 	}
-	if (FixedRuntime)
+	if (DriveRuntime)
 	{
 		UWorld* World = GetWorld();
 		auto Host = World ? FModuleManager::GetModuleChecked<FKinetiForgeModule>(TEXT("KinetiForge"))
 			.AcquirePhysicsScene(World->GetPhysicsScene()) : nullptr;
 		// Register disabled; no solver callback may enter until all ownership claims have been published.
 		auto RegisteredStep = Host ? Host->RegisterStep(
-			[FixedRuntime](float DeltaTime, const FVehiclePhysicsExecutionContext& Context)
-			{ FixedRuntime->Update(DeltaTime, Context); }, false,
+			[DriveRuntime](float DeltaTime, const FVehiclePhysicsExecutionContext& Context)
+			{ DriveRuntime->Update(DeltaTime, Context); }, false,
 			VehicleAsyncTickComponent->bUpdatePhysicsOnGameThread
 				? EVehiclePhysicsExecutionLane::FrozenGameThread : EVehiclePhysicsExecutionLane::Worker) : nullptr;
 		if (!RegisteredStep)

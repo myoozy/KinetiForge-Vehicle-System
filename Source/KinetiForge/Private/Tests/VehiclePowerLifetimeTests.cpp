@@ -150,7 +150,7 @@ bool FVehiclePowerComponentLifetimeTest::RunTest(const FString& Parameters)
 	const auto First = VehiclePowerLifetimeTest::Create(*Cleanup.World, FVector(0.f, 0.f, 800.f));
 	const auto Second = VehiclePowerLifetimeTest::Create(*Cleanup.World, FVector(1000.f, 0.f, 800.f));
 	const auto Bridge = FVehiclePowerLifetimeProbe::Bridge(*Second.Drive);
-	if (!TestNotNull(TEXT("Fixed runtime bridge exists after component BeginPlay"), Bridge.Get())) return false;
+	if (!TestNotNull(TEXT("Drive runtime bridge exists after component BeginPlay"), Bridge.Get())) return false;
 	VehiclePowerLifetimeTest::SetRuntimeSentinels(Bridge);
 
 	for (UVehicleDriveAssemblyComponent* Drive : {First.Drive, Second.Drive})
@@ -238,7 +238,7 @@ bool FVehiclePowerOwnershipPreflightTest::RunTest(const FString& Parameters)
 	UVehicleDriveAssemblyComponent* Candidate = CandidateVehicle.Drive;
 	const auto CandidateInitialStep = FVehiclePowerLifetimeProbe::Step(*Candidate);
 	CandidateInitialStep->StopAndWait();
-	TestTrue(TEXT("Fixed-runtime candidate can claim its complete registered power unit"),
+	TestTrue(TEXT("Drive-runtime candidate can claim its complete registered power unit"),
 		FVehiclePowerLifetimeProbe::Prepare(*Candidate));
 	FVehiclePowerLifetimeProbe::Step(*Candidate)->StopAndWait();
 	UVehicleEngineComponent* SpareEngine = Spare.Drive->GetEngine();

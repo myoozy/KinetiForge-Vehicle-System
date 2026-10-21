@@ -40,7 +40,7 @@ bool UVehicleAxleAssemblyComponent::BindIsolatedAxleRuntime()
 	if (!IsRegistered() || IsBeingDestroyed()) return false;
 	UVehicleWheelComponent* Wheels[] = { LeftWheel.Get(), RightWheel.Get() };
 	for (auto* Wheel : Wheels) if (Wheel && (!Wheel->IsRegistered() || Wheel->IsBeingDestroyed())) return false;
-	// A fixed axle may not take ownership of wheels already assigned to another axle.
+	// A axle-level assembly may not take ownership of wheels already assigned to another axle.
 	TArray<UVehicleAxleAssemblyComponent*> OtherAxles;
 	if (AActor* Owner = GetOwner()) Owner->GetComponents(OtherAxles);
 	for (auto* Other : OtherAxles)

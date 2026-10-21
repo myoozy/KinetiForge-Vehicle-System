@@ -21,7 +21,7 @@ class UVehicleGearboxComponent;
 class UVehicleAsyncTickComponent;
 class FVehiclePowerUnitBridge;
 class FVehiclePhysicsStep;
-class FVehicleFixedDriveRuntime;
+class FVehicleDriveRuntime;
 class FVehiclePhysicsExecutionContext;
 class FVehiclePhysicsScene;
 struct FVehicleGearboxRuntimeState;
@@ -55,9 +55,9 @@ class KINETIFORGE_API UVehicleDriveAssemblyComponent : public USceneComponent
     friend struct FVehicleDriveAssemblyRuntimeProbe;
     friend struct FVehicleDriveOwnershipProbe;
     friend struct FVehiclePowerLifetimeProbe;
-    friend struct FVehicleFixedDriveAssemblyIntegrationProbe;
-    friend struct FVehicleFixedDriveContactIntegrationProbe;
-    friend struct FVehicleFixedDriveAsyncLifecycleProbe;
+    friend struct FVehicleDriveAssemblyIntegrationProbe;
+    friend struct FVehicleDriveContactIntegrationProbe;
+    friend struct FVehicleDriveAsyncLifecycleProbe;
     friend class UVehicleAsyncTickComponent;
     friend class UVehicleDifferentialComponent;
 
@@ -366,7 +366,7 @@ public:
 
 private:
     bool PrepareIsolatedAxles();
-    TSharedPtr<FVehicleFixedDriveRuntime, ESPMode::ThreadSafe> CaptureFixedDriveRuntime();
+    TSharedPtr<FVehicleDriveRuntime, ESPMode::ThreadSafe> CaptureDriveRuntime();
     TArray<FVehiclePhysicsBodyIdentity> CaptureAssemblyBodyIdentities() const;
     TArray<FVehiclePhysicsBodyIdentity> BoundAssemblyBodies; // GT-only; detect body recreation without borrowing PT handles.
     TSharedPtr<FVehiclePhysicsScene, ESPMode::ThreadSafe> PhysicsScene;
@@ -394,7 +394,7 @@ private:
     TWeakObjectPtr<UVehicleClutchComponent> BoundPowerUnitClutch;
     TWeakObjectPtr<UVehicleGearboxComponent> BoundPowerUnitGearbox;
     mutable FCriticalSection PowerUnitBridgeMutex; // Protects publication of the shared pointer, not simulation.
-    bool bPowerUnitBridgeRequested = false; // Fixed at BeginPlay.
+    bool bPowerUnitBridgeRequested = false; // Assigned at BeginPlay.
     bool bPowerUnitBridgeInitializationFailed = false;
     bool GeneratePowerUnit();
     int GenerateAxles();    //-1: no owner actor; -2: no valid Chassis; -3: there're already axles
