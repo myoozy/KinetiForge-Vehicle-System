@@ -487,4 +487,100 @@ bool FVehicleWheelRuntimeCachedSettingsSnapshotTest::RunTest(const FString& Para
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleWheelEquivalentStiffnessRatioTest,
+	"KinetiForge.WheelRuntime.EquivalentStiffnessRatio",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FVehicleWheelEquivalentStiffnessRatioTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	TStrongObjectPtr<UCurveFloat> Fx(NewObject<UCurveFloat>());
+	TStrongObjectPtr<UCurveFloat> Fy(NewObject<UCurveFloat>());
+	if (!TestNotNull(TEXT("Fx curve created"), Fx.Get())
+		|| !TestNotNull(TEXT("Fy curve created"), Fy.Get())) return false;
+
+	const FKeyHandle Fx0 = Fx->FloatCurve.AddKey(0.f, 0.f);
+	const FKeyHandle Fx1 = Fx->FloatCurve.AddKey(1.f, 1.f);
+	Fx->FloatCurve.SetKeyInterpMode(Fx0, RCIM_Linear);
+	Fx->FloatCurve.SetKeyInterpMode(Fx1, RCIM_Linear);
+
+	// Fy uses degrees (0..90). It reaches its peak at normalized angle 31/63, then stays flat.
+	const float FyPeakAngle = 90.f * 31.f / 63.f;
+	const FKeyHandle Fy0 = Fy->FloatCurve.AddKey(0.f, 0.f);
+	const FKeyHandle Fy1 = Fy->FloatCurve.AddKey(FyPeakAngle, 1.f);
+	const FKeyHandle Fy2 = Fy->FloatCurve.AddKey(90.f, 1.f);
+	Fy->FloatCurve.SetKeyInterpMode(Fy0, RCIM_Linear);
+	Fy->FloatCurve.SetKeyInterpMode(Fy1, RCIM_Linear);
+	Fy->FloatCurve.SetKeyInterpMode(Fy2, RCIM_Linear);
+
+	FVehicleTireConfig Tire;
+	Tire.Fx = Fx.Get();
+	Tire.Fy = Fy.Get();
+
+	FVehicleWheelCachedLUTs LUTs;
+	FVehicleWheelSolver::CacheLUTs(LUTs, Tire);
+	TestTrue(TEXT("Equivalent stiffness ratio is finite and positive"),
+		FMath::IsFinite(LUTs.EquivalentStiffnessRatio) && LUTs.EquivalentStiffnessRatio > 0.f);
+	TestTrue(FString::Printf(TEXT("Equivalent stiffness ratio follows the peak-normalized rising sections (actual %.9g)"),
+			LUTs.EquivalentStiffnessRatio),
+		FMath::IsNearlyEqual(LUTs.EquivalentStiffnessRatio, 63.f / 31.f, 1.e-4f));
+
+	// Peak amplitudes are intentionally excluded from the combined-slip scale.
+	Fy->FloatCurve.GetKey(Fy1).Value = 3.f;
+	Fy->FloatCurve.GetKey(Fy2).Value = 3.f;
+	FVehicleWheelCachedLUTs RescaledLUTs;
+	FVehicleWheelSolver::CacheLUTs(RescaledLUTs, Tire);
+	TestTrue(TEXT("Scaling a force axis preserves the peak-normalized slip scale ratio"),
+		FMath::IsNearlyEqual(RescaledLUTs.EquivalentStiffnessRatio, LUTs.EquivalentStiffnessRatio, 1.e-4f));
+
+	FVehicleTireConfig InvalidTire;
+	FVehicleWheelCachedLUTs InvalidLUTs;
+	FVehicleWheelSolver::CacheLUTs(InvalidLUTs, InvalidTire);
+	TestTrue(TEXT("Invalid curves fall back to a finite positive stiffness ratio"),
+		FMath::IsFinite(InvalidLUTs.EquivalentStiffnessRatio)
+		&& InvalidLUTs.EquivalentStiffnessRatio > 0.f
+		&& FMath::IsNearlyEqual(InvalidLUTs.EquivalentStiffnessRatio, 1.f, 1.e-6f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVehicleWheelEquivalentStiffnessFallbackTest,
+	"KinetiForge.WheelRuntime.EquivalentStiffnessFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FVehicleWheelEquivalentStiffnessFallbackTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	TStrongObjectPtr<UCurveFloat> Fx(NewObject<UCurveFloat>());
+	TStrongObjectPtr<UCurveFloat> Fy(NewObject<UCurveFloat>());
+	if (!TestNotNull(TEXT("Fx curve created"), Fx.Get())
+		|| !TestNotNull(TEXT("Fy curve created"), Fy.Get())) return false;
+
+	// Positive origin force rejects the inverse-curve estimate, while both
+	// legacy stiffnesses remain valid and unequal (Kx = 2, Ky = 4).
+	const FKeyHandle Fx0 = Fx->FloatCurve.AddKey(0.f, 0.1f);
+	const FKeyHandle Fx1 = Fx->FloatCurve.AddKey(0.25f, 0.6f);
+	const FKeyHandle Fx2 = Fx->FloatCurve.AddKey(1.f, 0.6f);
+	Fx->FloatCurve.SetKeyInterpMode(Fx0, RCIM_Linear);
+	Fx->FloatCurve.SetKeyInterpMode(Fx1, RCIM_Linear);
+	Fx->FloatCurve.SetKeyInterpMode(Fx2, RCIM_Linear);
+	const FKeyHandle Fy0 = Fy->FloatCurve.AddKey(0.f, 0.f);
+	const FKeyHandle Fy1 = Fy->FloatCurve.AddKey(45.f, 2.f);
+	const FKeyHandle Fy2 = Fy->FloatCurve.AddKey(90.f, 2.f);
+	Fy->FloatCurve.SetKeyInterpMode(Fy0, RCIM_Linear);
+	Fy->FloatCurve.SetKeyInterpMode(Fy1, RCIM_Linear);
+	Fy->FloatCurve.SetKeyInterpMode(Fy2, RCIM_Linear);
+
+	FVehicleTireConfig Tire;
+	Tire.Fx = Fx.Get();
+	Tire.Fy = Fy.Get();
+	FVehicleWheelCachedLUTs LUTs;
+	FVehicleWheelSolver::CacheLUTs(LUTs, Tire);
+	TestTrue(TEXT("Fallback fixture has valid legacy stiffnesses"),
+		LUTs.Fx.bHasValidStiffness && LUTs.Fy.bHasValidStiffness);
+	TestTrue(TEXT("Fallback preserves Ky / Kx for the solver's (1, R) weights"),
+		FMath::IsNearlyEqual(LUTs.EquivalentStiffnessRatio, 2.f, 1.e-4f));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

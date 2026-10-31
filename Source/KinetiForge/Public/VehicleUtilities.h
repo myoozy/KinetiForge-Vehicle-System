@@ -330,6 +330,14 @@ public:
     int32 Num() const { return Samples.Num(); }
 
     /*
+    * Read a raw sample by index
+    */
+    FORCEINLINE float GetSample(const int32 Index) const
+    {
+        return Samples[Index];
+    }
+
+    /*
     * Set value of all samples to a given constant
     */
     void SetAllTo(const float NewValue)

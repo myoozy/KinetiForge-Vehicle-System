@@ -5,6 +5,173 @@
 #include "VehicleWheelComponent.h"
 #include "VehicleUtilities.h"
 
+namespace
+{
+	constexpr int32 WheelLUTSampleCount = 64;
+	constexpr int32 EquivalentStiffnessIntegrationSamples = 256;
+	constexpr float MinSlipPosition = 1.e-6f;
+
+	/**
+	* Monotonic rising section of a peak-normalized tire LUT.
+	* Force values are running maxima so the inverse mapping stays unambiguous.
+	*/
+	struct FRisingTireCurve
+	{
+		TArray<float> Forces;
+		int32 LUTSampleCount = 0;
+		int32 PeakIndex = INDEX_NONE;
+		float PeakForce = 0.f;
+
+		bool IsValid() const
+		{
+			return PeakIndex > 0
+				&& Forces.Num() == PeakIndex + 1
+				&& LUTSampleCount > 1
+				&& FMath::IsFinite(PeakForce)
+				&& PeakForce > SMALL_NUMBER
+				&& FMath::IsFinite(Forces[0])
+				&& Forces[0] <= PeakForce * 1.e-3f;
+		}
+
+		/** Slip position where the force first reaches Fraction * PeakForce. */
+		float FindSlipAtFraction(const float Fraction) const
+		{
+			const float Target = Fraction * PeakForce;
+
+			int32 Low = 0;
+			int32 High = PeakIndex;
+			while (Low < High)
+			{
+				const int32 Mid = (Low + High) / 2;
+				if (Forces[Mid] >= Target)
+				{
+					High = Mid;
+				}
+				else
+				{
+					Low = Mid + 1;
+				}
+			}
+
+			if (Low <= 0)
+			{
+				return 0.f;
+			}
+
+			const float ForceLow = Forces[Low - 1];
+			const float ForceHigh = Forces[Low];
+			float Position = static_cast<float>(Low);
+			if (ForceHigh > ForceLow)
+			{
+				const float Alpha = FMath::Clamp((Target - ForceLow) / (ForceHigh - ForceLow), 0.f, 1.f);
+				Position = static_cast<float>(Low - 1) + Alpha;
+			}
+
+			return Position / static_cast<float>(LUTSampleCount - 1);
+		}
+	};
+
+	FRisingTireCurve BuildRisingTireCurve(const FVehicleTireLUT<WheelLUTSampleCount>& LUT)
+	{
+		FRisingTireCurve Curve;
+
+		const int32 SampleCount = LUT.Num();
+		if (SampleCount < 2)
+		{
+			return Curve;
+		}
+
+		// First global maximum. Later samples cannot move the rising section.
+		int32 FirstPeakIndex = 0;
+		float PeakForce = 0.f;
+		for (int32 Index = 0; Index < SampleCount; ++Index)
+		{
+			const float Sample = LUT.GetSample(Index);
+			if (!FMath::IsFinite(Sample))
+			{
+				return Curve;
+			}
+			if (Sample > PeakForce)
+			{
+				PeakForce = Sample;
+				FirstPeakIndex = Index;
+			}
+		}
+
+		if (FirstPeakIndex <= 0 || PeakForce <= SMALL_NUMBER)
+		{
+			return Curve;
+		}
+
+		Curve.PeakIndex = FirstPeakIndex;
+		Curve.PeakForce = PeakForce;
+		Curve.LUTSampleCount = SampleCount;
+		Curve.Forces.Reserve(FirstPeakIndex + 1);
+
+		float RunningMax = 0.f;
+		for (int32 Index = 0; Index <= FirstPeakIndex; ++Index)
+		{
+			RunningMax = FMath::Max(RunningMax, FMath::Max(0.f, LUT.GetSample(Index)));
+			Curve.Forces.Add(RunningMax);
+		}
+
+		return Curve;
+	}
+
+	float GetLegacyStiffnessRatio(const FVehicleTireLUT<WheelLUTSampleCount>& Fx,
+		const FVehicleTireLUT<WheelLUTSampleCount>& Fy)
+	{
+		const float FxStiffness = Fx.LinearStiffness;
+		const float FyStiffness = Fy.LinearStiffness;
+		if (FMath::IsFinite(FxStiffness) && FMath::IsFinite(FyStiffness)
+			&& FxStiffness > SMALL_NUMBER && FyStiffness > SMALL_NUMBER)
+		{
+			// The solver uses (1, R), so R must preserve Ky / Kx.
+			const float Ratio = FyStiffness / FxStiffness;
+			if (FMath::IsFinite(Ratio) && Ratio > SMALL_NUMBER)
+			{
+				return Ratio;
+			}
+		}
+
+		return 1.f;
+	}
+
+	/**
+	* R = exp(integral_0^1 ln(sx(q) / sy(q)) dq)
+	* sx/sy are normalized slip positions on the rising sections (Fy axis is already 0..1).
+	* This is a geometric mean of slip scale ratios, not an estimate of the origin tangent.
+	* Each force axis is normalized by its own peak; peak amplitudes are excluded intentionally.
+	*/
+	float ComputeEquivalentStiffnessRatio(const FVehicleTireLUT<WheelLUTSampleCount>& Fx,
+		const FVehicleTireLUT<WheelLUTSampleCount>& Fy)
+	{
+		const float Fallback = GetLegacyStiffnessRatio(Fx, Fy);
+
+		const FRisingTireCurve FxCurve = BuildRisingTireCurve(Fx);
+		const FRisingTireCurve FyCurve = BuildRisingTireCurve(Fy);
+		if (!FxCurve.IsValid() || !FyCurve.IsValid())
+		{
+			return Fallback;
+		}
+
+		double SumLogRatio = 0.0;
+		for (int32 Index = 0; Index < EquivalentStiffnessIntegrationSamples; ++Index)
+		{
+			const float Fraction = (static_cast<float>(Index) + 0.5f)
+				/ static_cast<float>(EquivalentStiffnessIntegrationSamples);
+
+			const float SlipX = FMath::Max(FxCurve.FindSlipAtFraction(Fraction), MinSlipPosition);
+			const float SlipY = FMath::Max(FyCurve.FindSlipAtFraction(Fraction), MinSlipPosition);
+			SumLogRatio += FMath::Loge(SlipX / SlipY);
+		}
+
+		const float Ratio = FMath::Exp(
+			static_cast<float>(SumLogRatio / static_cast<double>(EquivalentStiffnessIntegrationSamples)));
+		return FMath::IsFinite(Ratio) && Ratio > SMALL_NUMBER ? Ratio : Fallback;
+	}
+}
+
 FVehicleWheelSolver::FVehicleWheelSolver()
 {
 }
@@ -258,6 +425,7 @@ void FVehicleWheelSolver::DrawWheelForce(
 
 void FVehicleWheelSolver::UpdateCachedLUTs(const FVehicleTireConfig& Config)
 {
+	// CacheLUTs rebuilds the LUTs and their cached equivalent stiffness ratio.
 	CacheLUTs(CachedLUTs, Config);
 }
 
@@ -287,6 +455,9 @@ void FVehicleWheelSolver::CacheLUTs(FVehicleWheelCachedLUTs& LUTs, const FVehicl
 	{
 		LUTs.CamberToLateralDrift.SetAllTo(0.f);
 	}
+
+	// Cache the combined-slip stiffness ratio so physics substeps never integrate it.
+	LUTs.EquivalentStiffnessRatio = ComputeEquivalentStiffnessRatio(LUTs.Fx, LUTs.Fy);
 }
 
 float FVehicleWheelSolver::GetTangentAtOrigin(const FRichCurve& Curve)
@@ -725,21 +896,22 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	
 	ConstraintTireForce += Context.GravityComp2D;
 
-	// get stiffness(tangent) of linear region
-	FVector2f LinearRegionStiffness = FVector2f(
-		TireLUTs.Fx.LinearStiffness,
-		TireLUTs.Fy.LinearStiffness
-	);
-	FVector2f LinearRegionStiffnessInv = FVector2f(
-		UVehicleUtilities::SafeDivide(1.f, LinearRegionStiffness.X, 1.f),
-		UVehicleUtilities::SafeDivide(1.f, LinearRegionStiffness.Y, 1.f)
+	// Combined slip uses the cached equivalent stiffness. The original tangent
+	// stiffnesses remain untouched for other consumers (telemetry, skid intensity).
+	const float EquivalentStiffnessRatio =
+		(FMath::IsFinite(TireLUTs.EquivalentStiffnessRatio) && TireLUTs.EquivalentStiffnessRatio > SMALL_NUMBER)
+		? TireLUTs.EquivalentStiffnessRatio : 1.f;
+	FVector2f CombinedSlipStiffness = FVector2f(1.f, EquivalentStiffnessRatio);
+	FVector2f CombinedSlipStiffnessInv = FVector2f(
+		1.f,
+		UVehicleUtilities::SafeDivide(1.f, EquivalentStiffnessRatio, 1.f)
 	);
 
 	// get absolut slip ratio and slip angle
 	FVector2f AbsolutSlip = TransientSlip.GetAbs();
 
 	// normalize slip ratio and slip angle
-	FVector2f NormalizedSlip = AbsolutSlip * LinearRegionStiffness;
+	FVector2f NormalizedSlip = AbsolutSlip * CombinedSlipStiffness;
 	float ScalarNormSlip = NormalizedSlip.Length();
 
 	// get combined slip direction
@@ -749,7 +921,7 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 
 	// the tangent of the linear region should not be changed, if the vehicle is driving on a surface with high friction multiplier
 	float SlipInputScale = UVehicleUtilities::SafeDivide(TireConfig.FrictionMultiplier, LocalState.DynFrictionMultiplier);
-	FVector2f SlipInput = SlipInputScale * ScalarNormSlip * LinearRegionStiffnessInv;
+	FVector2f SlipInput = SlipInputScale * ScalarNormSlip * CombinedSlipStiffnessInv;
 	
 	// if the user has only setup one of the Fx or Fy curve, the Constraint force on the other direction should be cut, before computing combined slip
 	bool bUseFxCurve = TireLUTs.Fx.bHasValidStiffness;

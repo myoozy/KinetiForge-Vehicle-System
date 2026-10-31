@@ -272,6 +272,12 @@ struct KINETIFORGE_API FVehicleWheelCachedLUTs
 	FVehicleTireLUT<64> Fx = FVehicleTireLUT<64>(1.f);
 	FVehicleTireLUT<64> Fy = FVehicleTireLUT<64>(1.f);
 	FVehicleLUT<64> CamberToLateralDrift = FVehicleLUT<64>(0.f);
+
+	/**
+	* Equivalent stiffness ratio used by combined slip.
+	* Derived once from the peak-normalized rising sections of Fx/Fy.
+	*/
+	float EquivalentStiffnessRatio = 1.f;
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "wheel state in simulation"))
