@@ -44,14 +44,33 @@ void UVehicleWheelCoordinatorComponent::OnRegister()
 {
 	Super::OnRegister();
 	Chassis = UVehicleUtilities::FindPhysicalParent(this);
+	ChassisMomentum.Reset();
+	if (HasBegunPlay())
+	{
+		if (UVehicleAsyncTickComponent* Ticker = AsyncTickComponent.Get()) Ticker->RegisterWheelCoordinator(this);
+	}
 }
 
 void UVehicleWheelCoordinatorComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
 	//...
 	Chassis = nullptr;
+	ChassisMomentum.Reset();
 
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
+}
+
+void UVehicleWheelCoordinatorComponent::OnUnregister()
+{
+	if (UVehicleAsyncTickComponent* Ticker = AsyncTickComponent.Get()) Ticker->UnRegisterWheelCoordinator(this);
+	ChassisMomentum.Reset();
+	Super::OnUnregister();
+}
+
+void UVehicleWheelCoordinatorComponent::ResetChassisMomentumHistory()
+{
+	check(IsInGameThread()); // Same lane as the frozen-GT physics consumer.
+	ChassisMomentum.Reset();
 }
 
 bool UVehicleWheelCoordinatorComponent::UpdateWheelSprungMass()
@@ -194,7 +213,7 @@ UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelC
 		//if found
 		if (UVehicleWheelCoordinatorComponent* WheelCoord = Cast<UVehicleWheelCoordinatorComponent>(Child))
 		{
-			return WheelCoord;
+			if (UVehicleUtilities::FindPhysicalParent(WheelCoord) == InChassis) return WheelCoord;
 		}
 	}
 
@@ -210,6 +229,9 @@ UVehicleWheelCoordinatorComponent* UVehicleWheelCoordinatorComponent::FindWheelC
 			Outer, nullptr, Name))
 	{
 		WheelCoord->AttachToComponent(InChassis, FAttachmentTransformRules::KeepRelativeTransform);
+		// CreateComponentByClass registers (and may BeginPlay) before attaching the component.
+		WheelCoord->Chassis = UVehicleUtilities::FindPhysicalParent(WheelCoord);
+		WheelCoord->ChassisMomentum.Reset();
 		if (WheelCoord->GetAttachParent() == InChassis)return WheelCoord;
 	}
 
@@ -530,6 +552,9 @@ void UVehicleWheelCoordinatorComponent::UpdateAeros(const float InDeltaTime)
 	{
 		// get chassis handle
 		Chaos::FRigidBodyHandle_Internal* ChassisHandle = UVehicleUtilities::GetInternalHandle(ChassisRaw);
+		// One coordinator per physical chassis, regardless of wheel/axle/drive count.
+		// Also runs when no aero components are registered.
+		ChassisMomentum.Apply(ChassisHandle);
 		if (ChassisHandle && ChassisHandle->CanTreatAsKinematic())
 		{
 			FTransform ChassisAsyncWorldTransform = Chaos::FParticleUtilitiesGT::GetActorWorldTransform(ChassisHandle);

@@ -72,6 +72,7 @@ void UVehicleWheelComponent::SubmitWheelEnvironment()
 
 void UVehicleWheelComponent::SubmitSuspensionReset()
 {
+	if (UVehicleWheelCoordinatorComponent* Coordinator = WheelCoordinator.Get()) Coordinator->ResetChassisMomentumHistory();
 	if (TSharedPtr<FVehicleWheelBridge, ESPMode::ThreadSafe> Bridge = GetWheelBridge())
 	{
 		check(IsInGameThread());

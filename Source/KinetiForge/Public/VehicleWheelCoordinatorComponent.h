@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
+#include "VehicleChassisMomentum.h"
 #include "VehicleWheelCoordinatorComponent.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogWheelCoordinator, Log, All);
@@ -35,6 +36,7 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 	virtual void OnRegister() override;
+	virtual void OnUnregister() override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 	
 	float TimeSinceLastRefresh = 0.f;
@@ -55,6 +57,7 @@ protected:
 	TArray<TWeakObjectPtr<UVehicleAxleAssemblyComponent>> RegisteredAxles;
 	TArray<float> WheelBases;
 	bool bWheelBaseDataDirty = false;
+	FVehicleChassisMomentum ChassisMomentum;
 
 	UPROPERTY()
 	TArray<TWeakObjectPtr<UVehicleDriveAssemblyComponent>> RegisteredDriveAssemblies;
@@ -88,4 +91,8 @@ public:
 	TArray<UVehicleAxleAssemblyComponent*> GetRegisteredAxles();
 
 	void UpdateAeros(const float InDeltaTime);
+
+	/** Call on GT after a discontinuous body pose/velocity reset. Wheel initialization also calls this. */
+	UFUNCTION(BlueprintCallable, Category = "WheelCoordinator")
+	void ResetChassisMomentumHistory();
 };
