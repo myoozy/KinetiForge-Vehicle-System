@@ -258,13 +258,16 @@ bool FVehicleSuspensionReactionLegacyTest::RunTest(const FString& Parameters)
 		const FVector ChassisAngularBefore = ChassisHandle->AngularImpulse();
 		const FVector ContactLinearBefore = ContactHandle->LinearImpulse();
 		const FVector ContactAngularBefore = ContactHandle->AngularImpulse();
+		const FVector GroundSpinReaction(0., -0.25, 0.);
+		FVehicleWheelContactProbe::WheelContext(*Wheel).SpinReactionAngularImpulse = GroundSpinReaction;
 		FVehicleWheelContactProbe::ApplyWheelForce(*Wheel, ChassisHandle);
 		const FVector ChassisLinearDelta = ChassisHandle->LinearImpulse() - ChassisLinearBefore;
 		const FVector ChassisAngularDelta = ChassisHandle->AngularImpulse() - ChassisAngularBefore;
 		const FVector ContactLinearDelta = ContactHandle->LinearImpulse() - ContactLinearBefore;
 		const FVector ContactAngularDelta = ContactHandle->AngularImpulse() - ContactAngularBefore;
 		TestTrue(TEXT("Impact point applies expected chassis impulse"), ChassisLinearDelta.Equals(ExpectedImpulse, 1.e-3f));
-		TestTrue(TEXT("Impact arm applies expected chassis angular impulse"), ChassisAngularDelta.Equals(ExpectedChassisAngularImpulse, 1.e-2f));
+		TestTrue(TEXT("Impact moment plus wheel spin change balances external ground moment"),
+			ChassisAngularDelta.Equals(ExpectedChassisAngularImpulse + GroundSpinReaction * 10000., 1.e-2f));
 		TestTrue(TEXT("Contact body receives equal and opposite impulse"), ContactLinearDelta.Equals(-ExpectedImpulse, 1.e-3f));
 		TestTrue(TEXT("Contact impact point produces expected reaction moment"), ContactAngularDelta.Equals(ExpectedContactAngularImpulse, 1.e-2f));
 
@@ -279,6 +282,29 @@ bool FVehicleSuspensionReactionLegacyTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Wheel center changes chassis moment arm"), ChassisAngularDeltaWheelCenter.IsNearlyZero(1.e-2f));
 		TestTrue(TEXT("Contact reaction remains applied at impact point"), ContactLinearDeltaWheelCenter.Equals(-ExpectedImpulse, 1.e-3f));
 		TestTrue(TEXT("Contact reaction moment remains at impact point"), ContactAngularDeltaWheelCenter.Equals(ExpectedContactAngularImpulse, 1.e-2f));
+
+		SuspensionState.bHitGround = false;
+		FVehicleWheelSimContext& WheelContext = FVehicleWheelContactProbe::WheelContext(*Wheel);
+		WheelContext.SpinReactionAngularImpulse = FVector(1., -2., 3.);
+		const FVector AirborneAngularBefore = ChassisHandle->AngularImpulse();
+		const FVector AirborneLinearBefore = ChassisHandle->LinearImpulse();
+		const FVector AirborneContactAngularBefore = ContactHandle->AngularImpulse();
+		const FVector AirborneContactLinearBefore = ContactHandle->LinearImpulse();
+		FVehicleWheelContactProbe::ApplyWheelForce(*Wheel, ChassisHandle);
+		TestTrue(TEXT("Airborne spin reaction converts SI angular momentum to Chaos units"),
+			FVector(ChassisHandle->AngularImpulse() - AirborneAngularBefore).Equals(FVector(10000., -20000., 30000.), 1.e-2));
+		TestTrue(TEXT("Spin reaction adds no linear or contact impulse"),
+			FVector(ChassisHandle->LinearImpulse()).Equals(AirborneLinearBefore, 1.e-3)
+			&& FVector(ContactHandle->AngularImpulse()).Equals(AirborneContactAngularBefore, 1.e-3)
+			&& FVector(ContactHandle->LinearImpulse()).Equals(AirborneContactLinearBefore, 1.e-3));
+		const FVector OnceAngular = ChassisHandle->AngularImpulse();
+		FVehicleWheelContactProbe::ApplyWheelForce(*Wheel, ChassisHandle);
+		TestTrue(TEXT("Spin impulse is consumed exactly once"), FVector(ChassisHandle->AngularImpulse()).Equals(OnceAngular, 1.e-3));
+
+		WheelContext.SpinReactionAngularImpulse = FVector(-0.5, 1., 0.);
+		FVehicleWheelContactProbe::ApplyWheelForce(*Wheel, ChassisHandle);
+		TestTrue(TEXT("Separate wheel contributions accumulate on the same chassis"),
+			FVector(ChassisHandle->AngularImpulse() - AirborneAngularBefore).Equals(FVector(5000., -10000., 30000.), 1.e-2));
 	}
 	return true;
 }

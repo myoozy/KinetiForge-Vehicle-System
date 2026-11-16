@@ -406,7 +406,7 @@ bool UVehicleWheelComponent::InitializeMeshComponents()
 void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* const ChassisHandle)
 {
 	const auto Bridge = GetWheelBridge();
-	const FVehicleWheelRuntime& Runtime = Bridge->GetRuntimeForSimulation();
+	FVehicleWheelRuntime& Runtime = Bridge->GetRuntimeForSimulation();
 	FVehicleWheelPhysics::ApplyWheelForce(Runtime.WheelState, Runtime.WheelContext, Runtime.SuspensionState,
 		Bridge->GetContactForSimulation(), Runtime.Settings.KinematicsConfig.LocationToApplyForce,
 		Bridge->GetFrameForSimulation().ChassisWorldTransform, ChassisHandle);

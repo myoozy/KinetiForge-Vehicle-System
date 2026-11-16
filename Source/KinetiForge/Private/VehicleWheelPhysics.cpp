@@ -100,12 +100,21 @@ void FVehicleWheelPhysics::FinalizeSolidAxleSuspension(FVehicleWheelRuntime& Run
 }
 
 void FVehicleWheelPhysics::ApplyWheelForce(const FVehicleWheelSimState& WheelState,
-	const FVehicleWheelSimContext& WheelContext, const FVehicleSuspensionSimState& SuspensionState,
+	FVehicleWheelSimContext& WheelContext, const FVehicleSuspensionSimState& SuspensionState,
 	const FVehicleSuspensionHitResult& Contact, EVehicleForceApplicationPoint ForceApplicationPoint,
 	const FTransform& ChassisWorldTransform, Chaos::FRigidBodyHandle_Internal* ChassisHandle)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForge_Wheel_ApplyForce);
-	if (!SuspensionState.bHitGround || ChassisHandle == nullptr) return;
+	if (ChassisHandle == nullptr) return;
+	// This internal exchange also exists in flight. Chaos applies the chassis inverse inertia;
+	// kg*m^2/s -> kg*cm^2/s. Do not multiply an angular impulse by dt again.
+	if (!WheelContext.SpinReactionAngularImpulse.IsZero())
+	{
+		ChassisHandle->SetAngularImpulse(ChassisHandle->AngularImpulse()
+			+ WheelContext.SpinReactionAngularImpulse * 10000., false);
+	}
+	WheelContext.SpinReactionAngularImpulse = FVector::ZeroVector;
+	if (!SuspensionState.bHitGround) return;
 
 	FVector PosToApplyImpulse = FVector(0.f);
 	switch (ForceApplicationPoint)

@@ -37,6 +37,16 @@ Useful entry points:
 - Slip, relaxation, and tire-force calculations: [VehicleWheelSolver.cpp](../Source/KinetiForge/Private/VehicleWheelSolver.cpp)
 - Wheel integration and handoff between suspension and tire stages: [VehicleWheelRuntime.cpp](../Source/KinetiForge/Private/VehicleWheelRuntime.cpp), [VehicleWheelPhysics.cpp](../Source/KinetiForge/Private/VehicleWheelPhysics.cpp)
 
+## Wheel spin and chassis angular momentum
+
+Each runtime wheel tracks its world-space spin axis from suspension geometry. At wheel preparation it records the current speed and the previous step's axis; at finalization it computes the change in `H = WheelConfig.Inertia * AngularVelocity * axis`. The opposite angular impulse is accumulated on the wheel's chassis once per macrostep, including in flight. This captures spin acceleration/braking and axis changes from steering, suspension articulation and chassis rotation. It does not use `AngularAcceleration`, which is the result of only the last internal tire substep. Reflected drivetrain inertia is excluded because upstream shafts have no defined 3D axes in this model.
+
+Chaos uses the chassis's existing inertia to turn the accumulated angular impulse into angular velocity; wheel code must not divide by chassis inertia. Configure chassis mass/inertia for the vehicle assembly as usual. This model adds the wheels' relative spin momentum, not separate full wheel rigid bodies or wheel inertia tensors. SI angular impulses are converted to Chaos centimeter units by multiplying by 10,000.
+
+With the default `ImpactPoint` force application, the chassis already receives the ground's external contact moment. Subtracting the wheel spin change assigns the wheel its share of that moment; adding a second drive/brake reaction would count it twice. The legacy `WheelCenter` mode intentionally changes the ground-force moment arm to reduce pitch/roll and remains a handling approximation, not a globally conserving contact model.
+
+Axis changes are sampled between macrosteps, so gyroscopic coupling is explicit and timestep dependent. Use the recommended fixed physics timestep and validate high wheel speeds against smaller steps. The first step seeds axis history without a gyro kick, but still transfers any spin acceleration during that step. A suspension reset clears the history; native callers changing a body's pose discontinuously must call `ResetSpinMomentumHistory()` before preparing the next wheel step. The exchange is per wheel and all wheel contributions add on their respective chassis bodies. This does not implement free steering dynamics, rider balance control or a validated motorcycle tire/contact model.
+
 ## Suspension and contact
 
 The suspension stage queries the world for a contact using one of the configured line, sphere, box, or multi-sphere modes. It solves the selected linkage geometry to find hub position and orientation, then computes spring, damping, and optional anti-dive, anti-squat, and anti-roll effects. The resulting load contributes to chassis forces and to the load used by the tire calculation. Optional unsprung mass adds a separate suspension integration path.

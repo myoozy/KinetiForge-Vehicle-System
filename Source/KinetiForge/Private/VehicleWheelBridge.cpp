@@ -86,6 +86,7 @@ void FVehicleWheelBridge::ConsumeInputs()
 	if (SuspensionReset.IsSet())
 	{
 		Runtime.SuspensionState = SuspensionReset.GetValue();
+		Runtime.ResetSpinMomentumHistory();
 		AppliedSuspensionResetSequence = ResetSequence;
 		AppliedMassSequence = FMath::Max(AppliedMassSequence, SupersededMassSequence);
 	}

@@ -20,7 +20,7 @@ A modular, C++ vehicle physics plugin for Unreal Engine 5. It combines Blueprint
 - Basic traction control, ABS, and automatic gearbox logic.
 - Simple airfoil and aerodynamic-volume components.
 
-Known limitations include no direct camber-thrust force model and no angular momentum conservation; the system is therefore not suitable for physically accurate motorcycle or bicycle simulation. P1/P2/P3/P4 motor APIs and ESP are not implemented.
+Wheel spin exchanges angular momentum with the chassis, including acceleration, braking and changes of wheel-axis direction. This uses each wheel's own inertia; upstream drivetrain axes are not modeled. Known limitations include no direct camber-thrust force model and no validated motorcycle or bicycle setup. P1/P2/P3/P4 motor APIs and ESP are not implemented.
 
 ## Build a basic vehicle
 

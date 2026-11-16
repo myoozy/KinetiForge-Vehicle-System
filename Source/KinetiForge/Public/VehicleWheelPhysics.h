@@ -64,7 +64,7 @@ public:
 	/** Caller guarantees ChassisHandle stays valid for this physics phase. Reaction is
 	 * applied immediately to the contact body, never queued for game Tick. */
 	static void ApplyWheelForce(const FVehicleWheelSimState& WheelState,
-		const FVehicleWheelSimContext& WheelContext, const FVehicleSuspensionSimState& SuspensionState,
+		FVehicleWheelSimContext& WheelContext, const FVehicleSuspensionSimState& SuspensionState,
 		const FVehicleSuspensionHitResult& Contact, EVehicleForceApplicationPoint ForceApplicationPoint,
 		const FTransform& ChassisWorldTransform, Chaos::FRigidBodyHandle_Internal* ChassisHandle);
 };

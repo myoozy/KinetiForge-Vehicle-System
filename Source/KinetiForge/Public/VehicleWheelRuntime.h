@@ -45,4 +45,13 @@ struct KINETIFORGE_API FVehicleWheelRuntime
 	void IntegrateWheel(float SubstepDeltaTime, float DriveTorque, float BrakeTorque,
 		float HandbrakeTorque, float ReflectedInertia);
 	void FinalizeWheel();
+	/** Call after a discontinuous pose/body reset, before preparing the next wheel step. */
+	void ResetSpinMomentumHistory();
+
+private:
+	FVector PreviousSpinAxis = FVector::ZeroVector;
+	FVector StepSpinAxis = FVector::ZeroVector;
+	FVector StepInitialSpinMomentum = FVector::ZeroVector;
+	float StepWheelInertia = 0.f;
+	bool bSpinStepPrepared = false;
 };

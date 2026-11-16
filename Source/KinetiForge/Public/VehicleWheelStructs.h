@@ -357,6 +357,9 @@ struct KINETIFORGE_API FVehicleWheelSimContext
 	FVector2f GravityComp2D = FVector2f(0.f);
 	FVector2f AccumulateTireImpulse2D = FVector2f(0.f);
 
+	/** Pending wheel-spin reaction in kg*m^2/s (world space). Consumed once by ApplyWheelForce. */
+	FVector SpinReactionAngularImpulse = FVector::ZeroVector;
+
 	float R = 0.33f;
 	float RInv = 1 / 0.33f;
 };
